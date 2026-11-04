@@ -41,7 +41,7 @@ Initialized once with `new(keeper: AccountId, gateway: AccountId)`. There is no 
 
 ```
 Receipt {
-  inference_id: String,            // NEAR AI Inference-Id response header
+  inference_id: String,            // Inference-Id response header; if absent on a 2xx, UUIDv5 of the body's completion id (NEAR's mapping)
   chat_id: String,                 // completion id
   model: String,                   // canonical model id
   prompt_tokens: u64,              // TEE-signed usage; for "reservation", input_bound
