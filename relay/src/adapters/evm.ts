@@ -6,7 +6,7 @@ import type { BridgePort, VaultPort } from '../keeper/keeper.ts';
 const vaultAbi = parseAbi(['function skim()', 'function unpaid() view returns (uint256)', 'function paidTotal() view returns (uint256)', 'function yieldCredited(address) view returns (uint256)', 'function yieldToken() view returns (address)']);
 const transferEvent = parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 value)');
 
-export function evmPorts(config: { rpc: string; chainId: number; key: Hex; usdc: Address; addresses: Address[]; fromBlock: bigint; oneClickUrl: string; oneClickToken?: string; originAsset: string; destinationAsset: string; recipient: string; slippageBps: number }): { vaults: VaultPort[]; bridge: BridgePort } {
+export function evmPorts(config: { rpc: string; chainId: number; key: Hex; usdc: Address; addresses: Address[]; fromBlock: bigint; oneClickUrl: string; oneClickToken?: string; originAsset: string; destinationAsset: string; recipient: string; slippageBps: number; minimumBaseUnits: bigint }): { vaults: VaultPort[]; bridge: BridgePort } {
   const chain = defineChain({ id: config.chainId, name: 'vault chain', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [config.rpc] } } });
   const account = privateKeyToAccount(config.key);
   const publicClient = createPublicClient({ chain, transport: http(config.rpc) });
@@ -62,7 +62,7 @@ export function evmPorts(config: { rpc: string; chainId: number; key: Hex; usdc:
       }
       const amount = await publicClient.readContract({ address: config.usdc, abi: erc20Abi, functionName: 'balanceOf', args: [account.address] });
       if (amount === 0n) return { dry: true, amount: '0', status: 'empty_treasury' };
-      const dry = amount < 150_000n; // 1Click's Base USDC minimum, 0.15 USDC.
+      const dry = amount < config.minimumBaseUnits;
       const response = await fetch(config.oneClickUrl.replace(/\/$/, '') + '/v0/quote', {
         method: 'POST', headers: { 'content-type': 'application/json', ...(config.oneClickToken ? { authorization: `Bearer ${config.oneClickToken}` } : {}) },
         body: JSON.stringify({ dry, swapType: 'EXACT_INPUT', slippageTolerance: config.slippageBps,

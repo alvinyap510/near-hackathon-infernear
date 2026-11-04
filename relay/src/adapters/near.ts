@@ -16,7 +16,7 @@ export async function nearConnector(config: { rpc: string; contract: string; gat
       if (!outcome.transaction) throw new Error('Missing transaction outcome');
       return { value: text ? JSON.parse(text) : undefined, tx_hash: outcome.transaction.hash };
     } catch (error) {
-      if (/insufficient credit/.test(String(error))) throw new InsufficientCredit(String(error));
+      if (/insufficient credit/.test(String(error))) throw new InsufficientCredit('insufficient_credit');
       throw error;
     }
   });

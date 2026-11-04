@@ -1,4 +1,4 @@
-import type { Connector, Report } from '../types.ts';
+import { reportError, type Connector, type Report } from '../types.ts';
 
 export interface VaultPort {
   id: string;
@@ -25,11 +25,11 @@ export class Keeper {
         if (snapshot.unpaid !== 0n) { this.report('posting_skipped', { vault: vault.id, reason: 'unpaid_yield', block: String(snapshot.block) }); continue; }
         await this.connector.postCredits(vault.id, snapshot.paid, snapshot.entries);
         this.report('credits_posted', { vault: vault.id, paid_cum: String(snapshot.paid), holders: snapshot.entries.length, block: String(snapshot.block) });
-      } catch (error) { this.report('keeper_retry', { vault: vault.id, error: String(error) }); }
+      } catch (error) { reportError(this.report, 'keeper_retry', error, { vault: vault.id }); }
     }
     try { this.report('bridge', await this.bridge.tick()); }
-    catch (error) { this.report('bridge_retry', { error: String(error) }); }
+    catch (error) { reportError(this.report, 'bridge_retry', error); }
     try { this.report('connector_storage', await this.connector.storageBalance()); }
-    catch (error) { this.report('storage_monitor_retry', { error: String(error) }); }
+    catch (error) { reportError(this.report, 'storage_monitor_retry', error); }
   }
 }
