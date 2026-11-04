@@ -60,7 +60,9 @@ export class Upstream {
     for (const row of catalog.models) {
       const meta = row.metadata;
       if (meta.providerType !== 'vllm' || meta.attestationSupported !== true ||
-          !meta.architecture?.inputModalities?.includes('text') || !meta.architecture?.outputModalities?.includes('text')) continue;
+          !meta.architecture?.inputModalities?.includes('text') || !meta.architecture?.outputModalities?.includes('text') ||
+          // Chat models list features (tools, reasoning…); NEAR's privacy filter and reranker list none.
+          !Array.isArray(meta.supportedFeatures) || meta.supportedFeatures.length === 0) continue;
       const price = (value: { amount: number; scale: number; currency: string }) => {
         if (value.scale !== 9 || value.currency !== 'USD' || !Number.isSafeInteger(value.amount) || value.amount < 0) throw new Error('Unsupported catalog price');
         return BigInt(value.amount);
