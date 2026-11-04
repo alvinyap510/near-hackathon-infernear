@@ -28,7 +28,7 @@ Standard ERC-4626 and ERC-20 functions and events, plus:
 
 ## NEAR: connector contract (`near-sdk` 5)
 
-Initialized once with `new(keeper: AccountId, gateway: AccountId)`. There is no owner and no admin method. NEAR events use NEP-297 with `standard: "infernear"`, `version: "1.0.0"`.
+Initialized once with `new(keeper: AccountId, gateway: AccountId)`. There is no owner and no admin method. NEAR events use NEP-297 with `standard: "infernear"`, `version: "1.0.0"`. Each event has a one-element `data` array: `post_credits` → `{ vault, paid_cum, entries: [[user, "cum"], …] }` (stored maximum `paid_cum`); `debit` → `{ user, amount_micro, receipt }`; `key_epoch` → `{ user, key_epoch }`.
 
 | Method | Caller | Effect |
 |---|---|---|
