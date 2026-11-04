@@ -44,11 +44,11 @@ Receipt {
   inference_id: String,            // NEAR AI Inference-Id response header
   chat_id: String,                 // completion id
   model: String,                   // canonical model id
-  prompt_tokens: Option<u64>,      // from TEE-signed usage; null when source = "billing"
-  completion_tokens: Option<u64>,
+  prompt_tokens: u64,              // TEE-signed usage; for "reservation", input_bound
+  completion_tokens: u64,          // TEE-signed usage; for "reservation", max_tokens
   in_price_nano: U128,             // per token, snapshot at admission
   out_price_nano: U128,
-  source: "signed_usage" | "billing"
+  source: "signed_usage" | "reservation"   // reservation = completed response without usage, charged at the reserved maximum
 }
 ```
 
@@ -58,25 +58,28 @@ The connector holds no funds. It pays for its own storage (each debit stores one
 
 Base URL: `VITE_RELAY_URL` / `RELAY_PORT`. Errors on every route use OpenAI's error JSON: `{"error": {"message", "type", "code"}}`.
 
-### Dashboard routes (wallet session)
+### Key routes (wallet proof)
+
+`POST /keys` and `POST /keys/revoke` each take `{ message, signature }`: an EIP-4361 message (chain 8453, `domain` and `uri` = this API's host, the nonce below, a required `expirationTime`) and its signature. The nonce is consumed. There is no session token.
 
 | Route | Auth | Body → response |
 |---|---|---|
-| `GET /auth/nonce` | none | → `{ nonce }` |
-| `POST /auth/siwe` | none | `{ message, signature }` (EIP-4361, chain 8453) → `{ session, expires_at }`, a short-lived bearer token for that user id |
-| `POST /keys` | `Bearer <session>` | → `{ key: "inf_…", key_epoch, expires_at }`. Issued under `max(key_epoch_read, key_epoch_mem)`, valid 30 days, shown once |
-| `POST /keys/revoke` | `Bearer <session>` | → `{ key_epoch, tx_hash }` after calling `bump_key_epoch` |
+| `GET /auth/nonce` | none | → `{ nonce }`, single-use, 5-minute TTL |
+| `POST /keys` | wallet proof | → `{ key: "inf_…", key_epoch, expires_at }`. Issued under `max(key_epoch_read, key_epoch_mem)`, valid 30 days, shown once |
+| `POST /keys/revoke` | wallet proof | → `{ key_epoch, tx_hash }` after calling `bump_key_epoch` |
 
-### API routes (OpenAI format, `Bearer inf_…`)
+### API routes (OpenAI format)
 
-| Route | Credits | Notes |
-|---|---|---|
-| `GET /v1/models` | no | NEAR AI TEE chat models only, canonical ids |
-| `GET /v1/model/{model}` | no | forwarded to NEAR AI unchanged |
-| `GET /v1/attestation/report` | no | forwarded unchanged |
-| `GET /v1/signature/{id}` | no | forwarded unchanged |
-| `POST /v1/chat/completions` | yes | E2EE v3 only, forwarded byte for byte; `Inference-Id` response header passed through |
+| Route | Auth | Credits | Notes |
+|---|---|---|---|
+| `GET /v1/models` | none | no | NEAR AI TEE chat models only, canonical ids, cached 5 minutes |
+| `GET /v1/model/{model}` | none | no | forwarded to NEAR AI unchanged |
+| `GET /v1/attestation/report` | none | no | forwarded unchanged |
+| `GET /v1/signature/{id}` | none | no | forwarded unchanged |
+| `POST /v1/chat/completions` | `Bearer inf_…` | yes | E2EE v3 only, forwarded byte for byte; streams need `stream_options.include_usage: true`; `Inference-Id` response header passed through |
 
-Status codes: 400 unencrypted or unsupported parameters, 401 bad, expired or revoked key, 402 insufficient credits, 404 model not served, 429 more than 4 requests in flight for one user.
+The three forwarded read routes allow 30 requests per minute per IP; requests carrying a valid API key skip that limit.
+
+Status codes: 400 unencrypted or unsupported parameters, 401 bad, expired or revoked key, 402 insufficient credits, 404 model not served, 429 more than 4 requests in flight for one user, or the per-IP limit on read routes.
 
 The dashboard reads balances directly: vault views over Base RPC, `account(user)` and `debited_amount(id)` over NEAR RPC.
