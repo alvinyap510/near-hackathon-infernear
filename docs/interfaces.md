@@ -23,6 +23,7 @@ Standard ERC-4626 and ERC-20 functions and events, plus:
 | `yieldRecipient() → address` | view | InferNear treasury |
 | `depositCap() → uint256` | view | maximum total shares |
 | `cushion() → uint256` | view | rounding budget kept in the vault |
+| `unattributed() → uint256` | view | cumulative yield measured at zero supply (credited to nobody), so `Σattributed + unattributed = paidTotal + unpaid` is checkable |
 | `event Skimmed(address indexed token, uint256 attributed, uint256 paid, uint256 acc)` | event | one per skim that attributes or pays |
 | `event PayFailed(bytes reason)` | event | a best-effort payment inside a deposit, withdrawal or transfer failed; attribution is kept |
 
