@@ -17,7 +17,7 @@ abstract contract PrincipalVault is ERC4626, ReentrancyGuard {
     uint256 public paidTotal;
 
     uint256 internal acc;
-    uint256 internal unattributed;
+    uint256 public unattributed;
     mapping(address => uint256) internal creditedScaled;
     mapping(address => uint256) internal snap;
 

@@ -28,10 +28,6 @@ contract VaultHarness is AaveUsdcVault {
         return _principalAssets();
     }
 
-    function unallocated() external view returns (uint256) {
-        return unattributed;
-    }
-
     function accumulator() external view returns (uint256) {
         return acc;
     }

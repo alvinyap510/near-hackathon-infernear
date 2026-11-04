@@ -187,7 +187,7 @@ contract PrincipalVaultInvariantTest is StdInvariant, Test {
     }
 
     function invariantYieldBuckets() public view {
-        assertEq(handler.attributed() + vault.unallocated(), vault.paidTotal() + vault.unpaid());
+        assertEq(handler.attributed() + vault.unattributed(), vault.paidTotal() + vault.unpaid());
     }
 
     function invariantScaledEntitlements() public view {
