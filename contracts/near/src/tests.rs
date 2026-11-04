@@ -89,12 +89,10 @@ fn defaults_and_json_match_interface() {
         near_sdk::serde_json::from_value::<Receipt>(json).unwrap(),
         reserved
     );
-    assert!(
-        near_sdk::serde_json::from_value::<Receipt>(
-            near_sdk::serde_json::json!({"source":"unknown"})
-        )
-        .is_err()
-    );
+    // Only the source differs from a valid receipt, so the rejection is about the source.
+    let mut unknown = near_sdk::serde_json::to_value(receipt("unknown-source")).unwrap();
+    unknown["source"] = near_sdk::serde_json::json!("unknown");
+    assert!(near_sdk::serde_json::from_value::<Receipt>(unknown).is_err());
 }
 
 #[test]
