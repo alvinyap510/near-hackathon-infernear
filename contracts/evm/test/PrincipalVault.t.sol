@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
 import {PrincipalVault} from "../src/PrincipalVault.sol";
 import {MockUSDC, MockPool} from "./mocks/MockAave.sol";
 import {VaultHarness} from "./mocks/VaultHarness.sol";
@@ -220,27 +220,28 @@ contract PrincipalVaultTest is Test {
         assertGe(vault.held(), vault.principal());
     }
 
-    /// @dev Known spec limitation: skim-first payment consumes liquidity needed for the pending exit.
-    function testSkimFirstPaymentCanConsumeExitLiquidity() public {
+    function testRedeemUsesExitLiquidityBeforePayingYield() public {
         deposit(alice, 100e6);
         grow(1.1e27);
         token.burn(address(pool.aToken()), token.balanceOf(address(pool.aToken())) - (100e6 - CUSHION));
-        // Principal could be released before the payout: idle + reserve liquidity = 100 USDC.
         assertEq(token.balanceOf(address(vault)) + token.balanceOf(address(pool.aToken())), 100e6);
-        vm.expectRevert(
-            abi.encodeWithSignature(
-                "ERC20InsufficientBalance(address,uint256,uint256)", address(pool.aToken()), 90e6, 100e6
-            )
-        );
-        vm.prank(alice);
-        vault.redeem(100e6, alice, alice);
-        // The whole transaction rolls back. No principal or yield is lost, but this full exit is blocked.
-        assertEq(vault.balanceOf(alice), 100e6);
-        assertEq(vault.paidTotal(), 0);
-        assertEq(token.balanceOf(treasury), 0);
-        vault.setFailPay(true);
+        uint256 beforeBalance = token.balanceOf(alice);
         vm.prank(alice);
         assertEq(vault.redeem(100e6, alice, alice), 100e6);
+        assertEq(token.balanceOf(alice) - beforeBalance, 100e6);
+        assertEq(vault.totalSupply(), 0);
+        assertEq(vault.yieldCredited(alice), 10e6);
+        assertEq(vault.unpaid(), 10e6);
+        assertEq(vault.paidTotal(), 0);
+        assertEq(token.balanceOf(treasury), 0);
+        // Restoring reserve liquidity makes the same attributed yield payable, without crediting it twice.
+        token.mint(address(pool.aToken()), 20e6);
+        vault.skim();
+        assertEq(vault.unpaid(), 0);
+        assertEq(vault.paidTotal(), 10e6);
+        assertEq(token.balanceOf(treasury), 10e6);
+        assertEq(vault.yieldCredited(alice), 10e6);
+        assertGe(vault.held(), vault.principal());
     }
 
     function testLossAfterFailedPaymentKeepsUnpaidJunior() public {
@@ -290,5 +291,181 @@ contract PrincipalVaultTest is Test {
         assertEq(vault.entitlement(alice), aliceEntitlement);
         assertEq(vault.entitlement(alice) + vault.entitlement(bob), vault.accumulator() * 18);
         assertLe(vault.entitlement(alice) + vault.entitlement(bob), 1e36);
+    }
+    enum Operation {
+        Deposit,
+        Mint,
+        Withdraw,
+        Redeem,
+        Transfer,
+        TransferFrom
+    }
+
+    function testDepositPaysAfterOperation() public {
+        _assertEntryPointPaymentOrder(Operation.Deposit, false);
+    }
+
+    function testDepositPayFailureKeepsOperation() public {
+        _assertEntryPointPaymentOrder(Operation.Deposit, true);
+    }
+
+    function testMintPaysAfterOperation() public {
+        _assertEntryPointPaymentOrder(Operation.Mint, false);
+    }
+
+    function testMintPayFailureKeepsOperation() public {
+        _assertEntryPointPaymentOrder(Operation.Mint, true);
+    }
+
+    function testWithdrawPaysAfterOperation() public {
+        _assertEntryPointPaymentOrder(Operation.Withdraw, false);
+    }
+
+    function testWithdrawPayFailureKeepsOperation() public {
+        _assertEntryPointPaymentOrder(Operation.Withdraw, true);
+    }
+
+    function testRedeemPaysAfterOperation() public {
+        _assertEntryPointPaymentOrder(Operation.Redeem, false);
+    }
+
+    function testRedeemPayFailureKeepsOperation() public {
+        _assertEntryPointPaymentOrder(Operation.Redeem, true);
+    }
+
+    function testTransferPaysAfterOperation() public {
+        _assertEntryPointPaymentOrder(Operation.Transfer, false);
+    }
+
+    function testTransferPayFailureKeepsOperation() public {
+        _assertEntryPointPaymentOrder(Operation.Transfer, true);
+    }
+
+    function testTransferFromPaysAfterOperation() public {
+        _assertEntryPointPaymentOrder(Operation.TransferFrom, false);
+    }
+
+    function testTransferFromPayFailureKeepsOperation() public {
+        _assertEntryPointPaymentOrder(Operation.TransferFrom, true);
+    }
+
+    function _assertEntryPointPaymentOrder(Operation operation, bool failPayment) private {
+        deposit(alice, 100e6);
+        grow(1.1e27);
+        vault.setFailPay(failPayment);
+        uint256 aliceAssetsBefore = token.balanceOf(alice);
+        uint256 bobAssetsBefore = token.balanceOf(bob);
+        if (operation == Operation.TransferFrom) {
+            vm.prank(alice);
+            vault.approve(bob, 25e6);
+        }
+        vm.recordLogs();
+        if (operation == Operation.Deposit) {
+            vm.prank(bob);
+            assertEq(vault.deposit(25e6, bob), 25e6);
+        } else if (operation == Operation.Mint) {
+            vm.prank(bob);
+            assertEq(vault.mint(25e6, bob), 25e6);
+        } else if (operation == Operation.Withdraw) {
+            vm.prank(alice);
+            assertEq(vault.withdraw(25e6, alice, alice), 25e6);
+        } else if (operation == Operation.Redeem) {
+            vm.prank(alice);
+            assertEq(vault.redeem(25e6, alice, alice), 25e6);
+        } else if (operation == Operation.Transfer) {
+            vm.prank(alice);
+            assertTrue(vault.transfer(bob, 25e6));
+        } else {
+            vm.prank(bob);
+            assertTrue(vault.transferFrom(alice, bob, 25e6));
+            assertEq(vault.allowance(alice, bob), 0);
+        }
+        _assertPaymentLogs(vm.getRecordedLogs(), operation, failPayment);
+        // Attribution uses pre-operation shares even though payment uses the resulting position.
+        assertEq(vault.yieldCredited(alice), 10e6);
+        assertEq(vault.yieldCredited(bob), 0);
+        assertGe(vault.held(), vault.principal());
+        if (failPayment) {
+            assertEq(vault.unpaid(), 10e6);
+            assertEq(vault.paidTotal(), 0);
+        } else {
+            assertGt(vault.paidTotal(), 0);
+            assertLe(vault.unpaid(), 2);
+        }
+        assertEq(token.balanceOf(treasury), vault.paidTotal());
+        uint256 assetsIn;
+        uint256 assetsOut;
+        if (operation == Operation.Deposit || operation == Operation.Mint) {
+            assertEq(vault.totalSupply(), 125e6);
+            assertEq(vault.balanceOf(alice), 100e6);
+            assertEq(vault.balanceOf(bob), 25e6);
+            assetsIn = 25e6;
+        } else if (operation == Operation.Withdraw || operation == Operation.Redeem) {
+            assertEq(vault.totalSupply(), 75e6);
+            assertEq(vault.balanceOf(alice), 75e6);
+            assertEq(vault.balanceOf(bob), 0);
+            assetsOut = 25e6;
+        } else {
+            assertEq(vault.totalSupply(), 100e6);
+            assertEq(vault.balanceOf(alice), 75e6);
+            assertEq(vault.balanceOf(bob), 25e6);
+        }
+        assertEq(token.balanceOf(alice), aliceAssetsBefore + assetsOut);
+        assertEq(token.balanceOf(bob), bobAssetsBefore - assetsIn);
+        assertEq(
+            vault.held() + assetsOut + vault.paidTotal() + pool.roundingLoss(),
+            CUSHION + 110e6 + assetsIn + pool.roundingGain()
+        );
+    }
+
+    function _assertPaymentLogs(Vm.Log[] memory logs, Operation operation, bool failPayment) private view {
+        bytes32 transferSignature = keccak256("Transfer(address,address,uint256)");
+        bytes32 operationSignature = operation == Operation.Deposit || operation == Operation.Mint
+            ? keccak256("Deposit(address,address,uint256,uint256)")
+            : operation == Operation.Withdraw || operation == Operation.Redeem
+                ? keccak256("Withdraw(address,address,address,uint256,uint256)")
+                : transferSignature;
+        bool sawOperation;
+        bool sawPayment;
+        uint256 skimCount;
+        uint256 failureCount;
+        for (uint256 i; i < logs.length; ++i) {
+            Vm.Log memory entry = logs[i];
+            if (entry.emitter == address(vault) && entry.topics[0] == operationSignature) {
+                assertFalse(sawPayment, "share operation happened after payment");
+                sawOperation = true;
+            }
+            if (entry.emitter == address(token) && entry.topics[0] == transferSignature) {
+                if (entry.topics[2] == bytes32(uint256(uint160(treasury)))) {
+                    assertFalse(failPayment, "reverting payout transferred funds");
+                    assertTrue(sawOperation, "payment happened before operation");
+                    sawPayment = true;
+                } else {
+                    assertFalse(sawPayment, "principal moved after payment");
+                }
+            }
+            if (entry.emitter == address(vault) && entry.topics[0] == keccak256("PayFailed(bytes)")) {
+                assertTrue(failPayment);
+                assertTrue(sawOperation, "payment attempted before operation");
+                assertEq(entry.data, abi.encode(abi.encodeWithSignature("Error(string)", "mock pay failure")));
+                sawPayment = true;
+                failureCount++;
+            }
+            if (
+                entry.emitter == address(vault)
+                    && entry.topics[0] == keccak256("Skimmed(address,uint256,uint256,uint256)")
+            ) {
+                assertTrue(sawPayment, "skim event preceded payment attempt");
+                (uint256 attributed, uint256 paid, uint256 index) = abi.decode(entry.data, (uint256, uint256, uint256));
+                assertEq(attributed, 10e6);
+                assertEq(paid, vault.paidTotal());
+                assertEq(index, vault.accumulator());
+                skimCount++;
+            }
+        }
+        assertTrue(sawOperation);
+        assertTrue(sawPayment);
+        assertEq(skimCount, 1);
+        assertEq(failureCount, failPayment ? 1 : 0);
     }
 }

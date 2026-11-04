@@ -85,28 +85,39 @@ abstract contract PrincipalVault is ERC4626, ReentrancyGuard {
     }
 
     function deposit(uint256 assets, address receiver) public override nonReentrant returns (uint256) {
-        _skim(true);
-        return super.deposit(assets, receiver);
+        (uint256 free, uint256 attributed) = _attributeYield();
+        uint256 shares = super.deposit(assets, receiver);
+        _payAndEmit(free, attributed, true);
+        return shares;
     }
 
     function mint(uint256 shares, address receiver) public override nonReentrant returns (uint256) {
-        _skim(true);
-        return super.mint(shares, receiver);
+        (uint256 free, uint256 attributed) = _attributeYield();
+        uint256 assets = super.mint(shares, receiver);
+        _payAndEmit(free, attributed, true);
+        return assets;
     }
 
     function withdraw(uint256 assets, address receiver, address owner) public override nonReentrant returns (uint256) {
-        _skim(true);
-        return super.withdraw(assets, receiver, owner);
+        (uint256 free, uint256 attributed) = _attributeYield();
+        uint256 shares = super.withdraw(assets, receiver, owner);
+        _payAndEmit(free, attributed, true);
+        return shares;
     }
 
     function redeem(uint256 shares, address receiver, address owner) public override nonReentrant returns (uint256) {
-        _skim(true);
-        return super.redeem(shares, receiver, owner);
+        (uint256 free, uint256 attributed) = _attributeYield();
+        uint256 assets = super.redeem(shares, receiver, owner);
+        _payAndEmit(free, attributed, true);
+        return assets;
     }
 
     function transfer(address to, uint256 amount) public override(ERC20, IERC20) nonReentrant returns (bool) {
-        if (amount != 0 && msg.sender != to) _skim(true);
-        return super.transfer(to, amount);
+        if (amount == 0 || msg.sender == to) return super.transfer(to, amount);
+        (uint256 free, uint256 attributed) = _attributeYield();
+        bool success = super.transfer(to, amount);
+        _payAndEmit(free, attributed, true);
+        return success;
     }
 
     function transferFrom(address from, address to, uint256 amount)
@@ -115,12 +126,11 @@ abstract contract PrincipalVault is ERC4626, ReentrancyGuard {
         nonReentrant
         returns (bool)
     {
-        if (amount != 0 && from != to) _skim(true);
-        return super.transferFrom(from, to, amount);
-    }
-
-    function approve(address spender, uint256 amount) public override(ERC20, IERC20) nonReentrant returns (bool) {
-        return super.approve(spender, amount);
+        if (amount == 0 || from == to) return super.transferFrom(from, to, amount);
+        (uint256 free, uint256 attributed) = _attributeYield();
+        bool success = super.transferFrom(from, to, amount);
+        _payAndEmit(free, attributed, true);
+        return success;
     }
 
     function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal override {
@@ -162,12 +172,12 @@ abstract contract PrincipalVault is ERC4626, ReentrancyGuard {
     }
 
     function skim() external nonReentrant {
-        _skim(false);
+        (uint256 free, uint256 attributed) = _attributeYield();
+        _payAndEmit(free, attributed, false);
     }
 
-    function _skim(bool bestEffort) private {
-        uint256 free = _freeYield();
-        uint256 attributed;
+    function _attributeYield() private returns (uint256 free, uint256 attributed) {
+        free = _freeYield();
         if (free != 0) {
             uint256 supply = totalSupply();
             if (supply == 0) {
@@ -178,6 +188,9 @@ abstract contract PrincipalVault is ERC4626, ReentrancyGuard {
             }
             unpaid += free;
         }
+    }
+
+    function _payAndEmit(uint256 free, uint256 attributed, bool bestEffort) private {
         uint256 paid;
         if (unpaid != 0) {
             if (bestEffort) {
