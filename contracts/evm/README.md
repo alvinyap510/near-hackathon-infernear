@@ -25,6 +25,8 @@ Fork tests skip when `FORK_RPC_URL` is unset or empty. To run only the read-only
 forge test --offline --match-contract AaveUsdcVaultForkTest -vv
 ```
 
+Fork exit assertions measure the receiver's token-balance delta and compare it with the return; the existing per-operation principal rounding bounds apply to actual receipts.
+
 The fork tests use addresses from the pinned `@bgd-labs/aave-address-book` dependency. They test 30-day accrual followed by full redemption, 32 consecutive daily skims, deployed revisions, and mint/burn/balance rounding. They change time and balances only inside the local fork VM and send no transactions to Base.
 
 ## Accounting and limits
@@ -33,9 +35,13 @@ For Aave, shares and principal units are USDC base units (6 decimals), 1:1 when 
 
 Every balance change first measures surplus above principal, the cushion, and already-attributed unpaid yield. `_update` only settles the 1e36 index, preserving fractional holder entitlements. `yieldCredited` includes unsettled earnings. Zero/self transfers skip attribution. Pre-deposit donations are treasury-owned and receive no user attribution. Index dust is less than 1 yield-token base unit per skim when total shares are below 1e36; integer views additionally truncate less than 1 base unit per holder. Configure the deposit cap well below that bound.
 
-Payment runs in an external self-only `_pay` frame under the entry point's reentrancy guard. Deposit/exit/transfer catches payment failure and emits `PayFailed`; public `skim()` propagates it. Unpaid yield is junior to principal, and payment is capped by surplus and available reserve liquidity. A post-payment coverage assertion rolls back any payout that would consume principal. Insufficient gas in the self-call can delay payment; retry `skim()` with enough gas. An exit still depends on Aave liquidity and protocol availability.
+Payment runs in an external self-only `_pay` frame under the entry point's reentrancy guard. Deposit/exit/transfer catches payment failure and emits `PayFailed`; public `skim()` propagates it. Unpaid yield is junior to principal, and payment is capped by surplus and available reserve liquidity. A post-payment coverage assertion rolls back any payout that would consume principal. Entry points must be sent enough gas for both the operation and its payout attempt. A gas-starved self-call can leave too little gas to emit `PayFailed` and return, reverting the whole transaction; retry the operation with more gas. The keeper's public `skim()` is the deferred payment path. Solidity 0.8 `assert` reverts with `Panic(0x01)` rather than consuming the frame's remaining gas; the coverage assertion is retained. An exit still depends on protocol liquidity and availability.
 
 For Aave, `heldAssets` includes idle USDC plus `floor(scaledBalance × normalizedIncome / 1e27)`. Supply floors scaled mint amounts; withdrawal ceils scaled burns on the verified deployment. Each such operation can consume up to `ceil(index / 1e27)` USDC base units of rounding budget. The 10,000-base-unit example cushion is $0.01, replenished by later yield; this is a finite budget, not a guarantee across arbitrarily many operations or protocol losses. Fork redemption checks allow `operations × cushion`; the verified 100 USDC round trip returned all 100 USDC. Strategy loss is not covered by this budget.
+
+`maxWithdraw` and `maxRedeem` on Aave cap the holder's covered claim by idle USDC plus available reserve USDC. Staking maxima similarly use idle principal tokens plus the pool's principal-token balance. A liquidity-limited share quote rounds down; a zero-asset claim remains redeemable in full even at zero backing/liquidity. wstETH and PT hold their redemption assets directly, so the inherited covered claim already fits their token liquidity. These quotes do not bypass a protocol pause or token transfer restriction.
+
+`unattributed()` exposes cumulative whole-token yield measured at zero supply, in the yield token's base units. Together with `Skimmed` attribution totals, it makes `sum(attributed) + unattributed = paidTotal + unpaid` externally checkable. Per-index fractional dust remains bounded separately.
 
 **Payment order:** every deposit, mint, withdrawal, redemption and transfer attributes yield before balances change and pays it only after the operation, so within one transaction principal moves before any payout. `testRedeemUsesExitLiquidityBeforePayingYield` covers 100 USDC principal, 10 USDC yield and exactly 100 USDC available: the full redeem succeeds and the 10 USDC stays unpaid until a later skim. Across transactions, a payout realized earlier still reduces the reserve liquidity available to later exits.
 
@@ -49,7 +55,7 @@ The Aave-only `script/Deploy.s.sol` creates the vault, then donates the cushion 
 
 ## Verified Base integration
 
-Observed at fork block **53,506,521**: pool revision **11** (Aave v3.7), aToken revision **5**, liquidity index **1152502951373223403646683658**. Revisions and rates can change; the fork test prints its observed block and values.
+Observed at fork block **53,506,521**: pool revision **11** (Aave v3.7), aToken revision **5**, liquidity index **1152502951373223403646683658**. Revisions and rates can change; the fork test prints its observed block and values. The adapter assumes scaled balance times normalized income remains a conservative valuation; re-check that assumption against every deployed Aave upgrade.
 
 | Component | Address (reference only; constructor uses env) |
 |---|---|
@@ -118,7 +124,7 @@ Re-read the rate at any future deployment. [Pendle's deployment registry](https:
 
 `StakingRewardsVault` supports `stake`, `withdraw`, `balanceOf`, `earned` and `getReward`. Principal units are staking-token base units, 1:1. Backing is staked plus idle principal tokens. The constructor rejects `rewardToken == asset`; earned rewards and directly donated reward tokens are measured separately, with `free = max(earned + idleReward − unpaid, 0)`. Principal-token donations are never counted as rewards. Credits/unpaid/paid are **reward-token units**, irrespective of the staking token's decimals. Only reward tokens are claimed/sent to the treasury.
 
-An underfunded or reverting reward claim is handled by the base's `PayFailed` frame; principal exits complete first and unpaid rewards wait. Offline tests cover claim failure and reward-transfer failure, including rollback of the claim. The pool must preserve fixed-token principal: an adapter cannot remove the selected pool's own principal-loss mechanics.
+An underfunded or reverting reward claim is handled by the base's `PayFailed` frame; with enough gas, principal exits complete first and unpaid rewards wait. Offline tests cover claim failure and reward-transfer failure, including rollback of the claim. The pool must preserve fixed-token principal: an adapter cannot remove the selected pool's own principal-loss mechanics.
 
 Verified unit command:
 
