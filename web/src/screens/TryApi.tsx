@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Check, CopyButton, ErrorNote, Spinner, errorText } from '../components/ui.tsx';
 import { apiBaseUrl } from '../config.ts';
 import { data, type Attestation, type Model, type RunResult } from '../data/index.ts';
-import { formatPerMillion, formatUsd, shortHex, signedUsageCost } from '../data/money.ts';
+import { formatPerMillion, formatUsd, shortHex, expectedDebit } from '../data/money.ts';
 import { quickstartJs, quickstartPython, SDK_PIN } from '../quickstart.ts';
 
 const MAX_TOKENS = 256;
@@ -75,7 +75,8 @@ export function TryApi({ apiKey, onChanged, onKeys }: { apiKey: string | null; o
           <h1 className="title">One encrypted call, verified end to end</h1>
         </div>
         <p className="page-note">
-          This code is the whole integration. <strong>Run</strong> makes the same call from this browser with your key.
+          {data.isRunMock ? 'Mock call: replies, attestations and debits are simulated while SDK wiring is pending.' :
+            <>This code is the whole integration. <strong>Run</strong> makes the same call from this browser with your key.</>}
         </p>
       </header>
 
@@ -233,7 +234,8 @@ function Verified({ attestation, result }: { attestation: Attestation; result: R
         ))}
       </ul>
       <p className="verified-foot">
-        From <code>client.verify(model)</code> and <code>client.verifyResponse(id)</code>, checked in this browser.
+        {data.isRunMock ? 'Simulated verification results; no TEE or signature was checked.' :
+          <>From <code>client.verify(model)</code> and <code>client.verifyResponse(id)</code>, checked in this browser.</>}
       </p>
     </section>
   );
@@ -245,19 +247,18 @@ function BillCheck({ result }: { result: RunResult }) {
 
   useEffect(() => {
     setDebited(undefined);
-    void data.debitedAmount(receipt.inferenceId).then(setDebited);
-  }, [receipt.inferenceId]);
+    const read = data.isRunMock ? Promise.resolve(result.simulatedDebit ?? null) : data.debitedAmount(receipt.inferenceId);
+    void read.then(setDebited);
+  }, [receipt.inferenceId, result.simulatedDebit]);
 
-  const expected = signedUsageCost(receipt);
+  const expected = expectedDebit(receipt, result.reservation);
   const signed = receipt.source === 'signed_usage';
   const verdict =
     debited === undefined
       ? 'reading'
       : debited === null
         ? 'missing'
-        : !signed || expected === null
-          ? 'reported'
-          : debited === expected
+        : debited === expected
             ? 'match'
             : debited < expected
               ? 'under'
@@ -271,16 +272,14 @@ function BillCheck({ result }: { result: RunResult }) {
         </h2>
         <span className={`verdict ${verdict}`} role="status">
           {verdict === 'reading'
-            ? 'Reading NEAR…'
+            ? (data.isRunMock ? 'Reading mock debit…' : 'Reading NEAR…')
             : verdict === 'missing'
               ? 'Debit not on NEAR yet'
-              : verdict === 'reported'
-                ? 'NEAR-reported cost'
-                : verdict === 'match'
-                  ? 'Matches the signed usage'
+              : verdict === 'match'
+                  ? (signed ? 'Matches capped usage' : 'Matches reserved maximum')
                   : verdict === 'under'
-                    ? 'Capped at the reservation'
-                    : 'Charged above signed usage'}
+                    ? 'Below the expected debit'
+                    : 'Charged above the expected debit'}
         </span>
       </div>
       <table className="bill-table">
@@ -298,19 +297,19 @@ function BillCheck({ result }: { result: RunResult }) {
                 <td>× {formatPerMillion(receipt.outPriceNano)}</td>
               </tr>
               <tr className="total">
-                <th scope="row">Signed usage × price</th>
-                <td colSpan={2}>{expected !== null ? formatUsd(expected, 6) : '—'}</td>
+                <th scope="row">Capped usage × price</th>
+                <td colSpan={2}>{formatUsd(expected, 6)}</td>
               </tr>
             </>
           ) : (
             <tr>
               <th scope="row">Token counts</th>
-              <td colSpan={2}>No signed usage in this reply; NEAR AI’s billing reported the cost</td>
+              <td colSpan={2}><span>charged at the reserved maximum: no usage returned</span> · {formatUsd(expected, 6)}</td>
             </tr>
           )}
           <tr className="total">
             <th scope="row">
-              Debited on NEAR <span className="muted">debited_amount(id)</span>
+              {data.isRunMock ? 'Simulated debit' : 'Debited on NEAR'} <span className="muted">debited_amount(id)</span>
             </th>
             <td colSpan={2}>{debited === undefined ? '…' : debited === null ? 'none yet' : formatUsd(debited, 6)}</td>
           </tr>
@@ -318,8 +317,8 @@ function BillCheck({ result }: { result: RunResult }) {
       </table>
       <p className="fineprint">
         Inference <code>{shortHex(receipt.inferenceId, 8, 4)}</code> · token counts are{' '}
-        {signed ? 'from the model-signed usage' : 'not model-signed'}. A debit is never above the amount reserved when the
-        call was admitted.
+        {signed ? 'from the model-signed usage' : 'not model-signed'}. Expected debit is min(usage × price, reservation),
+        or the full reservation when usage is absent.
       </p>
     </section>
   );

@@ -32,18 +32,21 @@ export function formatPerMillion(nanoPerToken: bigint): string {
 
 const ceilDiv = (a: bigint, b: bigint) => (a + b - 1n) / b;
 
-/**
- * Cost of signed usage at the receipt's price snapshot, in micro-USD:
- * ceil(tokens × nano_per_token / 1000) per token kind (docs/interfaces.md).
- * Null for a `billing` receipt, which has no token counts to recompute.
- */
+/** Combined token cost, rounded once to micro-USD, as the relay computes it. */
+export function tokenCost(promptTokens: number, completionTokens: number, inPriceNano: bigint, outPriceNano: bigint): bigint {
+  return ceilDiv(BigInt(promptTokens) * inPriceNano + BigInt(completionTokens) * outPriceNano, 1000n);
+}
+
 export function signedUsageCost(receipt: Receipt): bigint | null {
-  if (receipt.source !== 'signed_usage') return null;
-  if (receipt.promptTokens === null || receipt.completionTokens === null) return null;
-  return (
-    ceilDiv(BigInt(receipt.promptTokens) * receipt.inPriceNano, 1000n) +
-    ceilDiv(BigInt(receipt.completionTokens) * receipt.outPriceNano, 1000n)
-  );
+  return receipt.source === 'signed_usage'
+    ? tokenCost(receipt.promptTokens, receipt.completionTokens, receipt.inPriceNano, receipt.outPriceNano)
+    : null;
+}
+
+/** A reservation receipt charges the full reservation; signed usage is capped at it. */
+export function expectedDebit(receipt: Receipt, reservation: bigint): bigint {
+  const signed = signedUsageCost(receipt);
+  return signed === null || signed > reservation ? reservation : signed;
 }
 
 export const shortHex = (hex: string, head = 6, tail = 4) =>

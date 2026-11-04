@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { formatPerMillion, formatUsd, parseUsdc, signedUsageCost } from './money.ts';
+import { expectedDebit, formatPerMillion, formatUsd, parseUsdc, signedUsageCost, tokenCost } from './money.ts';
 import type { Receipt } from './types.ts';
 
 test('formatUsd rounds down and groups thousands', () => {
@@ -9,40 +9,42 @@ test('formatUsd rounds down and groups thousands', () => {
   assert.equal(formatUsd(267n, 6), '$0.000267');
   assert.equal(formatUsd(0n), '$0.00');
 });
-
-test('parseUsdc accepts up to 6 decimals and rejects anything else', () => {
+test('parseUsdc retains base units and rejects excess decimals or exponents', () => {
   assert.equal(parseUsdc('250'), 250_000_000n);
   assert.equal(parseUsdc('1,000.5'), 1_000_500_000n);
   assert.equal(parseUsdc('0.000001'), 1n);
-  assert.equal(parseUsdc('0.0000001'), null);
-  assert.equal(parseUsdc('-1'), null);
-  assert.equal(parseUsdc('1e3'), null);
-  assert.equal(parseUsdc(''), null);
+  assert.equal(parseUsdc('9007199254740993.000001'), 9_007_199_254_740_993_000001n);
+  for (const invalid of ['0.0000001', '-1', '1e3', '']) assert.equal(parseUsdc(invalid), null);
 });
-
-test('formatPerMillion converts nano-USD per token', () => {
-  assert.equal(formatPerMillion(300n), '$0.30 / M');
-});
+test('formatPerMillion converts nano-USD per token', () => assert.equal(formatPerMillion(300n), '$0.30 / M'));
 
 const receipt: Receipt = {
-  inferenceId: 'inf-1',
-  chatId: 'chatcmpl-1',
-  model: 'm',
-  promptTokens: 38,
-  completionTokens: 212,
-  inPriceNano: 300n,
-  outPriceNano: 1200n,
-  source: 'signed_usage',
+  inferenceId: 'inf-1', chatId: 'chatcmpl-1', model: 'm', promptTokens: 38, completionTokens: 212,
+  inPriceNano: 300n, outPriceNano: 1200n, source: 'signed_usage',
 };
-
-test('signedUsageCost ceils each token kind', () => {
-  // ceil(38 × 300 / 1000) = 12, ceil(212 × 1200 / 1000) = 255
-  assert.equal(signedUsageCost(receipt), 267n);
+test('signed usage rounds the combined cost once, matching the relay', () => {
+  assert.equal(signedUsageCost(receipt), 266n);
+  assert.equal(tokenCost(1, 1, 1n, 1n), 1n);
 });
-
-test('signedUsageCost has nothing to recompute for a billing receipt', () => {
-  assert.equal(
-    signedUsageCost({ ...receipt, source: 'billing', promptTokens: null, completionTokens: null }),
-    null,
-  );
+test('bill check compares the lesser of signed cost and reservation', () => {
+  assert.equal(expectedDebit(receipt, 200n), 200n);
+  assert.equal(expectedDebit(receipt, 1000n), 266n);
+  assert.equal(expectedDebit(receipt, 266n), 266n);
+});
+test('a reservation receipt charges the reserved maximum and has numeric bound fields', () => {
+  const fallback: Receipt = { ...receipt, source: 'reservation', promptTokens: 100, completionTokens: 256 };
+  assert.equal(signedUsageCost(fallback), null);
+  assert.equal(expectedDebit(fallback, 500n), 500n);
+});
+test('integer billing never draws beyond the reserved credit amount', () => {
+  for (let input = 0; input < 100; input++) {
+    const r = { ...receipt, promptTokens: input };
+    for (const reserved of [0n, 1n, 100n, 1000n]) {
+      const charged = expectedDebit(r, reserved);
+      assert(charged <= reserved);
+      assert(charged <= signedUsageCost(r)!);
+      const available = 2000n;
+      assert.equal((available - charged) + charged, available);
+    }
+  }
 });

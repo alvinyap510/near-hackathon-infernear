@@ -15,6 +15,8 @@ export type VaultPosition = {
   yieldCredited: bigint;
   /** The holder's USDC wallet balance, for deposit. */
   walletUsdc: bigint;
+  /** USDC approved for this vault. */
+  allowance: bigint;
 };
 
 /** Connector `account(user)` on NEAR, in micro-USD. */
@@ -33,8 +35,8 @@ export type Overview = {
 
 export type TxResult = { txHash: string };
 
-export type SiweChallenge = { message: string };
-export type Session = { session: string; expiresAt: string };
+/** Single-use EIP-4361 proof, consumed by one key action; never a session. */
+export type WalletProof = { message: string; signature: `0x${string}` };
 
 export type IssuedKey = { key: string; keyEpoch: number; expiresAt: string };
 export type Revoked = { keyEpoch: number; txHash: string };
@@ -52,11 +54,11 @@ export type Receipt = {
   inferenceId: string;
   chatId: string;
   model: string;
-  promptTokens: number | null;
-  completionTokens: number | null;
+  promptTokens: number;
+  completionTokens: number;
   inPriceNano: bigint;
   outPriceNano: bigint;
-  source: 'signed_usage' | 'billing';
+  source: 'signed_usage' | 'reservation';
 };
 
 /** The fields of the SDK's `client.verify(model)` result the Verified panel shows. */
@@ -92,6 +94,10 @@ export type RunResult = {
   attestation: Attestation;
   reply: ReplyVerification;
   receipt: Receipt;
+  /** Worst-case micro-USD reserved at admission, using that call's price snapshot. */
+  reservation: bigint;
+  /** Present only for the explicitly simulated run; never presented as a NEAR read. */
+  simulatedDebit?: bigint;
 };
 
 export type Chain = { id: string; name: string };
@@ -105,19 +111,20 @@ export type BridgeQuote = {
   etaSeconds: number;
   /** `dry: true` quotes carry no deposit address. */
   dry: boolean;
+  isMock: boolean;
 };
 
 /** Everything the UI reads or does. A wired implementation replaces the mock. */
 export interface DashboardData {
   readonly isMock: boolean;
+  readonly isRunMock: boolean;
   connect(): Promise<Address>;
   overview(address: Address): Promise<Overview>;
   deposit(address: Address, assets: bigint): Promise<TxResult>;
   redeem(address: Address, shares: bigint): Promise<TxResult>;
-  siweChallenge(address: Address): Promise<SiweChallenge>;
-  signIn(challenge: SiweChallenge): Promise<Session>;
-  createKey(session: Session): Promise<IssuedKey>;
-  revokeAll(session: Session): Promise<Revoked>;
+  walletProof(address: Address): Promise<WalletProof>;
+  createKey(proof: WalletProof): Promise<IssuedKey>;
+  revokeAll(proof: WalletProof): Promise<Revoked>;
   models(): Promise<Model[]>;
   run(request: RunRequest, onEvent: (event: RunEvent) => void): Promise<RunResult>;
   /** Connector `debited_amount(inference_id)`, or null. */

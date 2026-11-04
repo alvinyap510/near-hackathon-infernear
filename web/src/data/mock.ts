@@ -2,9 +2,9 @@
 // UI can be built before they are wired. Every screen shows a mock indicator
 // while this module is in use. The mock keeps the real invariants: spending
 // touches credits only, never principal, and never exceeds what is available.
-import { caip10 } from '../config.ts';
+import { caip10, config } from '../config.ts';
 import { DataError } from './errors.ts';
-import { signedUsageCost } from './money.ts';
+import { expectedDebit, tokenCost } from './money.ts';
 import type {
   Address,
   Attestation,
@@ -37,6 +37,13 @@ const MOCK_REPLY =
   'decrypted in your browser with a key that never left it.';
 
 export function createMockData(): DashboardData {
+  const proofs = new Map<string, string>();
+  const consume = (message: string) => {
+    const user = proofs.get(message);
+    if (!user) throw new DataError('wallet_proof', 'Sign a fresh single-use wallet proof.');
+    proofs.delete(message);
+    return user;
+  };
   const state = {
     walletUsdc: 2_450_000_000n,
     shares: 1_000_000_000n,
@@ -54,6 +61,7 @@ export function createMockData(): DashboardData {
       shares: state.shares,
       yieldCredited: state.yieldCredited,
       walletUsdc: state.walletUsdc,
+      allowance: 0n,
     },
     credits: {
       credited: state.credited,
@@ -65,6 +73,7 @@ export function createMockData(): DashboardData {
 
   return {
     isMock: true,
+    isRunMock: true,
 
     async connect() {
       await sleep(500);
@@ -94,34 +103,25 @@ export function createMockData(): DashboardData {
       return { txHash: `0x${hex(32)}` };
     },
 
-    async siweChallenge(address) {
-      await sleep(200);
-      const { host, origin } = window.location;
-      return {
-        message: [
-          `${host} wants you to sign in with your Ethereum account:`,
-          address,
-          '',
-          'Sign in to InferNear to manage your API keys.',
-          '',
-          `URI: ${origin}`,
-          'Version: 1',
-          `Chain ID: ${caip10(address).split(':')[1]}`,
-          `Nonce: ${hex(8)}`,
-          `Issued At: ${new Date().toISOString()}`,
-        ].join('\n'),
-      };
-    },
-
-    async signIn() {
+    async walletProof(address) {
       await sleep(700);
-      return { session: hex(24), expiresAt: new Date(Date.now() + 3_600_000).toISOString() };
+      const origin = new URL(config.relayUrl || window.location.origin);
+      const message = [
+        `${origin.host} wants you to sign in with your Ethereum account:`, address, '',
+        'Authorize one InferNear API key action.', '', `URI: ${origin.origin}`, 'Version: 1',
+        `Chain ID: ${caip10(address).split(':')[1]}`, `Nonce: ${hex(8)}`,
+        `Issued At: ${new Date().toISOString()}`,
+        `Expiration Time: ${new Date(Date.now() + 300_000).toISOString()}`,
+      ].join('\n');
+      proofs.set(message, caip10(address));
+      return { message, signature: `0x${hex(65)}` };
     },
 
-    async createKey() {
+    async createKey(proof) {
+      const user = consume(proof.message);
       await sleep(600);
       const exp = Math.floor(Date.now() / 1000) + 30 * 86_400;
-      const payload = base64url(JSON.stringify({ user: caip10(MOCK_ADDRESS), epoch: state.keyEpoch, exp }));
+      const payload = base64url(JSON.stringify({ user, epoch: state.keyEpoch, exp }));
       return {
         key: `inf_${payload}.${hex(32)}`,
         keyEpoch: state.keyEpoch,
@@ -129,7 +129,8 @@ export function createMockData(): DashboardData {
       };
     },
 
-    async revokeAll() {
+    async revokeAll(proof) {
+      consume(proof.message);
       await sleep(1100);
       state.keyEpoch += 1;
       return { keyEpoch: state.keyEpoch, txHash: hex(32) };
@@ -142,8 +143,7 @@ export function createMockData(): DashboardData {
     async run({ key, model, prompt, maxTokens }, onEvent: (event: RunEvent) => void) {
       if (!key.startsWith('inf_')) throw new DataError('key', 'Create an API key first.');
       const inputBound = BigInt(Math.ceil(new TextEncoder().encode(prompt).length * 2));
-      const reservation =
-        (BigInt(maxTokens) * model.outPriceNano + inputBound * model.inPriceNano + 999n) / 1000n;
+      const reservation = tokenCost(Number(inputBound), maxTokens, model.inPriceNano, model.outPriceNano);
       if (state.credited - state.spent < reservation)
         throw new DataError('credits', 'Not enough credits for this request (402).');
 
@@ -178,8 +178,7 @@ export function createMockData(): DashboardData {
         outPriceNano: model.outPriceNano,
         source: 'signed_usage',
       };
-      const cost = signedUsageCost(receipt) ?? reservation;
-      const charged = cost < reservation ? cost : reservation;
+      const charged = expectedDebit(receipt, reservation);
       state.spent += charged;
       state.debited.set(receipt.inferenceId, charged);
 
@@ -189,6 +188,8 @@ export function createMockData(): DashboardData {
         attestation,
         reply: { signatureKind: 'provider_tee', signer: `0x${hex(20)}` },
         receipt,
+        reservation,
+        simulatedDebit: charged,
       };
     },
 
@@ -217,6 +218,7 @@ export function createMockData(): DashboardData {
         recipient,
         etaSeconds: 45,
         dry: true,
+        isMock: true,
       };
     },
   };

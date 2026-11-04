@@ -113,7 +113,7 @@ export function Bridge({ address, onDeposit }: { address: Address; onDeposit: ()
                 </div>
               </dl>
               {quote.dry && (
-                <p className="fineprint">Dry-run quote: it shows the price but issues no deposit address, so nothing can be sent yet.</p>
+                <p className="fineprint">{quote.isMock ? 'Mock dry-run quote: amounts and timing are simulated; no funds can be sent.' : 'Dry-run quote: it shows the price but issues no deposit address, so nothing can be sent yet.'}</p>
               )}
             </div>
           )}

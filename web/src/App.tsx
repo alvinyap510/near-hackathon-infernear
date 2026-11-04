@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { MockRibbon, Header, type Tab, TABS } from './components/Shell.tsx';
-import { data, type Address, type IssuedKey, type Overview, type Session } from './data/index.ts';
+import { data, type Address, type IssuedKey, type Overview } from './data/index.ts';
 import { Account } from './screens/Account.tsx';
 import { Bridge } from './screens/Bridge.tsx';
 import { Connect } from './screens/Connect.tsx';
 import { Keys } from './screens/Keys.tsx';
 import { TryApi } from './screens/TryApi.tsx';
+import { ErrorNote, errorText } from './components/ui.tsx';
 
 const tabFromHash = (): Tab => {
   const id = window.location.hash.slice(1);
@@ -14,8 +15,8 @@ const tabFromHash = (): Tab => {
 
 export function App() {
   const [address, setAddress] = useState<Address | null>(null);
+  const [readError, setReadError] = useState<string | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
   const [issued, setIssued] = useState<IssuedKey | null>(null);
   const [tab, setTab] = useState<Tab>(tabFromHash);
 
@@ -31,11 +32,14 @@ export function App() {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (address) setOverview(await data.overview(address));
+    if (address) {
+      setOverview(await data.overview(address));
+      setReadError(null);
+    }
   }, [address]);
 
   useEffect(() => {
-    void refresh();
+    void refresh().catch((error) => setReadError(errorText(error)));
   }, [refresh]);
 
   return (
@@ -46,16 +50,14 @@ export function App() {
         {!address ? (
           <Connect onConnected={setAddress} />
         ) : !overview ? (
-          <p className="loading">Reading your vault and credits…</p>
+          readError ? <ErrorNote error={readError} /> : <p className="loading">Reading your vault and credits…</p>
         ) : tab === 'account' ? (
           <Account address={address} overview={overview} onChanged={refresh} onBridge={() => go('bridge')} />
         ) : tab === 'keys' ? (
           <Keys
             address={address}
             overview={overview}
-            session={session}
             issued={issued}
-            onSession={setSession}
             onIssued={setIssued}
             onChanged={refresh}
             onTry={() => go('try')}

@@ -1,32 +1,28 @@
 import { useState } from 'react';
 import { Check, CopyButton, ErrorNote, Spinner, errorText } from '../components/ui.tsx';
 import { apiBaseUrl } from '../config.ts';
-import { data, type Address, type IssuedKey, type Overview, type Session, type SiweChallenge } from '../data/index.ts';
+import { data, type Address, type IssuedKey, type Overview, type WalletProof } from '../data/index.ts';
 import { shortHex } from '../data/money.ts';
 
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-const time = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 
 export function Keys({
   address,
   overview,
-  session,
   issued,
-  onSession,
   onIssued,
   onChanged,
   onTry,
 }: {
   address: Address;
   overview: Overview;
-  session: Session | null;
   issued: IssuedKey | null;
-  onSession: (s: Session) => void;
   onIssued: (k: IssuedKey | null) => void;
   onChanged: () => Promise<void>;
   onTry: () => void;
 }) {
-  const [challenge, setChallenge] = useState<SiweChallenge | null>(null);
+  const [challenge, setChallenge] = useState<WalletProof | null>(null);
+  const [proof, setProof] = useState<WalletProof | null>(null);
   const [busy, setBusy] = useState<'sign' | 'create' | 'revoke' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revoked, setRevoked] = useState<{ epoch: number; tx: string } | null>(null);
@@ -44,24 +40,29 @@ export function Keys({
     }
   };
 
-  const signIn = () =>
+  const signProof = () =>
     act('sign', async () => {
-      const c = await data.siweChallenge(address);
-      setChallenge(c);
-      onSession(await data.signIn(c));
+      const p = await data.walletProof(address);
+      setChallenge(p);
+      setProof(p);
     });
+
+  const actionProof = async () => {
+    const p = proof ?? await data.walletProof(address);
+    setChallenge(p);
+    setProof(null); // A proof belongs to one action; retries obtain a new nonce.
+    return p;
+  };
 
   const create = () =>
     act('create', async () => {
-      if (!session) return;
       setRevoked(null);
-      onIssued(await data.createKey(session));
+      onIssued(await data.createKey(await actionProof()));
     });
 
   const revoke = () =>
     act('revoke', async () => {
-      if (!session) return;
-      const r = await data.revokeAll(session);
+      const r = await data.revokeAll(await actionProof());
       setRevoked({ epoch: r.keyEpoch, tx: r.txHash });
       setConfirmRevoke(false);
       onIssued(null);
@@ -75,38 +76,38 @@ export function Keys({
           <p className="eyebrow">API keys</p>
           <h1 className="title">Keys for the endpoint</h1>
         </div>
-        <p className="page-note">Sign in with your wallet, create a key, call the API. No deposit needed to start.</p>
+        <p className="page-note">Sign with your wallet, create a key, call the API. No deposit needed to start.</p>
       </header>
 
       <div className="split keys-split">
         <ol className="steps rise d1">
-          <li className={`step ${session ? 'done' : 'current'}`}>
+          <li className={`step ${proof ? 'done' : 'current'}`}>
             <span className="step-n" aria-hidden="true">01</span>
             <div className="step-body">
               <h2 className="step-title">
-                <Check state={session ? 'ok' : 'idle'} /> Sign in with Ethereum
+                <Check state={proof ? 'ok' : 'idle'} /> Sign with Ethereum
               </h2>
               <p className="step-text">Your wallet signs a standard EIP-4361 message. No transaction, no gas.</p>
               {challenge && (
-                <details className="siwe" open={!session}>
+                <details className="siwe">
                   <summary>Message you signed</summary>
                   <pre>{challenge.message}</pre>
                 </details>
               )}
-              {session ? (
+              {proof ? (
                 <p className="success" role="status">
-                  Signed in · session until {time(session.expiresAt)}
+                  Wallet proof ready · single-use
                 </p>
               ) : (
-                <button type="button" className="btn primary" onClick={signIn} disabled={busy !== null}>
+                <button type="button" className="btn primary" onClick={signProof} disabled={busy !== null}>
                   {busy === 'sign' ? <Spinner /> : null}
-                  {busy === 'sign' ? 'Sign in your wallet…' : 'Sign in'}
+                  {busy === 'sign' ? 'Sign in your wallet…' : 'Sign proof'}
                 </button>
               )}
             </div>
           </li>
 
-          <li className={`step ${issued ? 'done' : session ? 'current' : ''}`}>
+          <li className={`step ${issued ? 'done' : proof ? 'current' : ''}`}>
             <span className="step-n" aria-hidden="true">02</span>
             <div className="step-body">
               <h2 className="step-title">
@@ -134,7 +135,7 @@ export function Keys({
                   </div>
                 </div>
               ) : (
-                <button type="button" className="btn primary" onClick={create} disabled={!session || busy !== null}>
+                <button type="button" className="btn primary" onClick={create} disabled={!proof || busy !== null}>
                   {busy === 'create' ? <Spinner /> : null}
                   Create key
                 </button>
@@ -170,7 +171,7 @@ export function Keys({
                   </button>
                 </div>
               ) : (
-                <button type="button" className="btn outline-danger" onClick={() => setConfirmRevoke(true)} disabled={!session || busy !== null}>
+                <button type="button" className="btn outline-danger" onClick={() => setConfirmRevoke(true)} disabled={busy !== null}>
                   Revoke all keys…
                 </button>
               )}
