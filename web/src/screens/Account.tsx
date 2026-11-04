@@ -147,7 +147,7 @@ export function Account({
             </div>
           </dl>
           <p className="fineprint">
-            The vault pays yield to InferNear before any balance changes. The keeper then posts each holder’s yield credited
+            Before any balance changes, the vault records each holder’s yield; after the change it pays that yield to InferNear. The keeper then posts each holder’s yield credited
             to NEAR, and the connector refuses to credit more than the vault has actually paid.
           </p>
         </section>
