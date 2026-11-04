@@ -28,7 +28,8 @@ const base64url = (text: string) =>
 const MOCK_ADDRESS: Address = '0x7a3fe91b0c25d4e8a6b13f07d2c9e58b4a1dc41e';
 
 const MODELS: Model[] = [
-  { id: 'z-ai/glm-5.3-flash', name: 'GLM-5.3 Flash', inPriceNano: 300n, outPriceNano: 1200n },
+  // NEAR AI's public model list, 2026-11-04: $0.08 / M input, $0.50 / M output.
+  { id: 'z-ai/glm-5.3-flash', name: 'GLM-5.3 Flash', inPriceNano: 80n, outPriceNano: 500n },
 ];
 
 const MOCK_REPLY =
