@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { StringDecoder } from 'node:string_decoder';
 
-// NEAR billing's UUIDv5(completion id, DNS namespace), RFC 9562.
+// UUIDv5(completion id, DNS namespace), RFC 9562; confirm NEAR's mapping live.
 export function inferenceId(chatId: string): string {
   const dns = Buffer.from('6ba7b8109dad11d180b400c04fd430c8', 'hex');
   const value = createHash('sha1').update(dns).update(chatId, 'utf8').digest().subarray(0, 16);
@@ -41,6 +41,7 @@ export class Meter {
   private value(text: string): void {
     let value;
     try { value = JSON.parse(text); } catch { return; } // Partial/malformed metadata charges the reservation.
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return;
     if (!this.chatId && typeof value.id === 'string' && value.id) this.chatId = value.id;
     const usage = value.usage;
     if (usage && [usage.prompt_tokens, usage.completion_tokens].every(n => Number.isSafeInteger(n) && n >= 0)) {

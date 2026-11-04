@@ -15,7 +15,10 @@ export class Upstream {
   private cached?: { expires: number; models: Model[] };
   private loading?: Promise<Model[]>;
   private now: () => number;
-  constructor(base: string, key: string, now = Date.now) { this.base = base.replace(/\/$/, ''); this.key = key; this.now = now; }
+  private deadlineMs: number;
+  constructor(base: string, key: string, now = Date.now, deadlineMs = 120_000) {
+    this.base = base.replace(/\/$/, ''); this.key = key; this.now = now; this.deadlineMs = deadlineMs;
+  }
   request(path: string, method: string, headers: IncomingHttpHeaders = {}, body?: Buffer): Promise<IncomingMessage> {
     // Construct only relative paths, so neither headers nor a caller-controlled URL can redirect credentials.
     const url = new URL(this.base + path);
@@ -24,8 +27,20 @@ export class Upstream {
     forward['accept-encoding'] = 'identity';
     if (body) forward['content-length'] = String(body.length);
     return new Promise((resolve, reject) => {
-      const request = (url.protocol === 'https:' ? https : http).request(url, { method, headers: forward }, resolve);
-      request.on('error', reject);
+      let response: IncomingMessage | undefined;
+      const request = (url.protocol === 'https:' ? https : http).request(url, { method, headers: forward }, incoming => {
+        response = incoming;
+        incoming.once('end', () => clearTimeout(timer));
+        incoming.once('close', () => clearTimeout(timer));
+        resolve(incoming);
+      });
+      // A total deadline, not an inactivity timer: a trickling stream is bounded too.
+      const timer = setTimeout(() => {
+        const error = new HttpError(504, 'upstream_timeout', 'Upstream response deadline exceeded');
+        response?.destroy(error);
+        request.destroy(error);
+      }, this.deadlineMs);
+      request.on('error', error => { clearTimeout(timer); reject(error); });
       request.end(body);
     });
   }
@@ -45,7 +60,7 @@ export class Upstream {
     for (const row of catalog.models) {
       const meta = row.metadata;
       if (meta.providerType !== 'vllm' || meta.attestationSupported !== true ||
-          !meta.architecture?.input?.includes('text') || !meta.architecture?.output?.includes('text')) continue;
+          !meta.architecture?.inputModalities?.includes('text') || !meta.architecture?.outputModalities?.includes('text')) continue;
       const price = (value: { amount: number; scale: number; currency: string }) => {
         if (value.scale !== 9 || value.currency !== 'USD' || !Number.isSafeInteger(value.amount) || value.amount < 0) throw new Error('Unsupported catalog price');
         return BigInt(value.amount);

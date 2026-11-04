@@ -2,10 +2,10 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingHttpHeaders } from 'node:http';
 import { Auth, type KeyPayload } from './auth.ts';
 import { inferenceId, Meter } from './meter.ts';
-import { Upstream, type Model } from './upstream.ts';
-import { HttpError, InsufficientCredit, Mutex, costMicro, min, type Account, type Connector, type Receipt, type Report } from '../types.ts';
+import { Upstream, endToEndHeaders, type Model } from './upstream.ts';
+import { HttpError, InsufficientCredit, Mutex, costMicro, min, reportError, type Account, type Connector, type Receipt, type Report } from '../types.ts';
 
-type User = { lock: Mutex; floor?: bigint; epoch: number; active: number; reservations: Map<string, bigint> };
+type User = { lock: Mutex; floor?: bigint; epoch: number; pendingEpoch?: number; active: number; reservations: Map<string, bigint> };
 export type Reservation = { token: string; user: string; amount: bigint; model: Model; inputBound: number; maxTokens: number; streaming: boolean };
 type Job = { reservation: Reservation; amount: bigint; receipt: Receipt; stage: 'metered' | 'broadcast'; running: boolean };
 
@@ -45,7 +45,12 @@ export class Gateway {
   async issue(user: string) {
     const state = this.user(user);
     return state.lock.run(async () => {
-      this.observe(state, await this.connector.account(user));
+      const account = await this.connector.account(user);
+      this.observe(state, account);
+      if (state.pendingEpoch !== undefined) {
+        if (account.key_epoch < state.pendingEpoch) throw new HttpError(503, 'revocation_pending', 'Revocation is not confirmed; retry later');
+        state.pendingEpoch = undefined;
+      }
       return this.auth.issue(user, state.epoch);
     });
   }
@@ -54,9 +59,12 @@ export class Gateway {
     return state.lock.run(async () => {
       this.observe(state, await this.connector.account(user));
       // Advance before awaiting the transaction, so a lagging read cannot revive old keys.
-      state.epoch += 1;
+      state.pendingEpoch ??= state.epoch + 1;
+      state.epoch = Math.max(state.epoch, state.pendingEpoch);
       const result = await this.connector.bumpKeyEpoch(user);
+      if (result.key_epoch < state.epoch) throw new HttpError(503, 'revocation_pending', 'Revocation is not confirmed; retry later');
       state.epoch = Math.max(state.epoch, result.key_epoch);
+      state.pendingEpoch = undefined;
       return { key_epoch: state.epoch, tx_hash: result.tx_hash };
     });
   }
@@ -66,9 +74,10 @@ export class Gateway {
     try { body = JSON.parse(raw.toString()); } catch { throw new HttpError(400, 'invalid_json', 'Expected JSON chat request'); }
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'invalid_request', 'Expected chat object');
     const invalid = (message: string): never => { throw new HttpError(400, 'unsupported_parameters', message); };
-    if (headers['x-encryption-version'] !== '3' || !headers['x-signing-algo'] ||
-        !headers['x-client-pub-key'] || !headers['x-model-pub-key'] ||
-        headers['x-encrypt-all-fields'] !== 'true' || headers['x-no-aliasing'] !== 'true')
+    const forwarded = endToEndHeaders(headers);
+    if (forwarded['x-encryption-version'] !== '3' || !forwarded['x-signing-algo'] ||
+        !forwarded['x-client-pub-key'] || !forwarded['x-model-pub-key'] ||
+        forwarded['x-encrypt-all-fields'] !== 'true' || forwarded['x-no-aliasing'] !== 'true')
       invalid('E2EE v3 headers required. See relay/README.md and the NEAR AI SDK application-proxy quickstart.');
     if (!Number.isSafeInteger(body.max_tokens) || body.max_tokens < 1 || body.max_tokens > this.cap ||
         'max_completion_tokens' in body || (body.n !== undefined && body.n !== 1) ||
@@ -153,7 +162,7 @@ export class Gateway {
       if (error instanceof InsufficientCredit) {
         this.jobs.delete(id);
         this.report('inference_loss', { inference_id: id, reason: 'insufficient_credit' });
-      } else this.report('debit_retry', { inference_id: id, stage: job.stage, error: String(error) });
+      } else reportError(this.report, 'debit_retry', error, { inference_id: id, stage: job.stage });
     } finally { job.running = false; }
   }
   // Metadata only, for health/testing; no prompts or request bodies are retained.

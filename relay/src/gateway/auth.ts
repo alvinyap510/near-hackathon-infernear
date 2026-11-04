@@ -2,23 +2,24 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { verifyMessage, type Hex } from 'viem';
 import { parseSiweMessage, validateSiweMessage } from 'viem/siwe';
 import { HttpError } from '../types.ts';
+import { ExpiringMap } from './expiring-map.ts';
 
 export type KeyPayload = { user: string; epoch: number; exp: number };
 const unauthorized = () => new HttpError(401, 'invalid_api_key', 'Bad, expired or revoked credentials');
 
 export class Auth {
-  private nonces = new Map<string, number>();
+  private nonces: ExpiringMap<true>;
   private secret: string;
   private origin: URL;
   private chainId: number;
   private now: () => number;
   constructor(secret: string, publicUrl: string, chainId: number, now = Date.now) {
     this.secret = secret; this.origin = new URL(publicUrl); this.chainId = chainId; this.now = now;
+    this.nonces = new ExpiringMap(300_000, now);
   }
   nonce(): string {
-    for (const [nonce, expiry] of this.nonces) if (expiry <= this.now()) this.nonces.delete(nonce);
     const nonce = randomBytes(24).toString('hex');
-    this.nonces.set(nonce, this.now() + 300_000);
+    this.nonces.set(nonce, true);
     return nonce;
   }
   async walletProof(body: { message?: unknown; signature?: unknown }): Promise<string> {
@@ -26,7 +27,7 @@ export class Auth {
       if (typeof body.message !== 'string' || typeof body.signature !== 'string') throw unauthorized();
       const message = parseSiweMessage(body.message);
       const nonce = message.nonce;
-      if (!nonce || (this.nonces.get(nonce) ?? 0) <= this.now() || !message.address ||
+      if (!nonce || !this.nonces.get(nonce) || !message.address ||
           !message.expirationTime || message.chainId !== this.chainId ||
           !message.uri || new URL(message.uri).origin !== this.origin.origin ||
           !validateSiweMessage({ message, domain: this.origin.host, nonce, time: new Date(this.now()) })) throw unauthorized();

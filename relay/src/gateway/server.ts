@@ -1,28 +1,47 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { HttpError, type Report } from '../types.ts';
+import { HttpError, reportError, type Report } from '../types.ts';
+import { ExpiringMap } from './expiring-map.ts';
 import { Gateway } from './ledger.ts';
 import { Meter } from './meter.ts';
 import { endToEndHeaders } from './upstream.ts';
 
+// Bound untrusted buffered envelopes in the process that also settles credits.
+export const MAX_BODY_BYTES = 1_048_576;
+
 export function createRelayServer(gateway: Gateway, options: { publicUrl: string; report: Report; now?: () => number; allowedOrigin?: string }) {
   const now = options.now ?? Date.now;
-  const ipLimits = new Map<string, { count: number; expires: number }>();
+  const ipLimits = new ExpiringMap<{ count: number }>(60_000, now);
   const origin = new URL(options.publicUrl).origin;
   const json = (res: ServerResponse, status: number, value: unknown) => {
     res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(value));
   };
   const body = async (req: IncomingMessage) => {
+    const tooLarge = () => new HttpError(413, 'body_too_large', 'Request body exceeds 1 MiB');
+    if (Number(req.headers['content-length']) > MAX_BODY_BYTES) { req.pause(); throw tooLarge(); }
     const chunks: Buffer[] = [];
-    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    let bytes = 0;
+    // Leaving this iterator must not destroy the socket before the 413 is sent.
+    for await (const chunk of req.iterator({ destroyOnReturn: false })) {
+      bytes += chunk.length;
+      if (bytes > MAX_BODY_BYTES) { req.pause(); throw tooLarge(); }
+      chunks.push(Buffer.from(chunk));
+    }
     return Buffer.concat(chunks);
   };
   const pipe = async (source: IncomingMessage, res: ServerResponse, onBytes: (chunk: Buffer) => void) => {
     for await (const bytes of source) {
       const chunk = Buffer.from(bytes); onBytes(chunk);
       if (!res.destroyed && !res.writableEnded && !res.write(chunk)) {
-        await new Promise<void>(resolve => {
-          const done = () => { res.off('drain', done); res.off('close', done); resolve(); };
+        await new Promise<void>((resolve, reject) => {
+          const cleanup = () => {
+            res.off('drain', done); res.off('close', done);
+            source.off('error', failed); source.off('close', closed);
+          };
+          const done = () => { cleanup(); resolve(); };
+          const failed = (error: Error) => { cleanup(); reject(error); };
+          const closed = () => { if (source.readableEnded) done(); else failed(new HttpError(502, 'upstream_closed', 'Upstream response closed')); };
           res.once('drain', done); res.once('close', done);
+          source.once('error', failed); source.once('close', closed);
         });
       }
     }
@@ -39,7 +58,8 @@ export function createRelayServer(gateway: Gateway, options: { publicUrl: string
       if (req.method === 'GET' && path === '/auth/nonce') { json(res, 200, { nonce: gateway.auth.nonce() }); return; }
       if (req.method === 'POST' && (path === '/keys' || path === '/keys/revoke')) {
         let proof;
-        try { proof = JSON.parse((await body(req)).toString()); } catch { throw new HttpError(400, 'invalid_json', 'Expected wallet proof JSON'); }
+        const raw = await body(req);
+        try { proof = JSON.parse(raw.toString()); } catch { throw new HttpError(400, 'invalid_json', 'Expected wallet proof JSON'); }
         const user = await gateway.auth.walletProof(proof);
         json(res, 200, path === '/keys' ? await gateway.issue(user) : await gateway.revoke(user)); return;
       }
@@ -50,16 +70,17 @@ export function createRelayServer(gateway: Gateway, options: { publicUrl: string
         if (req.headers.authorization) await gateway.authenticate(req.headers.authorization);
         else {
           const ip = req.socket.remoteAddress ?? '';
-          for (const [address, window] of ipLimits) if (window.expires <= now()) ipLimits.delete(address);
-          const window = ipLimits.get(ip) ?? { count: 0, expires: now() + 60_000 };
+          let window = ipLimits.get(ip);
+          if (!window) { window = { count: 0 }; ipLimits.set(ip, window); }
           if (window.count >= 30) throw new HttpError(429, 'read_rate_limit', 'Anonymous read limit: 30 requests per minute per IP');
-          window.count += 1; ipLimits.set(ip, window);
+          window.count += 1;
         }
         const upstream = await gateway.upstream.request(path.slice(3) + url.search, 'GET', req.headers);
         res.writeHead(upstream.statusCode ?? 502, endToEndHeaders(upstream.headers));
         await pipe(upstream, res, () => {}); res.end(); return;
       }
       if (req.method === 'POST' && path === '/v1/chat/completions') {
+        gateway.auth.parse(req.headers.authorization);
         const raw = await body(req);
         const reservation = await gateway.admit(raw, req.headers);
         const meter = new Meter(reservation.streaming);
@@ -72,16 +93,18 @@ export function createRelayServer(gateway: Gateway, options: { publicUrl: string
           res.writeHead(status, endToEndHeaders(upstream.headers));
           await pipe(upstream, res, bytes => meter.push(bytes));
         } finally {
-          meter.finish();
-          await gateway.complete(reservation, status, id, meter);
+          try { meter.finish(); }
+          catch (error) { meter.usage = undefined; reportError(options.report, 'meter_error', error); }
+          finally { await gateway.complete(reservation, status, id, meter); }
         }
         res.end(); return;
       }
       throw new HttpError(404, 'not_found', 'Route not found');
     } catch (error) {
-      options.report('request_error', { error: String(error) });
+      reportError(options.report, 'request_error', error);
       if (res.headersSent) { res.destroy(); return; }
       const failure = error instanceof HttpError ? error : new HttpError(503, 'service_unavailable', 'Relay dependency unavailable');
+      if (!req.complete) { res.shouldKeepAlive = false; res.setHeader('connection', 'close'); }
       json(res, failure.status, { error: { message: failure.message, type: 'invalid_request_error', code: failure.code } });
     }
   });

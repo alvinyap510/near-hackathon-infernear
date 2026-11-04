@@ -22,6 +22,15 @@ export class HttpError extends Error {
   }
 }
 export class InsufficientCredit extends Error {}
+// Dependency messages/stacks may contain bodies, RPC credentials and URL queries.
+// Report only fixed classifications, never an error's message, name, cause or URL.
+export function reportError(report: Report, event: string, error: unknown, details: Record<string, unknown> = {}): void {
+  const classification = error instanceof HttpError ? 'http_error'
+    : error instanceof InsufficientCredit ? 'insufficient_credit'
+    : error instanceof SyntaxError ? 'invalid_json'
+    : error instanceof Error ? 'dependency_error' : 'unknown_error';
+  report(event, { ...details, error: classification, ...(error instanceof HttpError ? { status: error.status } : {}) });
+}
 export class Mutex {
   private tail: Promise<unknown> = Promise.resolve();
   async run<T>(action: () => Promise<T>): Promise<T> {
