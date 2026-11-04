@@ -1,0 +1,5 @@
+{
+  "model": "fixture/tee", "messages": [{ "role": "user", "content": "cafe0123456789abcdef" }],
+  "max_tokens": 10, "n": 1,
+  "tools": [{ "type": "function", "function": { "name": "aabb", "parameters": "ccdd" } }]
+}

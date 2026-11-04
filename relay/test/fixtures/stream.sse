@@ -1,0 +1,8 @@
+: fixture keepalive
+
+data: {"id":"chatcmpl-stream","choices":[{"delta":{"content":"aabb"}}]}
+
+data: {"id":"chatcmpl-stream","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":3}}
+
+data: [DONE]
+

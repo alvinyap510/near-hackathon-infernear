@@ -1,0 +1,1 @@
+{ "id": "chatcmpl-fixture", "object": "chat.completion", "choices": [{"message":{"content":"abcdef"}}], "usage": { "prompt_tokens": 10, "completion_tokens": 3 } }
