@@ -19,7 +19,7 @@ cargo fmt -- --check
 
 Fetching dependencies requires network access once; tests then run offline using NEAR's mocked runtime. The suite includes generated sequences across multiple users and vaults, with storage flushed and contract state reloaded between operations. It checks `sum(spent) <= sum(credited) <= sum(paid_cum)`, per-vault budgets, rejected batches, replay safety, caller authorization, key epochs, integer boundaries and event JSON. No live network tests or deployment are run.
 
-The build emits `target/near/infernear_connector.wasm` plus its JSON ABI. `target/` is generated and ignored. The local build embeds the ABI and runs cargo-near's WASM optimization; the verified binary is **164,372 bytes** with Rust 1.97.1.
+The build emits `target/near/infernear_connector.wasm` plus its JSON ABI. `target/` is generated and ignored. The local build embeds the ABI and runs cargo-near's WASM optimization; the verified binary is **164,336 bytes** with Rust 1.97.1 (rebuilt after the `reservation` receipt change).
 
 ## Contract behavior
 
