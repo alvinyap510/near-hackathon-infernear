@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Test, Vm} from "forge-std/Test.sol";
+import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {PrincipalVault} from "../src/PrincipalVault.sol";
 import {MockUSDC, MockPool} from "./mocks/MockAave.sol";
 import {VaultHarness} from "./mocks/VaultHarness.sol";
@@ -91,7 +92,7 @@ contract PrincipalVaultTest is Test {
     function testDonationBeforeFirstDepositIsUnattributed() public {
         token.mint(address(vault), 10e6);
         deposit(alice, 100e6);
-        assertEq(vault.unallocated(), 10e6);
+        assertEq(vault.unattributed(), 10e6);
         assertEq(vault.paidTotal(), 10e6);
         assertEq(vault.yieldCredited(alice), 0);
     }
@@ -107,20 +108,23 @@ contract PrincipalVaultTest is Test {
         deposit(bob, 100e6);
         assertEq(vault.yieldCredited(bob), 0);
         assertEq(vault.yieldCredited(alice), earned);
-        assertGe(vault.unallocated(), 1e6 - 2);
+        assertGe(vault.unattributed(), 1e6 - 2);
     }
 
     function testCapBoundaryAndOversizedDeposit() public {
         assertEq(vault.maxMint(alice), CAP);
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSelector(ERC4626.ERC4626ExceededMaxDeposit.selector, alice, CAP + 1, CAP));
         vm.prank(alice);
         vault.deposit(CAP + 1, alice);
+        vm.expectRevert(abi.encodeWithSelector(ERC4626.ERC4626ExceededMaxMint.selector, alice, CAP + 1, CAP));
+        vm.prank(alice);
+        vault.mint(CAP + 1, alice);
         deposit(alice, CAP - 1);
         assertEq(vault.maxDeposit(bob), 1);
         vm.prank(bob);
         vault.mint(1, bob);
         assertEq(vault.maxDeposit(alice), 0);
-        vm.expectRevert();
+        vm.expectRevert(abi.encodeWithSelector(ERC4626.ERC4626ExceededMaxMint.selector, bob, 1, 0));
         vm.prank(bob);
         vault.mint(1, bob);
     }
@@ -132,6 +136,8 @@ contract PrincipalVaultTest is Test {
         deposit(alice, 100e6);
         pool.setIndex(0);
         token.burn(address(vault), CUSHION);
+        token.burn(address(pool.aToken()), token.balanceOf(address(pool.aToken())));
+        assertEq(vault.maxRedeem(alice), 100e6);
         assertEq(vault.convertToAssets(100e6), 0);
         assertEq(vault.previewRedeem(100e6), 0);
         assertEq(vault.previewMint(100e6), 0);
@@ -139,6 +145,7 @@ contract PrincipalVaultTest is Test {
         assertEq(vault.maxMint(alice), 0);
         assertEq(vault.maxWithdraw(alice), 0);
         assertEq(vault.convertToShares(0), 0);
+        assertDeficitAdmissionErrors();
         vm.expectRevert(PrincipalVault.ZeroBacking.selector);
         vault.convertToShares(1);
         vm.prank(alice);
@@ -156,10 +163,87 @@ contract PrincipalVaultTest is Test {
         assertEq(vault.convertToShares(half), 100e6);
         assertEq(vault.totalAssets(), vault.held());
         assertEq(vault.maxDeposit(alice), 0);
+        assertDeficitAdmissionErrors();
         vm.prank(alice);
         assertEq(vault.redeem(100e6, alice, alice), half);
         assertApproxEqAbs(vault.previewRedeem(100e6), half, 1);
         assertEq(vault.paidTotal(), 0);
+    }
+
+    function assertDeficitAdmissionErrors() internal {
+        vm.expectRevert(abi.encodeWithSelector(ERC4626.ERC4626ExceededMaxDeposit.selector, alice, 1, 0));
+        vm.prank(alice);
+        vault.deposit(1, alice);
+        vm.expectRevert(abi.encodeWithSelector(ERC4626.ERC4626ExceededMaxMint.selector, alice, 1, 0));
+        vm.prank(alice);
+        vault.mint(1, alice);
+    }
+
+    function testMaxWithdrawQuotesAvailableLiquidity() public {
+        deposit(alice, 100e6);
+        token.burn(address(pool.aToken()), token.balanceOf(address(pool.aToken())) - (50e6 - CUSHION));
+        assertEq(vault.maxWithdraw(alice), 50e6);
+        assertEq(vault.maxRedeem(alice), 50e6);
+        assertEq(vault.maxWithdraw(bob), 0);
+        assertEq(vault.maxRedeem(bob), 0);
+        uint256 beforeBalance = token.balanceOf(alice);
+        vm.prank(alice);
+        assertEq(vault.withdraw(50e6, alice, alice), 50e6);
+        assertEq(token.balanceOf(alice) - beforeBalance, 50e6);
+        assertEq(vault.maxWithdraw(alice), 0);
+        assertEq(vault.maxRedeem(alice), 0);
+        vm.expectRevert(abi.encodeWithSelector(ERC4626.ERC4626ExceededMaxWithdraw.selector, alice, 1, 0));
+        vm.prank(alice);
+        vault.withdraw(1, alice, alice);
+    }
+
+    function testMaxRedeemQuoteCanBeRedeemedAtLimitedLiquidity() public {
+        deposit(alice, 100e6);
+        token.burn(address(pool.aToken()), token.balanceOf(address(pool.aToken())) - (50e6 - CUSHION));
+        uint256 quote = vault.maxRedeem(alice);
+        uint256 beforeBalance = token.balanceOf(alice);
+        vm.prank(alice);
+        uint256 returned = vault.redeem(quote, alice, alice);
+        assertEq(returned, 50e6);
+        assertEq(token.balanceOf(alice) - beforeBalance, returned);
+        assertEq(vault.maxRedeem(alice), 0);
+        vm.expectRevert(abi.encodeWithSelector(ERC4626.ERC4626ExceededMaxRedeem.selector, alice, 1, 0));
+        vm.prank(alice);
+        vault.redeem(1, alice, alice);
+    }
+
+    function testDeficitMaxRedeemRoundsWithinLiquidity() public {
+        deposit(alice, 100e6);
+        grow(0.8e27);
+        token.burn(address(pool.aToken()), token.balanceOf(address(pool.aToken())) - (40e6 - CUSHION));
+        assertEq(vault.maxWithdraw(alice), 40e6);
+        uint256 quote = vault.maxRedeem(alice);
+        uint256 expected = vault.previewRedeem(quote);
+        assertLe(expected, 40e6);
+        uint256 beforeBalance = token.balanceOf(alice);
+        vm.prank(alice);
+        uint256 returned = vault.redeem(quote, alice, alice);
+        assertEq(returned, expected);
+        assertEq(token.balanceOf(alice) - beforeBalance, expected);
+    }
+
+    function testFuzzRedeemQuoteFitsLiquidity(uint96 rawAmount, uint96 rawLiquidity, uint96 rawIndex) public {
+        uint256 amount = bound(uint256(rawAmount), 3, CAP);
+        deposit(alice, amount);
+        grow(bound(uint256(rawIndex), 0, 2e27));
+        uint256 liquid = bound(uint256(rawLiquidity), 0, vault.held());
+        uint256 idle = token.balanceOf(address(vault));
+        if (liquid < idle) token.burn(address(vault), idle - liquid);
+        uint256 reserve = liquid > idle ? liquid - idle : 0;
+        token.burn(address(pool.aToken()), token.balanceOf(address(pool.aToken())) - reserve);
+        assertLe(vault.maxWithdraw(alice), liquid);
+        uint256 quote = vault.maxRedeem(alice);
+        assertLe(vault.previewRedeem(quote), liquid);
+        uint256 beforeBalance = token.balanceOf(alice);
+        vm.prank(alice);
+        uint256 returned = vault.redeem(quote, alice, alice);
+        assertEq(token.balanceOf(alice) - beforeBalance, returned);
+        assertLe(returned, liquid);
     }
 
     function testPayFailureEmitsAndExitSucceeds() public {
@@ -193,6 +277,8 @@ contract PrincipalVaultTest is Test {
         deposit(alice, 100e6);
         grow(1.1e27);
         vault.setOverpay(true);
+        vm.expectEmit(false, false, false, true);
+        emit PrincipalVault.PayFailed(abi.encodeWithSignature("Panic(uint256)", 1));
         vm.prank(alice);
         vault.transfer(bob, 1);
         assertEq(vault.paidTotal(), 0);

@@ -3,6 +3,7 @@ pragma solidity ^0.8.30;
 
 import {Test, Vm} from "forge-std/Test.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {PrincipalVault} from "../src/PrincipalVault.sol";
 import {PendlePtVault} from "../src/PendlePtVault.sol";
 import {StakingRewardsVault} from "../src/StakingRewardsVault.sol";
@@ -32,6 +33,30 @@ abstract contract ShapeTestBase is Test {
         token.approve(address(vault), type(uint256).max);
         vm.prank(bob);
         token.approve(address(vault), type(uint256).max);
+    }
+
+    function assertCapAdmissionErrors(PrincipalVault vault) internal {
+        uint256 maxAssets = vault.maxDeposit(alice);
+        uint256 maxShares = vault.maxMint(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(ERC4626.ERC4626ExceededMaxDeposit.selector, alice, maxAssets + 1, maxAssets)
+        );
+        vm.prank(alice);
+        vault.deposit(maxAssets + 1, alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(ERC4626.ERC4626ExceededMaxMint.selector, alice, maxShares + 1, maxShares)
+        );
+        vm.prank(alice);
+        vault.mint(maxShares + 1, alice);
+    }
+
+    function assertDeficitAdmissionErrors(PrincipalVault vault) internal {
+        vm.expectRevert(abi.encodeWithSelector(ERC4626.ERC4626ExceededMaxDeposit.selector, alice, 1, 0));
+        vm.prank(alice);
+        vault.deposit(1, alice);
+        vm.expectRevert(abi.encodeWithSelector(ERC4626.ERC4626ExceededMaxMint.selector, alice, 1, 0));
+        vm.prank(alice);
+        vault.mint(1, alice);
     }
 
     function assertPaidAfterOperation(
@@ -74,6 +99,10 @@ contract WstEthVaultTest is ShapeTestBase {
     function depositAlice(uint256 amount) internal returns (uint256 shares) {
         vm.prank(alice);
         return vault.deposit(amount, alice);
+    }
+
+    function testCapAdmissionErrorsArePinned() public {
+        assertCapAdmissionErrors(vault);
     }
 
     function testStEthUnitsAndRounding() public {
@@ -162,6 +191,9 @@ contract WstEthVaultTest is ShapeTestBase {
         assertLt(vault.held(), vault.principal());
         assertEq(vault.maxDeposit(bob), 0);
         assertEq(vault.maxMint(bob), 0);
+        assertEq(vault.maxWithdraw(alice), vault.previewRedeem(shares));
+        assertEq(vault.maxRedeem(alice), shares);
+        assertDeficitAdmissionErrors(vault);
         uint256 preview = vault.previewRedeem(shares);
         vm.prank(alice);
         assertEq(vault.redeem(shares, alice, alice), preview);
@@ -206,6 +238,10 @@ contract PendlePtVaultTest is ShapeTestBase {
     function depositAlice(uint256 amount) internal returns (uint256 shares) {
         vm.prank(alice);
         return vault.deposit(amount, alice);
+    }
+
+    function testCapAdmissionErrorsArePinned() public {
+        assertCapAdmissionErrors(vault);
     }
 
     function testLinearCurveConversionsAndRounding() public {
@@ -268,6 +304,18 @@ contract PendlePtVaultTest is ShapeTestBase {
         assertEq(vault.totalSupply(), 0);
         assertEq(token.balanceOf(alice), beforeBalance);
         assertEq(vault.held(), CUSHION);
+    }
+
+    function testLostBackingQuotesOnlyDirectlyHeldPt() public {
+        uint256 shares = depositAlice(100e18);
+        token.burn(address(vault), token.balanceOf(address(vault)) - 50e18);
+        assertEq(vault.maxWithdraw(alice), 50e18);
+        assertEq(vault.maxRedeem(alice), shares);
+        assertDeficitAdmissionErrors(vault);
+        uint256 beforeBalance = token.balanceOf(alice);
+        vm.prank(alice);
+        assertEq(vault.redeem(shares, alice, alice), 50e18);
+        assertEq(token.balanceOf(alice) - beforeBalance, 50e18);
     }
 
     function testGateDoesNotBlockExits() public {
@@ -360,6 +408,10 @@ contract StakingRewardsVaultTest is ShapeTestBase {
         vault.deposit(amount, alice);
     }
 
+    function testCapAdmissionErrorsArePinned() public {
+        assertCapAdmissionErrors(vault);
+    }
+
     function testRejectsRewardEqualToPrincipal() public {
         vm.expectRevert(StakingRewardsVault.RewardIsPrincipal.selector);
         new StakingRewardsHarness(token, token, pool, treasury, CUSHION, CAP);
@@ -393,6 +445,23 @@ contract StakingRewardsVaultTest is ShapeTestBase {
         assertEq(vault.paidTotal(), 3e18);
     }
 
+    function testQuotesRespectLimitedStakingLiquidity() public {
+        depositAlice(100e18);
+        token.burn(address(pool), token.balanceOf(address(pool)) - (50e18 - CUSHION));
+        assertEq(vault.maxWithdraw(alice), 50e18);
+        assertEq(vault.maxRedeem(alice), 50e18);
+        assertEq(vault.maxRedeem(bob), 0);
+        uint256 beforeBalance = token.balanceOf(alice);
+        vm.prank(alice);
+        assertEq(vault.withdraw(50e18, alice, alice), 50e18);
+        assertEq(token.balanceOf(alice) - beforeBalance, 50e18);
+        assertEq(vault.maxWithdraw(alice), 0);
+        assertEq(vault.maxRedeem(alice), 0);
+        vm.expectRevert(abi.encodeWithSelector(ERC4626.ERC4626ExceededMaxRedeem.selector, alice, 1, 0));
+        vm.prank(alice);
+        vault.redeem(1, alice, alice);
+    }
+
     function testDonatedPrincipalIsNeverReward() public {
         depositAlice(100e18);
         token.mint(address(vault), 50e18);
@@ -408,6 +477,7 @@ contract StakingRewardsVaultTest is ShapeTestBase {
         depositAlice(100e18);
         assertEq(vault.yieldCredited(alice), 0);
         assertEq(vault.paidTotal(), 2e18);
+        assertEq(vault.unattributed(), 2e18);
         assertEq(reward.balanceOf(treasury), 2e18);
     }
 

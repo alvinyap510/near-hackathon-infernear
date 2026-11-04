@@ -36,8 +36,12 @@ contract WstEthVaultForkTest is Test {
         uint256 shares = vault.deposit(100e18, address(this));
         assertEq(shares, Math.mulDiv(100e18, rate, 1e18));
         assertGe(vault.held(), vault.principal());
-        uint256 returned = vault.redeem(shares, address(this), address(this));
-        assertApproxEqAbs(returned, 100e18, 2);
+        address receiver = makeAddr("principal receiver");
+        uint256 beforeBalance = token.balanceOf(receiver);
+        uint256 returned = vault.redeem(shares, receiver, address(this));
+        uint256 received = token.balanceOf(receiver) - beforeBalance;
+        assertEq(received, returned);
+        assertApproxEqAbs(received, 100e18, 2);
         assertEq(vault.paidTotal(), 0);
         emit log_named_uint("fork block", block.number);
         emit log_named_uint("native stEthPerToken", rate);
@@ -51,7 +55,12 @@ contract WstEthVaultForkTest is Test {
         assertEq(vault.paidTotal(), 1e18);
         assertApproxEqAbs(vault.yieldCredited(address(this)), 1e18, 1);
         assertGe(vault.held(), vault.principal());
-        assertApproxEqAbs(vault.redeem(shares, address(this), address(this)), 100e18, 2);
+        address receiver = makeAddr("principal receiver");
+        uint256 beforeBalance = token.balanceOf(receiver);
+        uint256 returned = vault.redeem(shares, receiver, address(this));
+        uint256 received = token.balanceOf(receiver) - beforeBalance;
+        assertEq(received, returned);
+        assertApproxEqAbs(received, 100e18, 2);
     }
 }
 
@@ -95,10 +104,14 @@ contract PendlePtVaultForkTest is Test {
         vm.warp(expiry + 30 days);
         vault.skim();
         assertEq(vault.paidTotal(), paid);
-        uint256 returned = vault.redeem(shares, address(this), address(this));
-        assertLe(returned, 100e18);
-        assertEq(returned, shares);
-        assertEq(vault.held() + returned + token.balanceOf(treasury), 100e18 + CUSHION);
+        address receiver = makeAddr("principal receiver");
+        uint256 beforeBalance = token.balanceOf(receiver);
+        uint256 returned = vault.redeem(shares, receiver, address(this));
+        uint256 received = token.balanceOf(receiver) - beforeBalance;
+        assertEq(received, returned);
+        assertLe(received, 100e18);
+        assertEq(received, shares);
+        assertEq(vault.held() + received + token.balanceOf(treasury), 100e18 + CUSHION);
     }
 
     function testForkRateAboveCurveRejectsAdmission() public {
@@ -143,7 +156,12 @@ contract StakingRewardsVaultForkTest is Test {
         assertEq(reward.balanceOf(treasury), earned);
         assertApproxEqAbs(vault.yieldCredited(address(this)), earned, 1);
         assertGe(vault.held(), vault.principal());
-        assertEq(vault.redeem(100e18, address(this), address(this)), 100e18);
+        address receiver = makeAddr("principal receiver");
+        uint256 beforeBalance = token.balanceOf(receiver);
+        uint256 returned = vault.redeem(100e18, receiver, address(this));
+        uint256 received = token.balanceOf(receiver) - beforeBalance;
+        assertEq(received, returned);
+        assertEq(received, 100e18);
         assertEq(vault.held(), CUSHION);
         emit log_named_uint("fork block", block.number);
         emit log_named_uint("reward token paid", earned);

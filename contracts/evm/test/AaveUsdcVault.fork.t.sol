@@ -42,7 +42,11 @@ contract AaveUsdcVaultForkTest is Test {
         assertGt(vault.paidTotal(), 0);
         assertEq(vault.paidTotal(), token.balanceOf(treasury));
         assertGe(vault.held(), vault.principal());
-        uint256 received = vault.redeem(PRINCIPAL, address(this), address(this));
+        address receiver = makeAddr("principal receiver");
+        uint256 beforeBalance = token.balanceOf(receiver);
+        uint256 returned = vault.redeem(PRINCIPAL, receiver, address(this));
+        uint256 received = token.balanceOf(receiver) - beforeBalance;
+        assertEq(received, returned);
         assertGe(received, PRINCIPAL - 3 * CUSHION);
         assertEq(vault.totalSupply(), 0);
         emit log_named_uint("redeemed USDC base units", received);
@@ -60,7 +64,11 @@ contract AaveUsdcVaultForkTest is Test {
         }
         assertGt(vault.paidTotal(), 0);
         assertEq(vault.paidTotal(), token.balanceOf(treasury));
-        uint256 received = vault.redeem(PRINCIPAL, address(this), address(this));
+        address receiver = makeAddr("principal receiver");
+        uint256 beforeBalance = token.balanceOf(receiver);
+        uint256 returned = vault.redeem(PRINCIPAL, receiver, address(this));
+        uint256 received = token.balanceOf(receiver) - beforeBalance;
+        assertEq(received, returned);
         assertGe(received, PRINCIPAL - 34 * CUSHION);
         emit log_named_uint("consecutive skims", 32);
     }
@@ -77,7 +85,9 @@ contract AaveUsdcVaultForkTest is Test {
         assertEq(IERC20(address(aToken)).balanceOf(address(vault)), Math.mulDiv(scaled, index, 1e27));
         // With no yield yet, withdraw changes only the scaled position and the idle cushion.
         uint256 amount = 13e6;
+        uint256 beforeBalance = token.balanceOf(address(this));
         vault.withdraw(amount, address(this), address(this));
+        assertEq(token.balanceOf(address(this)) - beforeBalance, amount);
         uint256 burned = scaled - aToken.scaledBalanceOf(address(vault));
         assertEq(burned, Math.mulDiv(amount - CUSHION, 1e27, index, Math.Rounding.Ceil));
         assertGe(vault.held(), vault.principal());
