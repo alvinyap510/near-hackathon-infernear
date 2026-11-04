@@ -1,0 +1,19 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# node
+node_modules/
+dist/
+
+# foundry
+contracts/evm/out/
+contracts/evm/cache/
+contracts/evm/broadcast/
+
+# rust / near
+target/
+
+# os
+.DS_Store
