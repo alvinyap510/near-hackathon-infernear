@@ -7,7 +7,7 @@ use near_sdk::{AccountId, PanicOnDefault, env, json_types::U128, near, require, 
 #[serde(rename_all = "snake_case")]
 pub enum ReceiptSource {
     SignedUsage,
-    Billing,
+    Reservation,
 }
 
 #[near(serializers = [json])]
@@ -16,8 +16,8 @@ pub struct Receipt {
     pub inference_id: String,
     pub chat_id: String,
     pub model: String,
-    pub prompt_tokens: Option<u64>,
-    pub completion_tokens: Option<u64>,
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
     pub in_price_nano: U128,
     pub out_price_nano: U128,
     pub source: ReceiptSource,

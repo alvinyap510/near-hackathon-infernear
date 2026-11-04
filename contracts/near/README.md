@@ -34,7 +34,7 @@ Only the gateway can debit or increment a user's key epoch. Every inference ID i
 Events are NEP-297 (`infernear`, `1.0.0`) with a one-element `data` array:
 
 - `post_credits`: `{ vault, paid_cum, entries }`, using the stored maximum `paid_cum` and supplied cumulative entries.
-- `debit`: `{ user, amount_micro, receipt }`, with the complete receipt. Token counts may be null for the `billing` source.
+- `debit`: `{ user, amount_micro, receipt }`, with the complete receipt. For the `reservation` source the token counts are the reservation inputs (`input_bound`, `max_tokens`).
 - `key_epoch`: `{ user, key_epoch }`.
 
 Receipts are public event data, not stored ledger values. The keeper is trusted to report actual paid yield and its honest attribution; the gateway is trusted to report usage. The contract enforces cumulative posting and spending bounds; it does not verify EVM payments or model signatures.

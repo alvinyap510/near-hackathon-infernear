@@ -45,8 +45,8 @@ fn receipt(id: &str) -> Receipt {
         inference_id: id.into(),
         chat_id: "chat-completion".into(),
         model: "fixture-model".into(),
-        prompt_tokens: Some(10),
-        completion_tokens: Some(20),
+        prompt_tokens: 10,
+        completion_tokens: 20,
         in_price_nano: U128(300),
         out_price_nano: U128(900),
         source: ReceiptSource::SignedUsage,
@@ -77,16 +77,17 @@ fn defaults_and_json_match_interface() {
             "prompt_tokens":10, "completion_tokens":20, "in_price_nano":"300", "out_price_nano":"900", "source":"signed_usage"
         })
     );
-    let mut billing = receipt("billing-id");
-    billing.source = ReceiptSource::Billing;
-    billing.prompt_tokens = None;
-    billing.completion_tokens = None;
-    let json = near_sdk::serde_json::to_value(&billing).unwrap();
-    assert_eq!(json["source"], "billing");
-    assert!(json["prompt_tokens"].is_null());
+    // A reservation receipt carries the reservation inputs (input_bound, max_tokens) as its token counts.
+    let mut reserved = receipt("reservation-id");
+    reserved.source = ReceiptSource::Reservation;
+    reserved.prompt_tokens = 512;
+    reserved.completion_tokens = 256;
+    let json = near_sdk::serde_json::to_value(&reserved).unwrap();
+    assert_eq!(json["source"], "reservation");
+    assert_eq!(json["prompt_tokens"], 512);
     assert_eq!(
         near_sdk::serde_json::from_value::<Receipt>(json).unwrap(),
-        billing
+        reserved
     );
     assert!(
         near_sdk::serde_json::from_value::<Receipt>(
