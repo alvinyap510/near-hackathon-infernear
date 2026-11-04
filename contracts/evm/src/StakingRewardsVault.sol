@@ -32,6 +32,22 @@ contract StakingRewardsVault is PrincipalVault {
         return address(reward);
     }
 
+    function maxWithdraw(address owner) public view override returns (uint256) {
+        return Math.min(super.maxWithdraw(owner), _liquidAssets());
+    }
+
+    function maxRedeem(address owner) public view override returns (uint256) {
+        uint256 shares = super.maxRedeem(owner);
+        uint256 liquid = _liquidAssets();
+        // Zero-backing shares can still be burned for zero assets, even at zero liquidity.
+        if (previewRedeem(shares) <= liquid) return shares;
+        return _convertToShares(liquid, Math.Rounding.Floor);
+    }
+
+    function _liquidAssets() internal view returns (uint256) {
+        return IERC20(asset()).balanceOf(address(staking)) + IERC20(asset()).balanceOf(address(this));
+    }
+
     function _unitsFor(uint256 assets, Math.Rounding) internal pure override returns (uint256) {
         return assets;
     }
