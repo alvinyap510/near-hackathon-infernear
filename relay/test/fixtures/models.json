@@ -1,8 +1,8 @@
 {
   "models": [
-    {"modelId":"fixture/tee","inputCostPerToken":{"amount":1000,"scale":9,"currency":"USD"},"outputCostPerToken":{"amount":1000,"scale":9,"currency":"USD"},"metadata":{"providerType":"vllm","attestationSupported":true,"architecture":{"input":["text"],"output":["text"]},"ownedBy":"fixture","aliases":["fixture-alias"]}},
-    {"modelId":"fixture/external","inputCostPerToken":{"amount":1000,"scale":9,"currency":"USD"},"outputCostPerToken":{"amount":1000,"scale":9,"currency":"USD"},"metadata":{"providerType":"external","attestationSupported":true,"architecture":{"input":["text"],"output":["text"]}}},
-    {"modelId":"fixture/unattested","metadata":{"providerType":"vllm","attestationSupported":false,"architecture":{"input":["text"],"output":["text"]}}},
-    {"modelId":"fixture/image","metadata":{"providerType":"vllm","attestationSupported":true,"architecture":{"input":["image"],"output":["image"]}}}
+    {"modelId":"fixture/tee","inputCostPerToken":{"amount":1000,"scale":9,"currency":"USD"},"outputCostPerToken":{"amount":1000,"scale":9,"currency":"USD"},"metadata":{"providerType":"vllm","attestationSupported":true,"architecture":{"inputModalities":["text"],"outputModalities":["text"]},"ownedBy":"fixture","aliases":["fixture-alias"]}},
+    {"modelId":"fixture/external","inputCostPerToken":{"amount":1000,"scale":9,"currency":"USD"},"outputCostPerToken":{"amount":1000,"scale":9,"currency":"USD"},"metadata":{"providerType":"external","attestationSupported":true,"architecture":{"inputModalities":["text"],"outputModalities":["text"]}}},
+    {"modelId":"fixture/unattested","metadata":{"providerType":"vllm","attestationSupported":false,"architecture":{"inputModalities":["text"],"outputModalities":["text"]}}},
+    {"modelId":"fixture/image","metadata":{"providerType":"vllm","attestationSupported":true,"architecture":{"inputModalities":["image"],"outputModalities":["image"]}}}
   ]
 }

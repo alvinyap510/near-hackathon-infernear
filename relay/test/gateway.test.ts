@@ -60,7 +60,7 @@ test('JSON forwarding preserves hashes and headers, snapshots prices and caps me
   assert.equal(h.connector.amounts.get('over-reservation'), costMicro(Math.ceil(next.length / 2), 10, 1000n, 1000n));
 });
 
-test('SSE frames stay byte-exact and a headerless successful stream uses the body-derived UUIDv5', async t => {
+test('SSE frames stay byte-exact and headerless streams use UUIDv5 (Flex1-4: DNS reference vector)', async t => {
   const h = await harness(); t.after(h.close);
   const stream = Buffer.from(fixture('stream.sse').toString().replaceAll('\n', '\r\n'));
   h.respond({ body: stream, stream: true, id: null });

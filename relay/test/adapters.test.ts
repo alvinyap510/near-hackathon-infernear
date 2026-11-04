@@ -64,7 +64,7 @@ test('real NEAR adapter uses finalized views, distinct signers, numeric receipts
   assert.deepEqual(signed[2].args.entries, [['fixture-user', '100']]);
 });
 
-test('real EVM adapter reads every holder at one finalized block and 1Click sends only above minimum', async t => {
+test('Flex2-3: real EVM adapter reads finalized holders and honors the configured bridge minimum', async t => {
   let treasury = 100_000n;
   const reads: any[] = [], scans: any[] = [], transactions: Hex[] = [];
   let nonce = 0;
@@ -103,7 +103,7 @@ test('real EVM adapter reads every holder at one finalized block and 1Click send
   await new Promise<void>(done => oneClick.listen(0, '127.0.0.1', done));
   t.after(async () => { oneClick.closeAllConnections(); await new Promise<void>(done => oneClick.close(() => done())); });
   const ports = evmPorts({ rpc: fake.url, chainId: 8453, key: ('0x' + '12'.repeat(32)) as Hex, usdc, addresses: [address], fromBlock: 90n,
-    oneClickUrl: `http://127.0.0.1:${(oneClick.address() as import('node:net').AddressInfo).port}`, originAsset: 'fixture-origin', destinationAsset: 'fixture-destination', recipient: 'treasury.near', slippageBps: 100 });
+    oneClickUrl: `http://127.0.0.1:${(oneClick.address() as import('node:net').AddressInfo).port}`, originAsset: 'fixture-origin', destinationAsset: 'fixture-destination', recipient: 'treasury.near', slippageBps: 100, minimumBaseUnits: 300_000n });
   await ports.vaults[0].skim();
   const snapshot = await ports.vaults[0].snapshot();
   assert.deepEqual(snapshot.entries, [[`eip155:8453:${holder}`, 100n]]);
@@ -114,8 +114,11 @@ test('real EVM adapter reads every holder at one finalized block and 1Click send
   assert.equal(dry.dry, true); assert.equal(quotes[0].dry, true);
   assert.equal(transactions.length, 1); // Only the skim, no treasury transfer.
   treasury = 200_000n;
+  assert.equal((await ports.bridge.tick()).dry, true);
+  assert.equal(transactions.length, 1);
+  treasury = 300_000n;
   assert.equal((await ports.bridge.tick()).status, 'deposit_broadcast');
-  assert.equal(quotes[1].dry, false); assert.equal(quotes[1].recipientType, 'DESTINATION_CHAIN');
+  assert.equal(quotes[2].dry, false); assert.equal(quotes[2].recipientType, 'DESTINATION_CHAIN');
   assert.equal(transactions.length, 2);
   const sent = parseTransaction(transactions[1]);
   assert.equal(decodeFunctionData({ abi: erc20Abi, data: sent.data! }).functionName, 'transfer');

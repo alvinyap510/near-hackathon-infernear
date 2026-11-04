@@ -63,7 +63,7 @@ export class FakeConnector implements Connector {
   async storageBalance() { return { amount: '1000000000000000000000000', storage_usage: 1000 }; }
 }
 
-export async function harness(options: { now?: () => number; seed?: boolean } = {}) {
+export async function harness(options: { now?: () => number; seed?: boolean; deadlineMs?: number } = {}) {
   const connector = new FakeConnector();
   if (options.seed !== false) connector.seed();
   const events: { event: string; details: Record<string, unknown> }[] = [];
@@ -73,6 +73,7 @@ export async function harness(options: { now?: () => number; seed?: boolean } = 
   let headerId: string | undefined = 'fixture-inference';
   let contentType = 'application/json';
   let wait: Promise<void> | undefined;
+  let headersWait: Promise<void> | undefined;
   let serial = 0;
   const upstreamServer = createServer(async (req, res) => {
     res.setHeader('access-control-allow-origin', 'https://upstream.invalid');
@@ -84,6 +85,7 @@ export async function harness(options: { now?: () => number; seed?: boolean } = 
     if (!req.url?.startsWith('/v1/chat/completions')) { res.setHeader('content-type', 'application/json'); res.end('{ "fixture": "unchanged" }\n'); return; }
     const id = headerId?.replace('{n}', String(++serial));
     const bytes = responseBody;
+    await headersWait;
     res.writeHead(status, { 'content-type': contentType, ...(id ? { 'inference-id': id } : {}) });
     if (wait) {
       // A completion id is observable before a delayed final usage frame.
@@ -97,19 +99,20 @@ export async function harness(options: { now?: () => number; seed?: boolean } = 
   const upstreamPort = (upstreamServer.address() as import('node:net').AddressInfo).port;
   const publicUrl = 'http://relay.test';
   const auth = new Auth('fixture-test-secret', publicUrl, 8453, options.now);
-  const gateway = new Gateway({ auth, connector, upstream: new Upstream(`http://127.0.0.1:${upstreamPort}/v1`, 'fixture-upstream-key', options.now), maxTokens: 100, report: (event, details) => events.push({ event, details }) });
+  const gateway = new Gateway({ auth, connector, upstream: new Upstream(`http://127.0.0.1:${upstreamPort}/v1`, 'fixture-upstream-key', options.now, options.deadlineMs), maxTokens: 100, report: (event, details) => events.push({ event, details }) });
   const server = createRelayServer(gateway, { publicUrl, now: options.now, report: (event, details) => events.push({ event, details }), allowedOrigin: 'https://dashboard.test' });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}`;
   const key = auth.issue(USER, 0).key;
   return { connector, gateway, auth, events, requests, base, key,
     headers: { ...e2ee, authorization: `Bearer ${key}` },
-    respond(options: { body?: Buffer; status?: number; id?: string | null; stream?: boolean; wait?: Promise<void> }) {
+    respond(options: { body?: Buffer; status?: number; id?: string | null; stream?: boolean; wait?: Promise<void>; headersWait?: Promise<void> }) {
       if (options.body) responseBody = options.body;
       if (options.status !== undefined) status = options.status;
       if (options.id !== undefined) headerId = options.id ?? undefined;
       if (options.stream) contentType = 'text/event-stream';
       wait = options.wait;
+      headersWait = options.headersWait;
     },
     async close() { server.closeAllConnections(); upstreamServer.closeAllConnections(); await Promise.all([new Promise<void>(resolve => server.close(() => resolve())), new Promise<void>(resolve => upstreamServer.close(() => resolve()))]); },
   };
