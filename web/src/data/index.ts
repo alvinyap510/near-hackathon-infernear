@@ -1,7 +1,9 @@
-// The one place the UI gets its data from. Wiring Base, NEAR and the relay
-// means adding an implementation of DashboardData and exporting it here.
+// All required public endpoints select live wallet/chain/key routes. Partial config keeps the labelled mock.
+import { liveConfig } from '../config.ts';
+import { createLiveData } from './live.ts';
 import { createMockData } from './mock.ts';
 
-export const data = createMockData();
+const settings = liveConfig();
+export const data = settings ? createLiveData(settings) : createMockData();
 export { DataError } from './errors.ts';
 export type * from './types.ts';
