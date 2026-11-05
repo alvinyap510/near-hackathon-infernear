@@ -1,143 +1,82 @@
-# EVM principal vaults
+# Base principal vaults
 
-Foundry contracts for a principal-only ERC-4626 vault with Aave USDC, Lido wstETH, Pendle PT, and separate-reward staking adapters. The last three are **built and tested, not live**; they are not wired into the USDC-only API credit path. There is no owner, pause, upgrade, or principal-sweeping method. This component attributes yield and sends USDC to the fixed treasury; the NEAR connector and keeper provide API credits separately.
+The live deployment set is **Aave USDC**, **RateVault with cbETH**, and **Pendle PT-deJAAA**, all on **Base**. This component implements and tests those vaults and prepares their deployments. **No deployment was broadcast in this change; no deployed InferNear address is claimed here.** StakingRewards remains built and offline-tested, outside the live deployment set. The Ethereum-L1-only wstETH implementation and fork fixtures have been removed.
 
-## Build and test
+The vaults have no owner, admin, upgrade, pause or principal-sweeping method. Users retain their covered principal claim; only surplus is paid to the immutable yield recipient. Vault counters remain in the yield token's base units. The keeper and connector handle priced credit posting separately.
 
-Prerequisites: Node.js/npm and Foundry (`forge`/`cast`; verified with Forge 1.5.1). From the monorepo root:
+## Verified build and tests
+
+Prerequisites: Node.js/npm and Foundry (verified with Forge 1.5.1). From the monorepo root:
 
 ```sh
 cd contracts/evm
 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci --ignore-scripts
 forge build
-forge build --offline
-env -u FORK_RPC_URL -u WSTETH_FORK_RPC_URL -u PENDLE_FORK_RPC_URL -u STAKING_FORK_RPC_URL forge test --offline
 forge fmt --check
+env -u FORK_RPC_URL -u RATE_FORK_RPC_URL -u PENDLE_FORK_RPC_URL forge test --offline
 ```
 
-The first install/build downloads locked dependencies and Solidity 0.8.30. Subsequent build/test commands above need no network. For an existing compiler binary, Foundry also accepts `FOUNDRY_SOLC=/path/to/solc-0.8.30`.
+Installation and the first compiler download need network access; subsequent offline tests use local mocks. The env-driven deployment scenarios run sequentially in one test because `vm.setEnv` is process-wide. Forks read the fixed public addresses/block from `test/fixtures/base.json`, so deployment fixtures cannot overwrite them. The suite covers rounding, caps, attribution before ownership changes, payment after operations, payout failures, pro-rata coverage under loss, and deployment/cushion seeding. Four stateful accounting invariants run 128 sequences of 64 calls: principal coverage in the surplus-loss domain, per-token flow, yield buckets and scaled entitlements. Deficit/zero-backing paths have separate unit tests. New rate tests cover 8/18/20-decimal feeds, rising/falling rates, invalid answers and the deliberate absence of a freshness gate.
 
-The default suite uses **mock tokens and protocols**: an Aave pool with configurable scaled-balance rounding, a Lido rate, a Pendle market/oracle, and a StakingRewards pool. It covers deposits, mints, transfers, exits, losses, failed payouts, deployment seeding, and 1e36 attribution. Four stateful invariants run 128 sequences of 64 calls each: principal coverage, USDC flow (including index gains/losses and protocol rounding), yield buckets, and scaled entitlements. The coverage invariant limits strategy losses to surplus; separate unit tests exercise insolvency, pro-rata exits, and total loss.
-
-Fork tests skip when `FORK_RPC_URL` is unset or empty. To run only the read-only Base fork suite, export a Base mainnet RPC URL first:
+The new Base fork suites skip unless their RPC envs are set. The following verified command uses **pinned Base block 53,524,164** for both cbETH and PT-deJAAA:
 
 ```sh
-forge test --offline --match-contract AaveUsdcVaultForkTest -vv
+env RATE_FORK_RPC_URL=https://mainnet.base.org \
+  PENDLE_FORK_RPC_URL=https://mainnet.base.org \
+  forge test --offline --match-path test/YieldShapes.fork.t.sol -vv
 ```
 
-Fork exit assertions measure the receiver's token-balance delta and compare it with the return; the existing per-operation principal rounding bounds apply to actual receipts.
+Fork tests fund balances only inside the local VM. cbETH tests read the real exchange-rate feed, deposit, skim and measure tokens received on full redemption to a separate receiver. A locally funded donation exercises nonzero payout; time warp alone does not advance the historical feed. Pendle tests cover the actual gate, mid-curve skim, maturity clamp and measured redemption. No transaction is sent to Base.
 
-The fork tests use addresses from the pinned `@bgd-labs/aave-address-book` dependency. They test 30-day accrual followed by full redemption, 32 consecutive daily skims, deployed revisions, and mint/burn/balance rounding. They change time and balances only inside the local fork VM and send no transactions to Base.
+## Base addresses and units
 
-## Accounting and limits
+Production constructors and the deployment script use env inputs. Aave fork fixtures use the pinned address-book dependency; the new Base forks read the public address/block fixture in `test/fixtures/base.json`.
 
-For Aave, shares and principal units are USDC base units (6 decimals), 1:1 when solvent. The other adapters' units and yield tokens are described below. Yield is excluded from `totalAssets()`. During a deficit, conversions apply pro-rata coverage and new deposits/mints are disabled. At zero backing, asset output is zero and converting a positive asset amount to shares reverts `ZeroBacking`; zero converts to zero. Zero-supply conversions are 1:1.
+| Vault | Deposit asset | Principal/share units | Yield/cushion units |
+|---|---|---|---|
+| AaveUsdcVault | USDC, 6 decimals | USDC base units | USDC base units |
+| RateVault | cbETH, 18 decimals | ETH wei | cbETH wei |
+| PendlePtVault | PT-deJAAA, 18 decimals | USDC-scaled18 | PT wei |
 
-Every balance change first measures surplus above principal, the cushion, and already-attributed unpaid yield. `_update` only settles the 1e36 index, preserving fractional holder entitlements. `yieldCredited` includes unsettled earnings. Zero/self transfers skip attribution. Pre-deposit donations are treasury-owned and receive no user attribution. Index dust is less than 1 yield-token base unit per skim when total shares are below 1e36; integer views additionally truncate less than 1 base unit per holder. Configure the deposit cap well below that bound.
-
-Payment runs in an external self-only `_pay` frame under the entry point's reentrancy guard. Deposit/exit/transfer catches payment failure and emits `PayFailed`; public `skim()` propagates it. Unpaid yield is junior to principal, and payment is capped by surplus and available reserve liquidity. A post-payment coverage assertion rolls back any payout that would consume principal. Entry points must be sent enough gas for both the operation and its payout attempt. A gas-starved self-call can leave too little gas to emit `PayFailed` and return, reverting the whole transaction; retry the operation with more gas. The keeper's public `skim()` is the deferred payment path. Solidity 0.8 `assert` reverts with `Panic(0x01)` rather than consuming the frame's remaining gas; the coverage assertion is retained. An exit still depends on protocol liquidity and availability.
-
-For Aave, `heldAssets` includes idle USDC plus `floor(scaledBalance × normalizedIncome / 1e27)`. Supply floors scaled mint amounts; withdrawal ceils scaled burns on the verified deployment. Each such operation can consume up to `ceil(index / 1e27)` USDC base units of rounding budget. The 10,000-base-unit example cushion is $0.01, replenished by later yield; this is a finite budget, not a guarantee across arbitrarily many operations or protocol losses. Fork redemption checks allow `operations × cushion`; the verified 100 USDC round trip returned all 100 USDC. Strategy loss is not covered by this budget.
-
-`maxWithdraw` and `maxRedeem` on Aave cap the holder's covered claim by idle USDC plus available reserve USDC. Staking maxima similarly use idle principal tokens plus the pool's principal-token balance. A liquidity-limited share quote rounds down; a zero-asset claim remains redeemable in full even at zero backing/liquidity. wstETH and PT hold their redemption assets directly, so the inherited covered claim already fits their token liquidity. These quotes do not bypass a protocol pause or token transfer restriction.
-
-`unattributed()` exposes cumulative whole-token yield measured at zero supply, in the yield token's base units. Together with `Skimmed` attribution totals, it makes `sum(attributed) + unattributed = paidTotal + unpaid` externally checkable. Per-index fractional dust remains bounded separately.
-
-**Payment order:** every deposit, mint, withdrawal, redemption and transfer attributes yield before balances change and pays it only after the operation, so within one transaction principal moves before any payout. `testRedeemUsesExitLiquidityBeforePayingYield` covers 100 USDC principal, 10 USDC yield and exactly 100 USDC available: the full redeem succeeds and the 10 USDC stays unpaid until a later skim. Across transactions, a payout realized earlier still reduces the reserve liquidity available to later exits.
-
-The abstract hooks are `_unitsFor`/`_assetsFor` (OZ `Math.Rounding`), `_heldAssets`, `_payableYield`, `_invest`, `_divest`, `_payYield`, and `yieldToken`. `_freeYield` is virtual so a later separate-reward staking adapter can measure its reward token. All four shapes implement these hooks without changing the base vault. `_payableYield` uses that name because `payable` is a Solidity keyword.
-
-## Deployment configuration
-
-Set the `contracts/evm` section in the monorepo `.env.example` through your environment: `EVM_USDC`, `EVM_AAVE_POOL`, `EVM_AUSDC`, `EVM_YIELD_RECIPIENT`, `EVM_CUSHION`, `EVM_DEPOSIT_CAP`, and `EVM_DEPLOYER_PRIVATE_KEY`. All constructor values are immutable. The cap is in total shares, in USDC base units, and must be chosen by the operator.
-
-The Aave-only `script/Deploy.s.sol` creates the vault, then donates the cushion from the deployer's USDC before any intended user deposit. The deployer must hold that USDC. The deployment unit test runs this script in the local VM and verifies zero initial shares/credits and a funded cushion. **No deployment was broadcast.**
-
-## Verified Base integration
-
-Observed at fork block **53,506,521**: pool revision **11** (Aave v3.7), aToken revision **5**, liquidity index **1152502951373223403646683658**. Revisions and rates can change; the fork test prints its observed block and values. The adapter assumes scaled balance times normalized income remains a conservative valuation; re-check that assumption against every deployed Aave upgrade.
-
-| Component | Address (reference only; constructor uses env) |
+| Component | Base address |
 |---|---|
-| Pool proxy | `0xA238Dd80C259a72e81d7e4664a9801593F98d1c5` |
 | USDC | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+| Aave pool | `0xA238Dd80C259a72e81d7e4664a9801593F98d1c5` |
 | aUSDC | `0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB` |
+| cbETH | `0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22` |
+| cbETH/ETH economic exchange-rate feed | `0x868a501e68F3D1E89CfC0D22F6b22E8dabce5F04` |
+| PT-deJAAA market | `0x6c23193128f7907a3570234a6f6f1c2932f1e84b` |
+| PT-deJAAA | `0xbb4fa06ea64e777c037aad9db404643100584b3d` |
+| Pendle PY-LP oracle | `0x5542be50420E88dd7D5B4a3D488FA6ED82F6DAc2` |
 
-[Aave's address book](https://github.com/aave-dao/aave-address-book/blob/main/src/AaveV3Base.sol) supplies the proxy and asset addresses. The pinned npm snapshot's implementation address is older than the observed proxy implementation; the adapter calls the proxy. [Aave's v3.7 changelog](https://github.com/aave-dao/aave-v3-origin/blob/v3.7.0/docs/3.7/Aave-v3.7-changelog.md) identifies revision 11. [TokenMath](https://github.com/aave-dao/aave-v3-origin/blob/v3.7.0/src/contracts/protocol/libraries/helpers/TokenMath.sol) specifies floor mint/balance and ceil burn; the fork tests verify these against the deployment. The `aave-v3-origin` npm dependency supplies address-book Solidity types only, not a local pool implementation.
+**Aave:** conservative backing is idle USDC plus `floor(scaledBalance × normalizedIncome / 1e27)`. Yield is surplus above principal, cushion and unpaid yield. Payments and exit maxima account for available reserve liquidity. The adapter assumes that valuation remains conservative after protocol upgrades; re-check it against the deployed pool/aToken revisions. The fork prints those revisions and verifies mint/burn/balance rounding. Aave operations can consume up to `ceil(index / 1e27)` base units of rounding budget each. The example 10,000-USDC-base-unit cushion is $0.01, a finite budget refilled by later yield.
 
+**RateVault:** constructor-fixed asset and `IExchangeRateFeed` address. `_rate()` reads `latestRoundData`, rejects `answer <= 0`, and normalizes the constructor-read feed decimals to 1e18 with `Math.mulDiv`. A positive answer that rounds to zero is also rejected because inverse conversion needs a nonzero denominator. cbETH principal units are `assets × rate / 1e18` ETH wei; inverse conversion returns cbETH. The token is held directly. This is an **economic exchange-rate** feed, not the cbETH/USD market-price feed used for credits. There is deliberately **no freshness gate**: timestamps/round age are not admission conditions, per the deployment policy. Delayed updates shift attribution timing; the offline suite explicitly accepts an old timestamp. At the pinned block the normalized rate was `1143299420807401681`.
 
-## wstETH — uncapped appreciation (not live)
+**Pendle:** contract math and gate are retained. The fixed curve runs linearly from `c0` at deployment to 1 at expiry, clamped thereafter. Deposits multiply PT by the curve; redemptions divide principal units by it, so redeemed PT is bounded by deposited PT. Deposit/mint requires the spot `getPtToAssetRate(market, 0)` to be at most the curve; a rejected `_invest` rolls back transfers/mints. Exits do not run the gate. The deploy script reads that spot rate for `c0`; it does not add a manual override. At the pinned block, `c0` was `997201215082272248`. Expiry is **2026-11-26 00:00 UTC** (`1795651200`). Users acquire PT separately; the vault accepts and returns PT, not USDC. The SY/issuer redemption path and its settlement constraints remain external to this vault.
 
-`WstEthVault` holds Ethereum wstETH directly. Units/shares are **stETH wei**, computed with the token's native `stEthPerToken()`; redemption divides those units by the current rate. OZ `Math.Rounding` passes through both conversions. Yield is the wstETH balance above rounded-up principal, cushion, and unpaid yield, and is paid in **wstETH wei**. The cushion is wstETH wei; the cap is stETH wei. There is no wrapping, unwrapping, or external investment call.
+## Accounting, losses and payout gas
 
-**Loss-capable:** Lido slashing can reduce the rate. Unit tests cover a falling rate, pro-rata coverage and blocked new admissions. This module is not a no-loss USDC strategy and has not been enabled for live credit posting.
+**Depositors bear strategy losses pro-rata.** There is no reserve/compensation and already paid yield/credits are not clawed back. This includes Aave losses, falling LST exchange rates and PT's Centrifuge/SY/CLO backing risk. Nominal PT quantity accounting does not insure the underlying's redemption value.
 
-Verified unit command:
+`totalAssets()` excludes yield and applies coverage under a deficit. New deposits/mints are disabled under a deficit. Zero-backing shares can still redeem for zero assets; converting positive assets into shares then reverts `ZeroBacking`. Maxima respect the covered claim and liquidity where external positions are involved. They do not bypass protocol/token restrictions.
 
-```sh
-forge test --offline --match-contract WstEthVaultTest
-```
+Every balance-changing entry point attributes yield first and attempts payment last under its reentrancy guard. Per-holder fractional entitlements are retained with the 1e36 index; `yieldCredited` includes unsettled earnings. Zero/self transfers skip attribution. `unattributed()` exposes cumulative yield measured at zero supply, making `sum(attributed) + unattributed = paidTotal + unpaid` externally checkable. Index dust is below one yield-token base unit per skim when total shares are below 1e36; integer holder views additionally truncate below one base unit each.
 
-For the optional Ethereum fork, export `WSTETH_FORK_RPC_URL` and `WSTETH_ADDRESS` first, then run:
+With enough gas, a reverting payout emits `PayFailed`, retains unpaid attribution and leaves the operation intact. An entry point must carry enough gas for its payout attempt: a starved self-call can leave insufficient gas for the outer frame to return, reverting the whole transaction. Retry with more gas; the keeper's public `skim()` is the deferred payment path and propagates payment failure. The coverage `assert` remains; Solidity 0.8 reports `Panic(0x01)` without inherently consuming the frame's remaining gas.
 
-```sh
-forge test --offline --match-contract WstEthVaultForkTest -vv
-```
+## One deployment script, three kinds
 
-The verified token is `0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0`. At block 26,342,308, `stEthPerToken()` was `1248420541703429835`. Fork tests check native conversion/round-trip rounding and a locally funded token donation/payout. **A time warp alone does not create a Lido oracle rebase**; appreciation and slashing changes use an explicitly mocked rate in offline tests. [Lido's wstETH interface](https://docs.lido.fi/contracts/wsteth/) and [integration guide](https://docs.lido.fi/guides/lido-tokens-integration-guide/) describe the native rate.
+`script/Deploy.s.sol:Deploy.run()` reads **`EVM_VAULT_KIND=aave|rate|pendle`**. Common env inputs are `EVM_YIELD_RECIPIENT`, `EVM_CUSHION`, `EVM_DEPOSIT_CAP`, `EVM_DEPLOYER_PRIVATE_KEY`. The cap is in principal/share units from the table; the cushion is in deposit-asset base units. The operator chooses the cap and must fund the deployer with the cushion asset.
 
-## Pendle PT — capped appreciation (not live)
+- `aave`: `EVM_USDC`, `EVM_AAVE_POOL`, `EVM_AUSDC`.
+- `rate`: `RATE_ASSET_ADDRESS`, `RATE_FEED_ADDRESS`.
+- `pendle`: `PENDLE_MARKET_ADDRESS`, `PENDLE_ORACLE_ADDRESS`; PT/expiry come from the market and `c0` is read from the oracle.
 
-`PendlePtVault` derives its PT asset and expiry from the configured market. The fixed deployment curve is `c(t) = c0 + (1 − c0) × elapsed / duration`, rounded down and clamped to 1 at/after expiry. Units are the market's underlying-asset units; assets and yield are **PT units**. Deposits multiply PT by `c(t)`; redemptions divide units by it, so with a nondecreasing curve, redeemed PT cannot exceed deposited PT. The cushion is PT units and the cap is underlying units. The tested market uses 18 decimals for both PT and USDS.
-
-The admission check reads `getPtToAssetRate(market, 0)` and requires it to be at most `c(t)`. It runs in `_invest` on deposit/mint, after the transfer/mint but within the same transaction: rejection rolls back both. The gate does not run on exits. Previews show the deterministic curve, while admission also depends on the live rate. There is no TWAP, live valuation oracle, swap, SY redemption, or activation switch. `c0` must be positive and at most 1e18; expiry must be in the future so the curve is defined.
-
-**Loss-capable through the PT's SY/underlying backing; depositors bear any loss pro-rata.** Nominal PT accounting does not insure its underlying redemption value. Not live: yield is paid in PT, and this build credits USDC yield only.
-
-Verified unit command:
+The script deploys one selected vault, then donates its cushion before any intended user deposit; that donation mints no shares. Unknown kinds are rejected. All constructor settings are immutable. Deployment, initial zero shares/credits, first deposits and feed/curve selection are verified entirely in the local VM:
 
 ```sh
-forge test --offline --match-contract PendlePtVaultTest
+forge test --offline --match-contract DeployTest
 ```
 
-For the optional fork, export `PENDLE_FORK_RPC_URL`, `PENDLE_MARKET_ADDRESS`, and `PENDLE_ORACLE_ADDRESS` first, then run:
-
-```sh
-forge test --offline --match-contract PendlePtVaultForkTest -vv
-```
-
-Verified candidate on Ethereum, from Pendle's [active market API](https://api-v2.pendle.finance/core/v1/1/markets/active) and native contract reads:
-
-| Item | Observed value |
-|---|---|
-| PT-sUSDS market | `0x9c560ebaf78e596cbcc27411d633a74d628dd7dc` |
-| PT | `0xdC169AbE56461A2E0c034Da431Ac2a3ebf596094` |
-| Underlying denomination | USDS, 18 decimals (`SY.assetInfo()`) |
-| Expiry | 2026-11-26 00:00 UTC (`1795651200`) |
-| Candidate `c0` at block 26,342,308 | `996578757712811395` (about 0.99658) |
-| Implied annual yield | About 6.03%; market `lastLnImpliedRate` observed as `58560539266897047`, so `exp(lnRate / 1e18) − 1` |
-| Pendle PY/LP oracle | `0x5542be50420E88dd7D5B4a3D488FA6ED82F6DAc2` |
-
-Re-read the rate at any future deployment. [Pendle's deployment registry](https://github.com/pendle-finance/pendle-core-v2-public/blob/main/deployments/1-core.json) identifies the oracle; its [oracle documentation](https://docs.pendle.finance/pendle-v2-dev/Contracts/Oracle/PYLpOracle) specifies raw-unit, 1e18-scaled rates. Duration 0 is a manipulable spot observation, used here only for the specified admission gate, never for principal valuation. The fork tests run against real PT/market/oracle contracts; maturity is advanced only in the local fork VM.
-
-## StakingRewards — separate claimable rewards (not live)
-
-`StakingRewardsVault` supports `stake`, `withdraw`, `balanceOf`, `earned` and `getReward`. Principal units are staking-token base units, 1:1. Backing is staked plus idle principal tokens. The constructor rejects `rewardToken == asset`; earned rewards and directly donated reward tokens are measured separately, with `free = max(earned + idleReward − unpaid, 0)`. Principal-token donations are never counted as rewards. Credits/unpaid/paid are **reward-token units**, irrespective of the staking token's decimals. Only reward tokens are claimed/sent to the treasury.
-
-An underfunded or reverting reward claim is handled by the base's `PayFailed` frame; with enough gas, principal exits complete first and unpaid rewards wait. Offline tests cover claim failure and reward-transfer failure, including rollback of the claim. The pool must preserve fixed-token principal: an adapter cannot remove the selected pool's own principal-loss mechanics.
-
-Verified unit command:
-
-```sh
-forge test --offline --match-contract StakingRewardsVaultTest
-```
-
-A suitable fixed-token-principal StakingRewards-style pool **does exist** on Ethereum: Sky's USDS→SPK pool, `0x173e314C7635B45322cd8Cb14f44b312e079F3af`. Native reads confirmed USDS staking asset `0xdC035D45d973E3EC169d2276DDab16f1e407384F`, SPK reward `0xc20059e0317DE91738d13af027DfC4a50781b066`, and unpaused staking. The [Sky chainlog](https://chainlog.sky.money/api/mainnet/active.json) lists it as `REWARDS_USDS_SPK`. Its [StakingRewards source](https://github.com/sky-ecosystem/endgame-toolkit/blob/master/src/synthetix/StakingRewards.sol) has no principal slashing/exit fee and prevents admin recovery of the staking token; withdrawals are not subject to its stake pause. This is a fixed-token accounting property, not insurance against token or contract failure.
-
-For the optional fork, export `STAKING_FORK_RPC_URL` and `STAKING_POOL_ADDRESS` first, then run:
-
-```sh
-forge test --offline --match-contract StakingRewardsVaultForkTest -vv
-```
-
-At block 26,342,308 the fork staked 100 USDS, advanced one hour locally, paid `23571828277981200` SPK base units, and redeemed all 100 USDS. Future reward rates/programmes can change or finish; the test permits zero earned rewards but always checks principal withdrawal. No reward-funding transaction, deployment, or mainnet write was broadcast.
+Root/Alvin perform any later broadcast. The script was not run with a broadcast flag in this dispatch. `StakingRewardsVault` retains its separate-token constructor check, principal backing and offline tests, with no branch in this Base deployment script.
