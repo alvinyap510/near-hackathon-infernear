@@ -121,7 +121,7 @@ impl Model {
     }
     fn measure(&mut self) {
         callback(
-            240,
+            250,
             vec![
                 ok(
                     json!({"supplied":[{"token_id":"usdc.near","balance":(self.supplied*INTERNAL_SCALE).to_string()}]}),
@@ -143,7 +143,7 @@ impl Model {
                     self.supplied -= w;
                     self.cash += w;
                 }
-                callback(140, vec![ok(json!(self.withdraw_ok))]);
+                callback(160, vec![ok(json!(self.withdraw_ok))]);
                 drop(self.vault.after_withdraw());
             }
             3 => {
@@ -176,7 +176,7 @@ impl Model {
                         results.push(ok(json!(used.to_string())));
                     }
                 }
-                callback(20, results);
+                callback(20 + 8 * u64::from(self.vault.cycle.sent_len), results);
                 assert!(self.vault.after_send());
             }
             4 => {
@@ -488,7 +488,7 @@ fn view_and_withdraw_promise_failures_clear_busy() {
         ],
     ] {
         m.start();
-        callback(240, results);
+        callback(250, results);
         drop(m.vault.after_measure());
         assert!(!m.vault.busy());
         m.cash_invariant();
@@ -664,7 +664,7 @@ fn zero_supply_gain_is_unattributed_and_callback_arithmetic_overflow_clears_busy
 }
 
 #[test]
-fn ten_returns_and_ten_exits_preserve_unsent_work_and_reserve_the_resolver_gas() {
+fn cr1_2_ten_returns_and_exits_reserve_capacity_for_both_queues() {
     let mut m = Model::new(0, 10_000_000);
     for i in 1..=10 {
         m.accept(&user(i), 1_000_000);
@@ -686,12 +686,12 @@ fn ten_returns_and_ten_exits_preserve_unsent_work_and_reserve_the_resolver_gas()
             .sent
             .iter()
             .take(m.vault.cycle.sent_len as usize)
-            .all(|sent| sent.kind == EXIT)
+            .any(|sent| sent.kind == RETURN)
     );
     m.finish();
     assert_eq!(m.treasury, 0);
     scaled_invariant(&m);
-    assert_eq!(m.vault.totals.pending_in, 10_000_000);
+    assert_eq!(m.vault.totals.pending_in, 9_000_000);
     assert!(m.vault.outgoing.first(10).len() >= 8);
 }
 
@@ -742,4 +742,211 @@ proptest::proptest! {
             proptest::prop_assert!(credits<=m.vault.totals.paid);
         }
     }
+}
+
+// CR1-1: partially funded claims must retain liquid cash until a claim fits.
+#[test]
+fn cr1_1_partial_liquidity_stays_idle_until_a_smaller_signed_replacement() {
+    let mut m = Model::new(0, 1_000_000);
+    let owner = vector_user();
+    m.accept(&owner, 1_000_000);
+    m.cycle();
+    caller("relay.near");
+    request(&mut m.vault, "v27");
+    let claim = m.vault.position(owner.clone()).pending_out;
+    m.liquidity = 500_000;
+    m.cycle();
+    assert_eq!(m.vault.idle(), U128(500_000));
+    assert_eq!(m.supplied, 500_000);
+    assert_eq!(m.vault.position(owner.clone()).pending_out, claim);
+    assert!(m.intents.is_empty());
+    caller("relay.near");
+    request(&mut m.vault, "replace");
+    m.liquidity = 0;
+    m.cycle();
+    assert_eq!(m.intents[&owner], 500_000);
+    assert_eq!(m.supplied, 500_000);
+    assert_eq!(m.vault.position(owner).principal, U128(500_000));
+    m.cash_invariant();
+    scaled_invariant(&m);
+}
+
+// CR1-2: continuous tiny exits cannot monopolize the two post-withdraw slots.
+#[test]
+fn cr1_2_repeated_cycles_progress_both_queues_in_fifo_order() {
+    let mut m = Model::new(0, 1000);
+    let owner = user(1);
+    m.accept(&owner, 1000);
+    m.cycle();
+    for i in 2..=13 {
+        m.accept(&user(i), 100);
+    }
+    let mut expected = m.vault.incoming.first(20);
+    for tick in 0..13 {
+        m.claim(&owner, 1);
+        m.start();
+        m.measure();
+        if tick == 0 {
+            // New arrivals during the withdrawal cannot pass existing returns.
+            m.accept(&user(14), 100);
+            expected = m.vault.incoming.first(20);
+        }
+        m.resolve();
+        let sent = &m.vault.cycle.sent[..m.vault.cycle.sent_len as usize];
+        assert!(sent.iter().any(|s| s.kind == EXIT));
+        let returned = sent
+            .iter()
+            .find(|s| s.kind == RETURN)
+            .expect("return progresses each cycle");
+        assert_eq!(returned.node, expected.remove(0));
+        m.finish();
+        assert_eq!(m.vault.incoming.first(20), expected);
+        assert_eq!(m.vault.totals.pending_in, expected.len() as u128 * 100);
+        scaled_invariant(&m);
+    }
+    assert!(expected.is_empty());
+    assert_eq!(m.intents[&owner], 13);
+    for i in 2..=14 {
+        assert_eq!(m.intents[&user(i)], 100);
+    }
+    assert_eq!(m.treasury, 0);
+}
+
+#[test]
+fn cr1_2_unfunded_head_exit_is_not_overtaken() {
+    let mut m = Model::new(0, 1000);
+    m.accept(&user(1), 900);
+    m.accept(&user(2), 100);
+    m.cycle();
+    m.claim(&user(1), 900);
+    m.claim(&user(2), 100);
+    let order = m.vault.outgoing.first(10);
+    m.liquidity = 500;
+    m.cycle();
+    assert_eq!(m.vault.outgoing.first(10), order);
+    assert!(m.intents.is_empty());
+    assert_eq!(m.vault.idle(), U128(500));
+    m.cycle();
+    assert_eq!(m.intents[&user(1)], 900);
+    assert_eq!(m.intents[&user(2)], 100);
+    assert!(m.vault.outgoing.first(10).is_empty());
+}
+
+#[test]
+fn flex1_1_resolver_budget_scales_with_full_refund_record_count() {
+    let mut m = Model::new(0, 100);
+    m.accept(&user(1), 100);
+    m.cycle();
+    for i in 2..=11 {
+        m.accept(&user(i), 100);
+    }
+    let order = m.vault.incoming.first(10);
+    m.start();
+    m.measure();
+    let count = m.vault.cycle.sent_len;
+    assert!(count >= 3, "exercise maximum direct-send records");
+    let gas = get_created_receipts()
+        .into_iter()
+        .flat_map(|r| r.actions)
+        .find_map(|action| {
+            if let near_sdk::mock::MockAction::FunctionCallWeight {
+                method_name,
+                prepaid_gas,
+                ..
+            } = action
+                && method_name == b"after_send"
+            {
+                Some(prepaid_gas)
+            } else {
+                None
+            }
+        })
+        .expect("joined resolver");
+    assert_eq!(gas, Gas::from_tgas(20 + 8 * u64::from(count)));
+    m.send_failed = true;
+    m.finish();
+    assert_eq!(m.vault.incoming.first(10), order);
+    assert_eq!(m.vault.totals.pending_in, 1000);
+    m.cash_invariant();
+}
+
+#[test]
+fn flex1_3_returned_deposits_keep_preallocated_holder_records() {
+    let mut m = Model::new(0, 0);
+    m.accept(&user(1), 100);
+    m.cycle();
+    assert_eq!(m.intents[&user(1)], 100);
+    assert_eq!(m.vault.holders(0, 10), vec![user(1)]);
+    assert_eq!(m.vault.position(user(1)).principal, U128(0));
+    assert_eq!(m.vault.position(user(1)).pending_in, U128(0));
+}
+
+#[test]
+fn flex1_5_malformed_withdrawal_has_stable_panic_without_input_fragments() {
+    let mut m = Model::new(0, 100);
+    for message in [
+        "PRIVATE_REQUEST_FRAGMENT",
+        "{\"action\":\"PRIVATE_REQUEST_FRAGMENT\"}",
+    ] {
+        caller("relay.near");
+        let error = catch_unwind(AssertUnwindSafe(|| {
+            m.vault.request_withdraw(message.into(), String::new())
+        }))
+        .expect_err("invalid message");
+        let text = error
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| error.downcast_ref::<&str>().copied())
+            .unwrap();
+        assert!(text.contains("invalid withdrawal message"));
+        assert!(!text.contains("PRIVATE_REQUEST_FRAGMENT"));
+        assert!(m.vault.holders(0, 10).is_empty());
+    }
+}
+
+#[test]
+fn flex2_2_true_malleability_flag_rejects_high_s_false_accepts_it() {
+    let _m = Model::new(0, 100);
+    let data = vector("high_s");
+    let message = data["message"].as_str().unwrap();
+    let bytes: Vec<u8> = data["signature"].as_str().unwrap().as_bytes()[2..]
+        .chunks_exact(2)
+        .map(|b| u8::from_str_radix(std::str::from_utf8(b).unwrap(), 16).unwrap())
+        .collect();
+    let hash = env::keccak256(
+        format!("\x19Ethereum Signed Message:\n{}{}", message.len(), message).as_bytes(),
+    );
+    assert!(env::ecrecover(&hash, &bytes[..64], bytes[64] - 27, false).is_some());
+    assert!(env::ecrecover(&hash, &bytes[..64], bytes[64] - 27, true).is_none());
+    assert!(auth::recover(message, data["signature"].as_str().unwrap()).is_none());
+    for name in ["v27", "v28"] {
+        let data = vector(name);
+        assert_eq!(
+            auth::recover(
+                data["message"].as_str().unwrap(),
+                data["signature"].as_str().unwrap()
+            )
+            .unwrap(),
+            owner_address(&vector_user())
+        );
+    }
+}
+
+#[test]
+fn flex2_3_position_saturates_without_trapping_or_mutating_checked_state() {
+    let mut m = Model::new(0, 100);
+    let owner = user(1);
+    m.accept(&owner, 1);
+    let mut record = m.vault.users.get(&owner).unwrap();
+    record.principal = u128::MAX;
+    record.credited_scaled = 1;
+    m.vault.users.insert(&owner, &record);
+    m.vault.totals.acc = 2;
+    assert_eq!(
+        m.vault.position(owner.clone()).yield_credited,
+        U128(u128::MAX / SCALE)
+    );
+    assert!(record.settle(2).is_none(), "writes still reject overflow");
+    assert_eq!(m.vault.users.get(&owner).unwrap().snap, 0);
+    assert_eq!(m.vault.users.get(&owner).unwrap().credited_scaled, 1);
 }

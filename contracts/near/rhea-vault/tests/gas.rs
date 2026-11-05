@@ -106,7 +106,7 @@ async fn assert_cash(vault: &Contract, token: &Contract, users: &[String]) -> Re
 }
 
 #[tokio::test]
-async fn k10_queue_worst_cases_use_real_receipts_and_complete_within_300_tgas() -> Result<()> {
+async fn flex1_1_flex1_2_k10_queue_and_full_refund_resolvers_fit_300_tgas() -> Result<()> {
     let worker = near_workspaces::sandbox().await?;
     let root = worker.root_account()?;
     let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target");
@@ -191,6 +191,14 @@ async fn k10_queue_worst_cases_use_real_receipts_and_complete_within_300_tgas() 
         "gas-bounded exit progress not exercised"
     );
 
+    ensure!(
+        outcome
+            .logs()
+            .iter()
+            .any(|log| log.contains("cash_sent") && log.contains("return")),
+        "CR1-2: returns must progress alongside exits"
+    );
+
     // Treasury and exits are mutually exclusive; measure the separate worst-case
     // branch with ten queued returns and a real treasury payment.
     let second = worker.dev_deploy(&wasm).await?;
@@ -229,6 +237,44 @@ async fn k10_queue_worst_cases_use_real_receipts_and_complete_within_300_tgas() 
     ensure!(
         second.view("paid_total").await?.json::<String>()? == "1000",
         "treasury payment missing"
+    );
+    // Flex1-1: the direct-send branch has the largest resolver record count.
+    // Make Intents return every token so each record takes its refund path.
+    let _ = invoke(&root, &intents, "return_all_deposits", json!({}), 0).await?;
+    let pending_before = token
+        .view("ft_balance_of")
+        .args_json(json!({"account_id":second.id()}))
+        .await?
+        .json::<String>()?;
+    let outcome = invoke(&root, &second, "run", json!({}), 0).await?;
+    let returns = outcome
+        .logs()
+        .iter()
+        .filter(|log| log.contains("cash_sent") && log.contains("return"))
+        .count();
+    ensure!(returns >= 3, "largest resolver branch not exercised");
+    assert_cash(&second, &token, &users).await?;
+    ensure!(
+        token
+            .view("ft_balance_of")
+            .args_json(json!({"account_id":second.id()}))
+            .await?
+            .json::<String>()?
+            == pending_before,
+        "full refunds changed cash"
+    );
+    let resolver = outcome
+        .receipt_outcomes()
+        .iter()
+        .find(|receipt| receipt.logs.iter().any(|log| log.contains("cash_resolved")))
+        .cloned()
+        .expect("joined resolver receipt");
+    println!(
+        "direct returns/full refunds: gas_burnt={}, records={}, resolver_burnt={}, resolver_budget={}",
+        outcome.total_gas_burnt.as_gas(),
+        returns,
+        resolver.gas_burnt.as_gas(),
+        (20 + 8 * returns as u64) * 1_000_000_000_000
     );
     Ok(())
 }

@@ -8,14 +8,16 @@ Prerequisites: rustup Rust 1.97.1, `wasm32-unknown-unknown`, a native C/C++ tool
 
 ```sh
 cargo fetch --locked
-cargo test --offline --locked --workspace
-cargo build --offline --locked --target wasm32-unknown-unknown --release --workspace
+cargo test --locked --workspace
+cargo build --locked --target wasm32-unknown-unknown --release --workspace
+cargo build --offline --locked --manifest-path rhea-vault/test-contracts/mock/Cargo.toml --target-dir target/mock --target wasm32-unknown-unknown --release
+cargo test --offline --locked -p infernear-rhea-vault --features sandbox-gas --test gas -- --nocapture
 cargo clippy --offline --workspace --all-targets --features sandbox-gas -- -D warnings
 cargo fmt --all -- --check
 cargo test --offline --locked -p infernear-connector debit_storage_measurement -- --nocapture
 ```
 
-Fetch requires network once. The 14 connector tests and 21 vault tests then run offline against NEAR's mocked runtime, including generated conservation sequences. The optional sandbox test is documented in the vault README. Release outputs are `target/wasm32-unknown-unknown/release/infernear_connector.wasm` (**352,481 bytes**) and `infernear_rhea_vault.wasm` (**421,474 bytes**) with this toolchain. These are plain Cargo release builds, without cargo-near's additional optimization.
+Fetch requires network once. The 14 connector tests and 29 vault tests then run offline against NEAR's mocked runtime, including generated conservation sequences. The same verification block also runs the sandbox gas test; its first run may download near-sandbox 2.14.0. The default workspace test alone excludes that feature-gated test. Local mock prerequisites are detailed in the vault README. Release outputs are `target/wasm32-unknown-unknown/release/infernear_connector.wasm` (**352,481 bytes**) and `infernear_rhea_vault.wasm` (**421,522 bytes**) with this toolchain. These are plain Cargo release builds, without cargo-near's additional optimization.
 
 ## Connector
 

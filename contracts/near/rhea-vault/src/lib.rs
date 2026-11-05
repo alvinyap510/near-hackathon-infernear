@@ -153,8 +153,9 @@ impl RheaUsdcVault {
 
     pub fn request_withdraw(&mut self, message: String, signature: String) {
         require!(!self.busy, "vault busy");
-        let request: Withdrawal =
-            near_sdk::serde_json::from_str(&message).expect("invalid withdrawal message");
+        let Ok(request) = near_sdk::serde_json::from_str::<Withdrawal>(&message) else {
+            env::panic_str("invalid withdrawal message");
+        };
         require!(
             request.action == "withdraw"
                 && request.network == "mainnet"
@@ -225,7 +226,7 @@ impl RheaUsdcVault {
             0,
             5,
         ))
-        .then(self_callback("after_measure", 240))
+        .then(self_callback("after_measure", 250))
     }
 
     #[private]
@@ -246,13 +247,16 @@ impl RheaUsdcVault {
     }
 
     pub fn position(&self, user: String) -> Position {
-        let mut record = self.users.get(&user).unwrap_or_default();
-        record
-            .settle(self.totals.acc)
-            .expect("entitlement overflow");
+        let record = self.users.get(&user).unwrap_or_default();
+        // Views remain readable outside the supported arithmetic bounds. Writes
+        // still use checked settlement and can never persist a saturated credit.
+        let earned = record
+            .principal
+            .saturating_mul(self.totals.acc.saturating_sub(record.snap));
+        let credited = record.credited_scaled.saturating_add(earned);
         Position {
             principal: U128(record.principal),
-            yield_credited: U128(record.credited_scaled / SCALE),
+            yield_credited: U128(credited / SCALE),
             pending_in: U128(record.pending_in),
             pending_out: record.pending_out.map(|p| U128(p.amount)),
         }

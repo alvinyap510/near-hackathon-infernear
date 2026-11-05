@@ -50,6 +50,7 @@ pub fn recover(message: &str, signature: &str) -> Option<String> {
     let mut preimage = b"\x19Ethereum Signed Message:\n".to_vec();
     preimage.extend_from_slice(message.len().to_string().as_bytes());
     preimage.extend_from_slice(message.as_bytes());
+    // true enables reject_upper in nearcore; false would accept high-s twins.
     let key = env::ecrecover(&env::keccak256(&preimage), &bytes[..64], v, true)?;
     let hash = env::keccak256(key);
     Some(format!(

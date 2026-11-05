@@ -4,7 +4,9 @@ use std::collections::BTreeMap;
 
 const TRANSFER_GAS: u64 = 40;
 const RESOLVE_GAS: u64 = 20;
-const LOCAL_GAS: u64 = 30;
+const RESOLVE_RECORD_GAS: u64 = 8;
+const LOCAL_GAS: u64 = 20;
+const SEND_OVERHEAD_GAS: u64 = 8; // Receipt creation and joining, per send.
 
 struct Plan {
     totals: Totals,
@@ -75,15 +77,6 @@ impl RheaUsdcVault {
                 near_sdk::serde_json::json!({"user":node.user,"amount":U128(node.amount)}),
             );
         }
-        for id in self
-            .cycle
-            .return_ids
-            .iter()
-            .take(self.cycle.returns as usize)
-            .copied()
-        {
-            self.incoming.detach(id);
-        }
         emit(
             "cycle_measured",
             near_sdk::serde_json::json!({"supplied":U128(b),"liquidity":U128(liquidity),"idle":U128(self.totals.idle),"coverage":U128(self.totals.coverage)}),
@@ -99,7 +92,7 @@ impl RheaUsdcVault {
             PromiseOrValue::Promise(call(&self.rhea,"simple_withdraw",near_sdk::serde_json::json!({
                 "token_id":self.usdc,"amount_with_inner_decimal":U128(self.cycle.withdraw.checked_mul(INTERNAL_SCALE).expect("validated Rhea units")),
                 "recipient_id":env::current_account_id()
-            }),1,60).then(self_callback("after_withdraw",140)))
+            }),1,60).then(self_callback("after_withdraw",160)))
         } else {
             self.send_or_supply()
         }
@@ -213,13 +206,16 @@ impl RheaUsdcVault {
             .as_gas()
             .saturating_sub(env::used_gas().as_gas());
         let mut slots = (free_gas.saturating_sub(Gas::from_tgas(RESOLVE_GAS + LOCAL_GAS).as_gas())
-            / Gas::from_tgas(TRANSFER_GAS).as_gas()) as usize;
+            / Gas::from_tgas(TRANSFER_GAS + RESOLVE_RECORD_GAS + SEND_OVERHEAD_GAS).as_gas())
+            as usize;
+        // Both principal queues must progress even under continuous exit traffic.
+        let return_slot = usize::from(self.cycle.returns > 0);
         let mut promises = Vec::new();
         for i in 0..self.cycle.exits as usize {
             let id = self.cycle.exit_ids[i];
             let out = self.cycle.exit_outs[i];
-            if out > self.totals.idle || (out > 0 && slots == 0) {
-                continue;
+            if out > self.totals.idle || (out > 0 && slots <= return_slot) {
+                break;
             }
             let node = self.outgoing.nodes.get(&id).expect("planned exit node");
             let mut user = self.users.get(&node.user).expect("allocated user");
@@ -264,8 +260,7 @@ impl RheaUsdcVault {
             let id = self.cycle.return_ids[i];
             let node = self.incoming.nodes.get(&id).expect("reserved return node");
             if slots <= treasury_slot {
-                self.incoming.requeue(id, node.amount);
-                continue;
+                break;
             }
             self.totals.pending_in = self
                 .totals
@@ -317,14 +312,21 @@ impl RheaUsdcVault {
             );
         }
         if promises.is_empty() {
-            return self.supply();
+            // An unfilled outflow keeps its cash liquid for a later run or a
+            // smaller replacement. Supply belongs only to a no-outflow plan.
+            return if self.cycle.exits == 0 && self.cycle.returns == 0 && self.cycle.pay == 0 {
+                self.supply()
+            } else {
+                PromiseOrValue::Value(self.finish())
+            };
         }
         self.cycle.phase = 3;
         let joined = promises
             .into_iter()
             .reduce(Promise::and)
             .expect("nonempty sends");
-        PromiseOrValue::Promise(joined.then(self_callback("after_send", RESOLVE_GAS)))
+        let resolver_gas = RESOLVE_GAS + RESOLVE_RECORD_GAS * u64::from(self.cycle.sent_len);
+        PromiseOrValue::Promise(joined.then(self_callback("after_send", resolver_gas)))
     }
     fn record(&mut self, sent: Sent) {
         self.cycle.sent[self.cycle.sent_len as usize] = sent;
@@ -373,8 +375,11 @@ impl RheaUsdcVault {
                             .checked_add(refund)
                             .expect("user return refund overflow");
                         self.users.insert(&node.user, &user);
-                        self.incoming.requeue(sent.node, refund);
+                        let mut node = node;
+                        node.amount = refund;
+                        self.incoming.nodes.insert(&sent.node, &node);
                     } else {
+                        self.incoming.detach(sent.node);
                         self.incoming.nodes.remove(&sent.node);
                     }
                     "return"

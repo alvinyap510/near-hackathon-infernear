@@ -16,6 +16,7 @@ pub struct Mock {
     token: FungibleToken,
     balances: LookupMap<String, u128>,
     total: u128,
+    refund_all: bool,
 }
 #[near]
 impl Mock {
@@ -27,7 +28,11 @@ impl Mock {
             token: FungibleToken::new(b"t"),
             balances: LookupMap::new(b"b"),
             total: 0,
+            refund_all: false,
         }
+    }
+    pub fn return_all_deposits(&mut self) {
+        self.refund_all = true;
     }
     pub fn register(&mut self, account_id: AccountId) {
         if !self.token.accounts.contains_key(&account_id) {
@@ -129,6 +134,9 @@ impl FungibleTokenReceiver for Mock {
         msg: String,
     ) -> PromiseOrValue<U128> {
         assert_eq!(env::predecessor_account_id(), self.usdc);
+        if self.refund_all {
+            return PromiseOrValue::Value(amount);
+        }
         let owner = if self.role == "rhea" {
             sender_id.to_string()
         } else {
