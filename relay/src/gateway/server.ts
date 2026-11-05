@@ -2,13 +2,14 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { HttpError, reportError, type Report } from '../types.ts';
 import { ExpiringMap } from './expiring-map.ts';
 import { Gateway } from './ledger.ts';
+import type { SignedRequests } from './signed.ts';
 import { Meter } from './meter.ts';
 import { endToEndHeaders } from './upstream.ts';
 
 // Bound untrusted buffered envelopes in the process that also settles credits.
 export const MAX_BODY_BYTES = 1_048_576;
 
-export function createRelayServer(gateway: Gateway, options: { publicUrl: string; report: Report; now?: () => number; allowedOrigin?: string }) {
+export function createRelayServer(gateway: Gateway, options: { publicUrl: string; report: Report; now?: () => number; allowedOrigin?: string; signedRequests?: SignedRequests }) {
   const now = options.now ?? Date.now;
   const ipLimits = new ExpiringMap<{ count: number }>(60_000, now);
   const origin = new URL(options.publicUrl).origin;
@@ -27,6 +28,13 @@ export function createRelayServer(gateway: Gateway, options: { publicUrl: string
       chunks.push(Buffer.from(chunk));
     }
     return Buffer.concat(chunks);
+  };
+  const limitIp = (req: IncomingMessage) => {
+    const ip = req.socket.remoteAddress ?? '';
+    let window = ipLimits.get(ip);
+    if (!window) { window = { count: 0 }; ipLimits.set(ip, window); }
+    if (window.count >= 30) throw new HttpError(429, 'read_rate_limit', 'Limit: 30 requests per minute per IP');
+    window.count += 1;
   };
   const pipe = async (source: IncomingMessage, res: ServerResponse, onBytes: (chunk: Buffer) => void) => {
     for await (const bytes of source) {
@@ -68,16 +76,19 @@ export function createRelayServer(gateway: Gateway, options: { publicUrl: string
       }
       if (req.method === 'GET' && (path.startsWith('/v1/model/') || path === '/v1/attestation/report' || path.startsWith('/v1/signature/'))) {
         if (req.headers.authorization) await gateway.authenticate(req.headers.authorization);
-        else {
-          const ip = req.socket.remoteAddress ?? '';
-          let window = ipLimits.get(ip);
-          if (!window) { window = { count: 0 }; ipLimits.set(ip, window); }
-          if (window.count >= 30) throw new HttpError(429, 'read_rate_limit', 'Anonymous read limit: 30 requests per minute per IP');
-          window.count += 1;
-        }
+        else limitIp(req);
         const upstream = await gateway.upstream.request(path.slice(3) + url.search, 'GET', req.headers);
         res.writeHead(upstream.statusCode ?? 502, endToEndHeaders(upstream.headers));
         await pipe(upstream, res, () => {}); res.end(); return;
+      }
+      if (req.method === 'POST' && (path === '/rhea/withdraw' || path === '/intents/execute')) {
+        // These gas-paying routes always use the shared socket-IP bucket, even with an API key.
+        limitIp(req);
+        const raw = await body(req);
+        let value: unknown;
+        try { value = JSON.parse(raw.toString()); } catch { throw new HttpError(400, 'invalid_json', 'Expected signed request JSON'); }
+        if (!options.signedRequests) throw new HttpError(503, 'service_unavailable', 'Signed routes unavailable');
+        json(res, 200, path === '/rhea/withdraw' ? await options.signedRequests.withdraw(value) : await options.signedRequests.execute(value)); return;
       }
       if (req.method === 'POST' && path === '/v1/chat/completions') {
         gateway.auth.parse(req.headers.authorization);

@@ -79,7 +79,7 @@ test('CR1-4 / Flex1-3: gateway, keeper and retries classify errors without loggi
   reportError(report, 'hostile_name', hostile);
   const storage = h.connector.storageBalance.bind(h.connector);
   h.connector.storageBalance = async () => { throw failure; };
-  const keeper = new Keeper([{ id: VAULT, async skim() { throw failure; }, async snapshot() { throw failure; } }],
+  const keeper = new Keeper([{ id: VAULT, kind: 'aave', async skim() { throw failure; }, async snapshot() { throw failure; } }],
     h.connector, { async tick() { throw failure; } }, report);
   await keeper.tick();
   h.connector.storageBalance = storage;
