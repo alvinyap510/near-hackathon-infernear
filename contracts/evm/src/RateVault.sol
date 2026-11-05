@@ -5,26 +5,42 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {PrincipalVault} from "./PrincipalVault.sol";
-import {IWstETH} from "./interfaces/IYieldShapes.sol";
+import {IExchangeRateFeed} from "./interfaces/IYieldShapes.sol";
 
-/// @notice Holds Ethereum wstETH; principal units are stETH. Loss-capable through Lido slashing.
-contract WstEthVault is PrincipalVault {
+/// @notice Holds an 18-decimal LST. A fixed economic exchange-rate feed defines principal units (ETH wei for cbETH).
+contract RateVault is PrincipalVault {
     using SafeERC20 for IERC20;
 
-    constructor(IWstETH wstEth, address recipient, uint256 cushion_, uint256 cap)
-        PrincipalVault(wstEth, "InferNear stETH Principal", "instETH", recipient, cushion_, cap)
-    {}
+    IExchangeRateFeed internal immutable exchangeRateFeed;
+    uint256 internal immutable feedScale;
+
+    error InvalidRate();
+
+    constructor(IERC20 asset_, IExchangeRateFeed feed_, address recipient, uint256 cushion_, uint256 cap)
+        PrincipalVault(asset_, "InferNear ETH Principal", "inETH", recipient, cushion_, cap)
+    {
+        exchangeRateFeed = feed_;
+        feedScale = 10 ** uint256(feed_.decimals());
+    }
+
+    function _rate() internal view returns (uint256 rate) {
+        (, int256 answer,,,) = exchangeRateFeed.latestRoundData();
+        if (answer <= 0) revert InvalidRate();
+        rate = Math.mulDiv(uint256(answer), 1e18, feedScale);
+        // A positive feed answer can truncate to zero; zero cannot be a conversion denominator.
+        if (rate == 0) revert InvalidRate();
+    }
 
     function yieldToken() public view override returns (address) {
         return asset();
     }
 
     function _unitsFor(uint256 assets, Math.Rounding rounding) internal view override returns (uint256) {
-        return Math.mulDiv(assets, IWstETH(asset()).stEthPerToken(), 1e18, rounding);
+        return Math.mulDiv(assets, _rate(), 1e18, rounding);
     }
 
     function _assetsFor(uint256 units, Math.Rounding rounding) internal view override returns (uint256) {
-        return Math.mulDiv(units, 1e18, IWstETH(asset()).stEthPerToken(), rounding);
+        return Math.mulDiv(units, 1e18, _rate(), rounding);
     }
 
     function _heldAssets() internal view override returns (uint256) {
@@ -35,7 +51,7 @@ contract WstEthVault is PrincipalVault {
         return _saturatingSub(_heldAssets(), _principalAssets() + cushion);
     }
 
-    // Holding wstETH itself earns the changing stETH conversion rate.
+    // Holding the LST itself earns the changing economic conversion rate.
     function _invest(uint256) internal pure override {}
 
     function _divest(uint256 assets, address to) internal override {

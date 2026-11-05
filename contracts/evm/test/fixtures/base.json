@@ -1,0 +1,7 @@
+{
+  "blockNumber": 53524164,
+  "rateAsset": "0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22",
+  "rateFeed": "0x868a501e68f3d1e89cfc0d22f6b22e8dabce5f04",
+  "pendleMarket": "0x6c23193128f7907a3570234a6f6f1c2932f1e84b",
+  "pendleOracle": "0x5542be50420e88dd7d5b4a3d488fa6ed82f6dac2"
+}

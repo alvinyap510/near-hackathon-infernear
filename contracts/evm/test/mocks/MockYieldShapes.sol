@@ -32,11 +32,27 @@ contract MockShapeToken is ERC20 {
     }
 }
 
-contract MockWstETH is MockShapeToken {
-    uint256 public stEthPerToken = 1e18;
+contract MockExchangeRateFeed {
+    uint8 public immutable decimals;
+    int256 public answer;
+    uint256 public updatedAt;
 
-    function setRate(uint256 value) external {
-        stEthPerToken = value;
+    constructor(uint8 decimals_, int256 answer_) {
+        decimals = decimals_;
+        answer = answer_;
+        updatedAt = block.timestamp;
+    }
+
+    function setAnswer(int256 value) external {
+        answer = value;
+    }
+
+    function setUpdatedAt(uint256 value) external {
+        updatedAt = value;
+    }
+
+    function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80) {
+        return (1, answer, updatedAt, updatedAt, 1);
     }
 }
 

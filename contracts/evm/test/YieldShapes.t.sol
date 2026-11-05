@@ -7,16 +7,17 @@ import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.so
 import {PrincipalVault} from "../src/PrincipalVault.sol";
 import {PendlePtVault} from "../src/PendlePtVault.sol";
 import {StakingRewardsVault} from "../src/StakingRewardsVault.sol";
-import {IWstETH} from "../src/interfaces/IYieldShapes.sol";
+import {RateVault} from "../src/RateVault.sol";
+import {IExchangeRateFeed} from "../src/interfaces/IYieldShapes.sol";
 import {
     MockShapeToken,
-    MockWstETH,
+    MockExchangeRateFeed,
     MockPT,
     MockPendleMarket,
     MockPendleOracle,
     MockStakingRewards
 } from "./mocks/MockYieldShapes.sol";
-import {WstEthHarness, PendlePtHarness, StakingRewardsHarness} from "./mocks/ShapeHarnesses.sol";
+import {RateHarness, PendlePtHarness, StakingRewardsHarness} from "./mocks/ShapeHarnesses.sol";
 
 abstract contract ShapeTestBase is Test {
     address internal alice = makeAddr("shape alice");
@@ -85,14 +86,15 @@ abstract contract ShapeTestBase is Test {
     }
 }
 
-contract WstEthVaultTest is ShapeTestBase {
-    MockWstETH internal token;
-    WstEthHarness internal vault;
+contract RateVaultTest is ShapeTestBase {
+    MockShapeToken internal token;
+    MockExchangeRateFeed internal feed;
+    RateHarness internal vault;
 
     function setUp() public {
-        token = new MockWstETH();
-        token.setRate(1.2e18);
-        vault = new WstEthHarness(IWstETH(address(token)), treasury, CUSHION, CAP);
+        token = new MockShapeToken();
+        feed = new MockExchangeRateFeed(18, 1.2e18);
+        vault = new RateHarness(token, IExchangeRateFeed(address(feed)), treasury, CUSHION, CAP);
         fund(token, vault);
     }
 
@@ -105,8 +107,46 @@ contract WstEthVaultTest is ShapeTestBase {
         assertCapAdmissionErrors(vault);
     }
 
-    function testStEthUnitsAndRounding() public {
-        token.setRate(1.5e18);
+    function testEightDecimalFeedNormalizesToWad() public {
+        MockExchangeRateFeed otherFeed = new MockExchangeRateFeed(8, 123_456_789);
+        RateHarness other = new RateHarness(token, IExchangeRateFeed(address(otherFeed)), treasury, CUSHION, CAP);
+        assertEq(other.rate(), 1_234_567_890_000_000_000);
+        assertEq(other.units(1e18, Math.Rounding.Floor), other.rate());
+    }
+
+    function testHigherPrecisionFeedNormalizesDown() public {
+        MockExchangeRateFeed otherFeed = new MockExchangeRateFeed(20, 123_456_789_012_345_678_901);
+        RateHarness other = new RateHarness(token, IExchangeRateFeed(address(otherFeed)), treasury, CUSHION, CAP);
+        assertEq(other.rate(), 1_234_567_890_123_456_789);
+    }
+
+    function testNonPositiveFeedAnswerReverts() public {
+        feed.setAnswer(0);
+        vm.expectRevert(RateVault.InvalidRate.selector);
+        vault.rate();
+        feed.setAnswer(-1);
+        vm.expectRevert(RateVault.InvalidRate.selector);
+        vm.prank(alice);
+        vault.deposit(1e18, alice);
+        assertEq(vault.totalSupply(), 0);
+    }
+
+    function testPositiveAnswerThatNormalizesToZeroReverts() public {
+        MockExchangeRateFeed otherFeed = new MockExchangeRateFeed(20, 1);
+        RateHarness other = new RateHarness(token, IExchangeRateFeed(address(otherFeed)), treasury, CUSHION, CAP);
+        vm.expectRevert(RateVault.InvalidRate.selector);
+        other.rate();
+    }
+
+    function testRateHasNoFreshnessGate() public {
+        feed.setUpdatedAt(0);
+        vm.warp(block.timestamp + 365 days);
+        assertEq(vault.rate(), 1.2e18);
+        assertEq(depositAlice(100e18), 120e18);
+    }
+
+    function testEthUnitsAndRounding() public {
+        feed.setAnswer(1.5e18);
         assertEq(vault.units(1, Math.Rounding.Floor), 1);
         assertEq(vault.units(1, Math.Rounding.Ceil), 2);
         assertEq(vault.assets(1, Math.Rounding.Floor), 0);
@@ -118,8 +158,8 @@ contract WstEthVaultTest is ShapeTestBase {
         assertGe(vault.held(), vault.principal());
     }
 
-    function testMintAndWithdrawRoundUpAtNativeRate() public {
-        token.setRate(1.5e18);
+    function testMintAndWithdrawRoundUpAtFeedRate() public {
+        feed.setAnswer(1.5e18);
         vm.prank(alice);
         assertEq(vault.mint(10, alice), 7);
         vm.prank(alice);
@@ -129,9 +169,9 @@ contract WstEthVaultTest is ShapeTestBase {
         assertGe(vault.held(), vault.principal());
     }
 
-    function testAppreciationCreditsWstEthWithoutHolderMovement() public {
+    function testRisingRateCreditsAssetWithoutHolderMovement() public {
         depositAlice(100e18);
-        token.setRate(1.5e18);
+        feed.setAnswer(1.5e18);
         vault.skim();
         assertApproxEqAbs(vault.yieldCredited(alice), 20e18, 1);
         assertEq(vault.paidTotal(), 20e18);
@@ -142,7 +182,7 @@ contract WstEthVaultTest is ShapeTestBase {
 
     function testAttributeBeforeNewDepositAndPayAfterDeposit() public {
         depositAlice(100e18);
-        token.setRate(1.5e18);
+        feed.setAnswer(1.5e18);
         vm.recordLogs();
         vm.prank(bob);
         assertEq(vault.deposit(100e18, bob), 150e18);
@@ -156,7 +196,7 @@ contract WstEthVaultTest is ShapeTestBase {
 
     function testAttributeBeforeTransferAndPayAfterTransfer() public {
         depositAlice(100e18);
-        token.setRate(1.5e18);
+        feed.setAnswer(1.5e18);
         vm.recordLogs();
         vm.prank(alice);
         assertTrue(vault.transfer(bob, 30e18));
@@ -170,7 +210,7 @@ contract WstEthVaultTest is ShapeTestBase {
 
     function testPayoutFailureCannotBlockPrincipalRedeem() public {
         uint256 shares = depositAlice(100e18);
-        token.setRate(1.5e18);
+        feed.setAnswer(1.5e18);
         token.setPayoutFailure(treasury, true);
         vm.expectEmit(false, false, false, true);
         emit PrincipalVault.PayFailed(abi.encodeWithSelector(MockShapeToken.MockPayoutFailed.selector));
@@ -185,9 +225,9 @@ contract WstEthVaultTest is ShapeTestBase {
         assertEq(vault.paidTotal(), 20e18);
     }
 
-    function testSlashingUsesCoverageAndDisablesAdmission() public {
+    function testFallingRateUsesCoverageAndDisablesAdmission() public {
         uint256 shares = depositAlice(100e18);
-        token.setRate(1e18);
+        feed.setAnswer(1e18);
         assertLt(vault.held(), vault.principal());
         assertEq(vault.maxDeposit(bob), 0);
         assertEq(vault.maxMint(bob), 0);
@@ -204,10 +244,10 @@ contract WstEthVaultTest is ShapeTestBase {
     function testFuzzConservationAndNoPrincipalPayment(uint96 rawAmount, uint64 rawRate, uint64 growth) public {
         uint256 amount = bound(rawAmount, 10_000, 1e24);
         uint256 initial = bound(rawRate, 1e18, 3e18);
-        token.setRate(initial);
+        feed.setAnswer(int256(initial));
         uint256 shares = depositAlice(amount);
         assertGe(vault.held(), vault.principal());
-        token.setRate(initial + bound(growth, 0, 2e18));
+        feed.setAnswer(int256(initial + bound(growth, 0, 2e18)));
         vault.skim();
         assertGe(vault.held(), vault.principal());
         vm.prank(alice);

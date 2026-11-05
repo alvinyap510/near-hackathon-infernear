@@ -3,15 +3,19 @@ pragma solidity ^0.8.30;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {WstEthVault} from "../../src/WstEthVault.sol";
+import {RateVault} from "../../src/RateVault.sol";
 import {PendlePtVault} from "../../src/PendlePtVault.sol";
 import {StakingRewardsVault} from "../../src/StakingRewardsVault.sol";
-import {IWstETH, IPendleMarket, IPendleOracle, IStakingRewards} from "../../src/interfaces/IYieldShapes.sol";
+import {IExchangeRateFeed, IPendleMarket, IPendleOracle, IStakingRewards} from "../../src/interfaces/IYieldShapes.sol";
 
-contract WstEthHarness is WstEthVault {
-    constructor(IWstETH token, address recipient, uint256 budget, uint256 cap)
-        WstEthVault(token, recipient, budget, cap)
+contract RateHarness is RateVault {
+    constructor(IERC20 token, IExchangeRateFeed feed, address recipient, uint256 budget, uint256 cap)
+        RateVault(token, feed, recipient, budget, cap)
     {}
+
+    function rate() external view returns (uint256) {
+        return _rate();
+    }
 
     function held() external view returns (uint256) {
         return _heldAssets();
