@@ -214,8 +214,13 @@ impl RheaUsdcVault {
         for i in 0..self.cycle.exits as usize {
             let id = self.cycle.exit_ids[i];
             let out = self.cycle.exit_outs[i];
-            if out > self.totals.idle || (out > 0 && slots <= return_slot) {
+            if out > 0 && slots <= return_slot {
                 break;
+            }
+            // An oversized claim cannot hold another owner's liquid principal.
+            // Keep its node in place and consider later claims within this scan.
+            if out > self.totals.idle {
+                continue;
             }
             let node = self.outgoing.nodes.get(&id).expect("planned exit node");
             let mut user = self.users.get(&node.user).expect("allocated user");

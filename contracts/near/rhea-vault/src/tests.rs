@@ -812,24 +812,42 @@ fn cr1_2_repeated_cycles_progress_both_queues_in_fifo_order() {
     assert_eq!(m.treasury, 0);
 }
 
+// CR1-R2-1 / Flex1-R2-2: B can use idle cash without A replacing its claim.
 #[test]
-fn cr1_2_unfunded_head_exit_is_not_overtaken() {
+fn cr1_r2_1_unfunded_head_does_not_block_another_owner_with_zero_liquidity() {
     let mut m = Model::new(0, 1000);
-    m.accept(&user(1), 900);
-    m.accept(&user(2), 100);
+    let a = user(1);
+    let b = user(2);
+    m.accept(&a, 900);
+    m.accept(&b, 100);
     m.cycle();
-    m.claim(&user(1), 900);
-    m.claim(&user(2), 100);
-    let order = m.vault.outgoing.first(10);
+    m.claim(&a, 900);
+    let head = m.vault.outgoing.first(10)[0];
     m.liquidity = 500;
     m.cycle();
-    assert_eq!(m.vault.outgoing.first(10), order);
     assert!(m.intents.is_empty());
     assert_eq!(m.vault.idle(), U128(500));
+    assert_eq!(m.supplied, 500);
+
+    // No more Rhea liquidity arrives. B cannot edit or replace A's authorization.
+    m.liquidity = 0;
+    m.claim(&b, 100);
     m.cycle();
-    assert_eq!(m.intents[&user(1)], 900);
-    assert_eq!(m.intents[&user(2)], 100);
-    assert!(m.vault.outgoing.first(10).is_empty());
+    assert_eq!(m.intents[&b], 100);
+    assert!(!m.intents.contains_key(&a));
+    assert_eq!(m.vault.position(b).principal, U128(0));
+    assert_eq!(m.vault.position(a.clone()).principal, U128(900));
+    assert_eq!(m.vault.position(a.clone()).pending_out, Some(U128(900)));
+    assert_eq!(m.vault.outgoing.first(10), vec![head]);
+    assert_eq!(m.vault.outgoing.nodes.get(&head).unwrap().user, a);
+    assert_eq!(m.vault.idle(), U128(400));
+    assert_eq!(m.supplied, 500);
+    m.cycle();
+    assert_eq!(m.intents[&user(2)], 100); // A retry does not repay B.
+    assert_eq!(m.vault.outgoing.first(10), vec![head]);
+    assert_eq!(m.vault.idle(), U128(400));
+    m.cash_invariant();
+    scaled_invariant(&m);
 }
 
 #[test]

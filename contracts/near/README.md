@@ -17,7 +17,7 @@ cargo fmt --all -- --check
 cargo test --offline --locked -p infernear-connector debit_storage_measurement -- --nocapture
 ```
 
-Fetch requires network once. The 14 connector tests and 29 vault tests then run offline against NEAR's mocked runtime, including generated conservation sequences. The same verification block also runs the sandbox gas test; its first run may download near-sandbox 2.14.0. The default workspace test alone excludes that feature-gated test. Local mock prerequisites are detailed in the vault README. Release outputs are `target/wasm32-unknown-unknown/release/infernear_connector.wasm` (**352,481 bytes**) and `infernear_rhea_vault.wasm` (**421,522 bytes**) with this toolchain. These are plain Cargo release builds, without cargo-near's additional optimization.
+Fetch requires network once. The 14 connector tests and 29 vault tests then run offline against NEAR's mocked runtime, including generated conservation sequences. The same verification block also runs the sandbox gas test; its first run may download near-sandbox 2.14.0. The default workspace test alone excludes that feature-gated test. Local mock prerequisites are detailed in the vault README. Release outputs are `target/wasm32-unknown-unknown/release/infernear_connector.wasm` (**352,481 bytes**) and `infernear_rhea_vault.wasm` (**421,592 bytes**) with this toolchain. These are plain Cargo release builds, without cargo-near's additional optimization.
 
 ## Connector
 
