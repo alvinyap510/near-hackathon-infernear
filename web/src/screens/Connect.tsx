@@ -81,7 +81,7 @@ export function Connect({ onConnected }: { onConnected: (a: Address) => void }) 
         <article className="pillar rise d3">
           <span className="pillar-n">i.</span>
           <h2>Principal stays yours</h2>
-          <p>An ERC-4626 vault with no owner, admin or upgrade key. Only you can redeem your shares.</p>
+          <p>An ERC-4626 vault with no owner, admin or upgrade key. Only you can redeem your shares. A loss in the underlying protocol is shared by depositors pro-rata; it is never covered by InferNear.</p>
         </article>
         <article className="pillar rise d4">
           <span className="pillar-n">ii.</span>

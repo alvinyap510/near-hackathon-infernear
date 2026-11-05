@@ -217,7 +217,7 @@ function VaultForm({ address, overview, onChanged, onBridge }: { address: Addres
       </div>
       <p className="card-sub">
         {mode === 'deposit'
-          ? 'Your USDC earns Aave yield. One share is one USDC of principal, and only you can redeem it.'
+          ? 'Your USDC earns Aave yield. One share is one USDC of principal, and only you can redeem it. An Aave loss reduces it pro-rata.'
           : 'Redeem shares for your USDC principal. Yield already credited stays as credits.'}
       </p>
 
