@@ -4,6 +4,7 @@ import { setImmediate as turn } from 'node:timers/promises';
 import { Auth } from '../src/gateway/auth.ts';
 import { Gateway } from '../src/gateway/ledger.ts';
 import { createRelayServer } from '../src/gateway/server.ts';
+import { SignedRequests, type SignedOperations } from '../src/gateway/signed.ts';
 import { Upstream } from '../src/gateway/upstream.ts';
 import { InsufficientCredit, type Account, type Connector, type Receipt } from '../src/types.ts';
 
@@ -16,7 +17,7 @@ export class FakeConnector implements Connector {
   accounts = new Map<string, Account>();
   amounts = new Map<string, bigint>();
   receipts = new Map<string, Receipt>();
-  vaults = new Map<string, { paid: bigint; posted: Map<string, bigint> }>();
+  vaults = new Map<string, { paid: bigint; posted: Map<string, bigint>; remainders: Map<string, bigint> }>();
   accountOverride?: Account;
   beforeFailures = 0;
   landThenThrow = false;
@@ -24,6 +25,7 @@ export class FakeConnector implements Connector {
   debitCalls = 0;
   bumpWait?: Promise<void>;
   postCalls = 0;
+  posts: { vault: string; paid: bigint; rate: bigint; sourceBlock: bigint; entries: [string, bigint][] }[] = [];
   seed(user = USER, credit = 1_000_000n) { this.accounts.set(user, { credited: credit, spent: 0n, available: credit, key_epoch: 0 }); }
   async account(user: string): Promise<Account> { return { ...(this.accountOverride ?? this.accounts.get(user) ?? { credited: 0n, spent: 0n, available: 0n, key_epoch: 0 }) }; }
   async debitedAmount(id: string) { if (this.hiddenDebits > 0) { this.hiddenDebits--; return null; } return this.amounts.get(id) ?? null; }
@@ -42,10 +44,11 @@ export class FakeConnector implements Connector {
     if (!this.accounts.has(user)) this.seed(user, 0n);
     return { key_epoch: ++this.accounts.get(user)!.key_epoch, tx_hash: 'fixture-near-transaction' };
   }
-  async postCredits(vault: string, paid: bigint, entries: [string, bigint][]) {
+  async postCredits(vault: string, paid: bigint, rate: bigint, sourceBlock: bigint, entries: [string, bigint][]) {
     this.postCalls++;
-    const previous = this.vaults.get(vault) ?? { paid: 0n, posted: new Map<string, bigint>() };
-    const next = { paid: previous.paid > paid ? previous.paid : paid, posted: new Map(previous.posted) };
+    this.posts.push({ vault, paid, rate, sourceBlock, entries });
+    const previous = this.vaults.get(vault) ?? { paid: 0n, posted: new Map<string, bigint>(), remainders: new Map<string, bigint>() };
+    const next = { paid: previous.paid > paid ? previous.paid : paid, posted: new Map(previous.posted), remainders: new Map(previous.remainders) };
     const deltas = new Map<string, bigint>();
     for (const [user, cumulative] of entries) {
       const prior = next.posted.get(user) ?? 0n;
@@ -56,14 +59,16 @@ export class FakeConnector implements Connector {
     if ([...next.posted.values()].reduce((a, b) => a + b, 0n) > next.paid) throw new Error('posting exceeds paid_cum');
     for (const [user, delta] of deltas) {
       if (!this.accounts.has(user)) this.seed(user, 0n);
-      const account = this.accounts.get(user)!; account.credited += delta; account.available += delta;
+      const account = this.accounts.get(user)!; const x = (next.remainders.get(user) ?? 0n) + delta * rate;
+      const credit = x / (10n ** 18n); next.remainders.set(user, x % (10n ** 18n));
+      account.credited += credit; account.available += credit;
     }
     this.vaults.set(vault, next);
   }
   async storageBalance() { return { amount: '1000000000000000000000000', storage_usage: 1000 }; }
 }
 
-export async function harness(options: { now?: () => number; seed?: boolean; deadlineMs?: number } = {}) {
+export async function harness(options: { now?: () => number; seed?: boolean; deadlineMs?: number; signedOperations?: SignedOperations } = {}) {
   const connector = new FakeConnector();
   if (options.seed !== false) connector.seed();
   const events: { event: string; details: Record<string, unknown> }[] = [];
@@ -100,7 +105,7 @@ export async function harness(options: { now?: () => number; seed?: boolean; dea
   const publicUrl = 'http://relay.test';
   const auth = new Auth('fixture-test-secret', publicUrl, 8453, options.now);
   const gateway = new Gateway({ auth, connector, upstream: new Upstream(`http://127.0.0.1:${upstreamPort}/v1`, 'fixture-upstream-key', options.now, options.deadlineMs), maxTokens: 100, report: (event, details) => events.push({ event, details }) });
-  const server = createRelayServer(gateway, { publicUrl, now: options.now, report: (event, details) => events.push({ event, details }), allowedOrigin: 'https://dashboard.test' });
+  const server = createRelayServer(gateway, { publicUrl, now: options.now, report: (event, details) => events.push({ event, details }), allowedOrigin: 'https://dashboard.test', signedRequests: options.signedOperations ? new SignedRequests(options.signedOperations, { vault: 'vault.near', intents: 'intents.near', chainId: 8453 }, options.now) : undefined });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}`;
   const key = auth.issue(USER, 0).key;

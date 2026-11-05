@@ -3,7 +3,7 @@ import { harness, USER, VAULT, fixture, settle } from '../test/harness.ts';
 
 const h = await harness({ seed: false });
 try {
-  const keeper = new Keeper([{ id: VAULT, async skim() {}, async snapshot() { return { block: 42n, unpaid: 0n, paid: 1000n, entries: [[USER, 1000n]] }; } }],
+  const keeper = new Keeper([{ id: VAULT, kind: 'aave', async skim() {}, async snapshot() { return { rate: 10n ** 18n, block: 42n, unpaid: 0n, paid: 1000n, entries: [[USER, 1000n]] }; } }],
     h.connector, { async tick() { return { dry: true, amount: '1000', status: 'fixture_quote_below_minimum' }; } },
     (event, details) => console.log(JSON.stringify({ fixture: true, event, ...details })));
   await keeper.tick();

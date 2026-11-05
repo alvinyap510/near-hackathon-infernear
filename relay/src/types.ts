@@ -10,7 +10,7 @@ export interface Connector {
   debitedAmount(id: string): Promise<bigint | null>;
   debit(user: string, amount: bigint, receipt: Receipt): Promise<void>;
   bumpKeyEpoch(user: string): Promise<{ key_epoch: number; tx_hash: string }>;
-  postCredits(vault: string, paid: bigint, entries: [string, bigint][]): Promise<void>;
+  postCredits(vault: string, paid: bigint, rate: bigint, sourceBlock: bigint, entries: [string, bigint][]): Promise<void>;
   storageBalance(): Promise<{ amount: string; storage_usage: number }>;
 }
 export type Report = (event: string, details: Record<string, unknown>) => void;
