@@ -1,0 +1,10 @@
+# API_HOST and APP_HOST come from a systemd drop-in (see setup.sh). Caddy fetches TLS certificates itself.
+{$API_HOST} {
+	reverse_proxy 127.0.0.1:8787
+}
+
+{$APP_HOST} {
+	root * /opt/infernear/web/dist
+	try_files {path} /index.html
+	file_server
+}
