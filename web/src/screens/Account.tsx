@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from 'react';
-import { ErrorNote, Source, Spinner, errorText } from '../components/ui.tsx';
-import { config, shown } from '../config.ts';
-import { data, type Address, type Overview } from '../data/index.ts';
-import { formatUsd, parseUsdc, shortHex, USDC_DECIMALS } from '../data/money.ts';
+import { ChainBadge, ErrorNote, LockIcon, Source, Spinner, errorText, plainAmount, tokenAmount } from '../components/ui.tsx';
+import { data, type Address, type Overview, type Token, type VaultAccount, type VaultKind } from '../data/index.ts';
+import { formatUsd, parseAmount, shortHex } from '../data/money.ts';
+import { RheaPanel } from './Rhea.tsx';
 
 /** Dollars to the cent, with the next two digits set lighter: yield moves in fractions of a cent. */
 function Amount({ micro, fine = false }: { micro: bigint; fine?: boolean }) {
@@ -17,6 +17,14 @@ function Amount({ micro, fine = false }: { micro: bigint; fine?: boolean }) {
 
 const pct = (part: bigint, whole: bigint) => (whole === 0n ? 0 : Number((part * 10_000n) / whole) / 100);
 
+/** What each strategy is, in plain words. The loss note itself comes with the vault's data. */
+const ABOUT: Record<VaultKind, string> = {
+  aave: 'Lends USDC on Aave v3 on Base. Interest grows the position; only the part above your principal becomes credits.',
+  rate: 'cbETH is Coinbase’s liquid-staking ETH. Its value in ETH rises as staking rewards accrue, so principal is counted in ETH.',
+  pendle: 'PT-deJAAA is a Pendle principal token on a Centrifuge AAA-rated CLO note. It accretes towards its USDC value at expiry on 26 Nov 2026.',
+  rhea: 'Lends USDC on Rhea on NEAR, held by a keyless InferNear contract. You deposit from Base through NEAR Intents; no NEAR account needed.',
+};
+
 export function Account({
   address,
   overview,
@@ -28,44 +36,36 @@ export function Account({
   onChanged: () => Promise<void>;
   onBridge: () => void;
 }) {
-  const { vault, credits } = overview;
-  const waiting = vault.yieldCredited > credits.credited ? vault.yieldCredited - credits.credited : 0n;
+  const { vaults, credits } = overview;
+  const [selectedId, setSelectedId] = useState(vaults[0]?.id);
+  const selected = vaults.find((v) => v.id === selectedId) ?? vaults[0];
 
   return (
     <div className="screen">
       <header className="page-head rise">
         <div>
           <p className="eyebrow">Account</p>
-          <h1 className="title">Your vault and credits</h1>
+          <h1 className="title">Your vaults and credits</h1>
         </div>
         <p className="user-id">
           <span className="k">User id</span> <code>{overview.user}</code>
         </p>
       </header>
 
-      <section className="ledger rise d1" aria-label="Balances">
-        <div className="figure principal">
-          <span className="figure-k">
-            <LockIcon /> Principal
-          </span>
-          <span className="figure-v">
-            <Amount micro={vault.principal} />
-          </span>
-          <span className="figure-note">Yours. Redeem it any time; it is never spent.</span>
-        </div>
-        <div className="figure">
-          <span className="figure-k">Yield credited</span>
-          <span className="figure-v">
-            <Amount micro={vault.yieldCredited} fine />
-          </span>
-          <span className="figure-note">Attributed to you by the vault, all time</span>
-        </div>
+      <section className="ledger rise d1" aria-label="Credits">
         <div className="figure accent">
           <span className="figure-k">Credits available</span>
           <span className="figure-v">
             <Amount micro={credits.available} fine />
           </span>
-          <span className="figure-note">On NEAR, ready to spend on API calls</span>
+          <span className="figure-note">One balance for every vault, on NEAR</span>
+        </div>
+        <div className="figure">
+          <span className="figure-k">Credited, all time</span>
+          <span className="figure-v">
+            <Amount micro={credits.credited} fine />
+          </span>
+          <span className="figure-note">Each vault’s yield, priced when it was paid</span>
         </div>
         <div className="figure">
           <span className="figure-k">Spent</span>
@@ -76,17 +76,10 @@ export function Account({
         </div>
       </section>
 
-      <section className="yieldbar rise d2" aria-label="Where your yield is">
-        <div className="yieldbar-head">
-          <span>
-            Your yield, <strong>{formatUsd(vault.yieldCredited, 4)}</strong>
-          </span>
-          <span className="muted">Principal is never part of this bar</span>
-        </div>
-        <div className="bar" role="img" aria-label={`Spent ${formatUsd(credits.spent, 4)}, available ${formatUsd(credits.available, 4)}, waiting to post ${formatUsd(waiting, 4)}`}>
-          <span className="seg spent" style={{ width: `${pct(credits.spent, vault.yieldCredited)}%` }} />
-          <span className="seg avail" style={{ width: `${pct(credits.available, vault.yieldCredited)}%` }} />
-          <span className="seg wait" style={{ width: `${pct(waiting, vault.yieldCredited)}%` }} />
+      <section className="yieldbar rise d2" aria-label="Where your credits went">
+        <div className="bar" role="img" aria-label={`Spent ${formatUsd(credits.spent, 4)} of ${formatUsd(credits.credited, 4)} credited`}>
+          <span className="seg spent" style={{ width: `${pct(credits.spent, credits.credited)}%` }} />
+          <span className="seg avail" style={{ width: `${pct(credits.available, credits.credited)}%` }} />
         </div>
         <ul className="legend">
           <li>
@@ -95,21 +88,109 @@ export function Account({
           <li>
             <i className="sw avail" /> Available {formatUsd(credits.available, 4)}
           </li>
-          <li>
-            <i className="sw wait" /> Waiting for the next post to NEAR {formatUsd(waiting, 4)}
-          </li>
+          <li className="muted">Principal is never part of this bar</li>
         </ul>
       </section>
 
-      <div className="split">
-        <VaultForm address={address} overview={overview} onChanged={onChanged} onBridge={onBridge} />
+      <section className="picker-wrap rise d3" aria-labelledby="picker-h">
+        <h2 id="picker-h" className="mini-h">
+          Vaults · principal stays yours in each
+        </h2>
+        <div className="picker" role="radiogroup" aria-label="Vault">
+          {vaults.map((v) => (
+            <VaultTicket key={v.id} vault={v} selected={v.id === selected?.id} onSelect={() => setSelectedId(v.id)} />
+          ))}
+        </div>
+      </section>
 
-        <section className="card sources rise d4" aria-labelledby="sources-h">
-          <h2 id="sources-h" className="card-title">
-            Where these numbers come from
-          </h2>
-          <p className="card-sub">Every figure is a public read. Nothing here comes from an InferNear database; there isn’t one.</p>
-          <dl className="source-list">
+      {selected && (
+        <div className="split rise d4" key={selected.id}>
+          {selected.kind === 'rhea' ? (
+            <RheaPanel address={address} vault={selected} onChanged={onChanged} />
+          ) : (
+            <VaultForm address={address} vault={selected} onChanged={onChanged} onBridge={onBridge} />
+          )}
+          <AboutVault vault={selected} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VaultTicket({ vault, selected, onSelect }: { vault: VaultAccount; selected: boolean; onSelect: () => void }) {
+  const { position, asset, yieldToken } = vault;
+  const r = position.rhea;
+  const activity = r ? (r.pendingOut !== null || r.intentsBalance > 0n ? 'Withdrawal in progress' : r.pendingIn > 0n ? 'Deposit queued' : null) : null;
+  return (
+    <button type="button" role="radio" aria-checked={selected} className={`ticket ${selected ? 'on' : ''}`} onClick={onSelect}>
+      <span className="ticket-badges">
+        <ChainBadge name={vault.chain.name} />
+        <span className="badge asset">{asset.symbol}</span>
+      </span>
+      <span className="ticket-name">{vault.name}</span>
+      <span className="ticket-principal">
+        <LockIcon /> {tokenAmount(position.principal, asset)}
+      </span>
+      <span className="ticket-yield">
+        + {tokenAmount(position.yieldCredited, yieldToken, true)} <span className="muted">yield credited</span>
+      </span>
+      {activity && <span className="ticket-activity">{activity}</span>}
+    </button>
+  );
+}
+
+function AboutVault({ vault }: { vault: VaultAccount }) {
+  const isRhea = vault.kind === 'rhea';
+  return (
+    <section className="card sources" aria-labelledby="about-h">
+      <div className="card-row">
+        <h2 id="about-h" className="card-title">
+          About this vault
+        </h2>
+        <span className="ticket-badges">
+          <ChainBadge name={vault.chain.name} />
+          <span className="badge asset">{vault.asset.symbol}</span>
+        </span>
+      </div>
+      <p className="card-sub">{ABOUT[vault.kind]}</p>
+      <p className="loss-note">
+        <span className="loss-k">If the strategy loses</span>
+        {vault.lossNote}
+      </p>
+      <dl className="kv">
+        <div>
+          <dt>Deposit</dt>
+          <dd>{vault.asset.symbol}</dd>
+        </div>
+        <div>
+          <dt>Units</dt>
+          <dd>
+            <code>{vault.unitsLabel}</code>
+          </dd>
+        </div>
+        <div>
+          <dt>Yield paid in</dt>
+          <dd>{vault.yieldToken.symbol}</dd>
+        </div>
+        <div>
+          <dt>Vault</dt>
+          <dd>
+            <code>{vault.id}</code>
+          </dd>
+        </div>
+      </dl>
+      <h3 className="mini-h">Every figure is a public read</h3>
+      <dl className="source-list">
+        {isRhea ? (
+          <div>
+            <dt>Principal, yield</dt>
+            <dd>
+              <Source>NEAR</Source>
+              <code>vault.position(user id)</code>
+            </dd>
+          </div>
+        ) : (
+          <>
             <div>
               <dt>Principal</dt>
               <dd>
@@ -124,56 +205,44 @@ export function Account({
                 <code>vault.yieldCredited(you)</code>
               </dd>
             </div>
-            <div>
-              <dt>Credits, spent</dt>
-              <dd>
-                <Source>NEAR</Source>
-                <code>connector.account(user id)</code>
-              </dd>
-            </div>
-          </dl>
-          <dl className="kv">
-            <div>
-              <dt>Vault</dt>
-              <dd>
-                <code>{shown(config.vaultAddress, 'VITE_VAULT_ADDRESS')}</code>
-              </dd>
-            </div>
-            <div>
-              <dt>Connector</dt>
-              <dd>
-                <code>{shown(config.connectorAccount, 'VITE_NEAR_CONNECTOR_ACCOUNT')}</code>
-              </dd>
-            </div>
-          </dl>
-          <p className="fineprint">
-            Before any balance changes, the vault records each holder’s yield; after the change it pays that yield to InferNear. The keeper then posts each holder’s yield credited
-            to NEAR, and the connector refuses to credit more than the vault has actually paid.
-          </p>
-        </section>
-      </div>
-    </div>
+          </>
+        )}
+        <div>
+          <dt>Credits, spent</dt>
+          <dd>
+            <Source>NEAR</Source>
+            <code>connector.account(user id)</code>
+          </dd>
+        </div>
+      </dl>
+      <p className="fineprint">
+        The vault pays yield above principal to InferNear. The keeper posts each holder’s share to NEAR, priced once at the rate in
+        that post, and the connector never credits more than the vault actually paid.
+      </p>
+    </section>
   );
 }
 
-function VaultForm({ address, overview, onChanged, onBridge }: { address: Address; overview: Overview; onChanged: () => Promise<void>; onBridge: () => void }) {
+function VaultForm({ address, vault, onChanged, onBridge }: { address: Address; vault: VaultAccount; onChanged: () => Promise<void>; onBridge: () => void }) {
   const [mode, setMode] = useState<'deposit' | 'redeem'>('deposit');
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ mode: string; hash: string; amount: bigint } | null>(null);
 
-  const max = mode === 'deposit' ? overview.vault.walletUsdc : overview.vault.shares;
-  const amount = parseUsdc(input);
+  const { asset, position } = vault;
+  const shareToken: Token = { ...asset, symbol: 'shares' };
+  const max = mode === 'deposit' ? position.walletBalance : position.shares;
+  const amount = parseAmount(input, asset.decimals);
   const invalid = input !== '' && amount === null;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (amount === null) return setError('Enter a USDC amount, up to 6 decimals.');
+    if (amount === null) return setError(`Enter a ${asset.symbol} amount, up to ${asset.decimals} decimals.`);
     setBusy(true);
     setError(null);
     try {
-      const tx = mode === 'deposit' ? await data.deposit(address, amount) : await data.redeem(address, amount);
+      const tx = mode === 'deposit' ? await data.deposit(address, amount, vault.id) : await data.redeem(address, amount, vault.id);
       setDone({ mode, hash: tx.txHash, amount });
       setInput('');
       await onChanged();
@@ -184,17 +253,22 @@ function VaultForm({ address, overview, onChanged, onBridge }: { address: Addres
     }
   };
 
-  const toMax = () => {
-    const s = (max / 10n ** BigInt(USDC_DECIMALS)).toString();
-    const frac = (max % 10n ** BigInt(USDC_DECIMALS)).toString().padStart(USDC_DECIMALS, '0').replace(/0+$/, '');
-    setInput(frac ? `${s}.${frac}` : s);
-  };
+  const preview =
+    amount === null || amount === 0n
+      ? ' '
+      : mode === 'deposit'
+        ? amount > position.allowance
+          ? `Your wallet asks you to approve ${tokenAmount(amount, asset)} first, then deposit.`
+          : `Deposits ${tokenAmount(amount, asset)} in one transaction.`
+        : position.shares > 0n
+          ? `You receive about ${tokenAmount((amount * position.principal) / position.shares, asset)} at ${shortHex(address)}.`
+          : ' ';
 
   return (
-    <section className="card vault-form rise d3" aria-labelledby="vault-h">
+    <section className="card vault-form" aria-labelledby="vault-h">
       <div className="card-row">
         <h2 id="vault-h" className="card-title">
-          Aave USDC vault · Base
+          {vault.name}
         </h2>
         <div className="seg-control" role="radiogroup" aria-label="Action">
           {(['deposit', 'redeem'] as const).map((m) => (
@@ -217,16 +291,29 @@ function VaultForm({ address, overview, onChanged, onBridge }: { address: Addres
       </div>
       <p className="card-sub">
         {mode === 'deposit'
-          ? 'Your USDC earns Aave yield. One share is one USDC of principal, and only you can redeem it. An Aave loss reduces it pro-rata.'
-          : 'Redeem shares for your USDC principal. Yield already credited stays as credits.'}
+          ? `Deposit ${asset.symbol}. Only you can redeem it, and only its yield becomes credits.`
+          : `Redeem shares for your ${asset.symbol}. Yield already credited stays as credits.`}
       </p>
+
+      {vault.kind === 'pendle' && mode === 'deposit' && (
+        <div className="buy-pt">
+          <span>This vault takes PT-deJAAA itself. Buy it on Pendle first; InferNear doesn’t swap for you.</span>
+          {vault.buyUrl ? (
+            <a className="btn outline" href={vault.buyUrl} target="_blank" rel="noreferrer">
+              Buy PT on Pendle ↗
+            </a>
+          ) : (
+            <code>$VITE_PENDLE_APP_URL</code>
+          )}
+        </div>
+      )}
 
       <form onSubmit={submit} noValidate>
         <label className="field">
           <span className="field-k">
             {mode === 'deposit' ? 'Amount' : 'Shares'}
-            <button type="button" className="link" onClick={toMax}>
-              {mode === 'deposit' ? 'Wallet' : 'Principal'} {formatUsd(max)}
+            <button type="button" className="link" onClick={() => setInput(plainAmount(max, asset))}>
+              {mode === 'deposit' ? `Wallet ${tokenAmount(max, asset)}` : `All ${tokenAmount(max, shareToken)}`}
             </button>
           </span>
           <span className={`input-wrap ${invalid ? 'bad' : ''}`}>
@@ -238,16 +325,10 @@ function VaultForm({ address, overview, onChanged, onBridge }: { address: Addres
               onChange={(e) => setInput(e.target.value)}
               aria-invalid={invalid}
             />
-            <span className="unit">{mode === 'deposit' ? 'USDC' : 'shares'}</span>
+            <span className="unit">{mode === 'deposit' ? asset.symbol : 'shares'}</span>
           </span>
         </label>
-        <p className="preview">
-          {amount !== null && amount > 0n
-            ? mode === 'deposit'
-              ? `You get ${formatUsd(amount).slice(1)} shares. Your wallet asks you to approve USDC first.`
-              : `You receive ${formatUsd(amount)} USDC at ${shortHex(address)}.`
-            : ' '}
-        </p>
+        <p className="preview">{preview}</p>
         <button type="submit" className="btn primary block" disabled={busy || amount === null || amount === 0n}>
           {busy ? <Spinner /> : null}
           {busy ? 'Confirm in your wallet…' : mode === 'deposit' ? 'Deposit' : 'Redeem'}
@@ -255,25 +336,19 @@ function VaultForm({ address, overview, onChanged, onBridge }: { address: Addres
         <ErrorNote error={error} />
         {done && (
           <p className="success" role="status">
-            {done.mode === 'deposit' ? 'Deposited' : 'Redeemed'} {formatUsd(done.amount)} · <code>{shortHex(done.hash, 10, 6)}</code>
+            {done.mode === 'deposit' ? `Deposited ${tokenAmount(done.amount, asset)}` : `Redeemed ${tokenAmount(done.amount, shareToken)}`} ·{' '}
+            <code>{shortHex(done.hash, 10, 6)}</code>
           </p>
         )}
       </form>
-      <p className="fineprint">
-        USDC on another chain?{' '}
-        <button type="button" className="link" onClick={onBridge}>
-          Bring it to Base with NEAR Intents
-        </button>
-      </p>
+      {asset.symbol === 'USDC' && (
+        <p className="fineprint">
+          USDC on another chain?{' '}
+          <button type="button" className="link" onClick={onBridge}>
+            Bring it to Base with NEAR Intents
+          </button>
+        </p>
+      )}
     </section>
-  );
-}
-
-function LockIcon() {
-  return (
-    <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
-      <rect x="3" y="7" width="10" height="7" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M5.5 7V5a2.5 2.5 0 015 0v2" fill="none" stroke="currentColor" strokeWidth="1.5" />
-    </svg>
   );
 }
