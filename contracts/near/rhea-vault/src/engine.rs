@@ -200,7 +200,7 @@ impl RheaUsdcVault {
 
     fn send_or_supply(&mut self) -> PromiseOrValue<bool> {
         // K bounds work scanned; the prepaid-gas budget bounds actual cross-contract
-        // sends. Unsuitable or unsent requests remain queued. Reserving the joined
+        // sends. Capacity-deferred requests remain queued. Reserving the joined
         // resolver prevents low-gas batches from stranding the keyless vault busy.
         let free_gas = env::prepaid_gas()
             .as_gas()
@@ -214,16 +214,26 @@ impl RheaUsdcVault {
         for i in 0..self.cycle.exits as usize {
             let id = self.cycle.exit_ids[i];
             let out = self.cycle.exit_outs[i];
-            if out > 0 && slots <= return_slot {
-                break;
-            }
-            // An oversized claim cannot hold another owner's liquid principal.
-            // Keep its node in place and consider later claims within this scan.
-            if out > self.totals.idle {
-                continue;
-            }
             let node = self.outgoing.nodes.get(&id).expect("planned exit node");
             let mut user = self.users.get(&node.user).expect("allocated user");
+            if out > self.totals.idle {
+                // One funding attempt per request: an unfundable prefix must not
+                // occupy every bounded scan forever. Principal and nonce stay put.
+                user.pending_out = None;
+                self.users.insert(&node.user, &user);
+                self.outgoing.detach(id);
+                self.outgoing.nodes.remove(&id);
+                emit(
+                    "exit_unfunded",
+                    near_sdk::serde_json::json!({
+                        "user":node.user,"claim":U128(node.amount),"out":U128(out)
+                    }),
+                );
+                continue;
+            }
+            if out > 0 && slots <= return_slot {
+                continue; // Capacity alone defers this node in its original order.
+            }
             user.principal = user
                 .principal
                 .checked_sub(node.amount)
@@ -317,8 +327,8 @@ impl RheaUsdcVault {
             );
         }
         if promises.is_empty() {
-            // An unfilled outflow keeps its cash liquid for a later run or a
-            // smaller replacement. Supply belongs only to a no-outflow plan.
+            // A cycle with an outflow plan retains any unused cash. Dropped
+            // owners can sign again; supply belongs only to a no-outflow plan.
             return if self.cycle.exits == 0 && self.cycle.returns == 0 && self.cycle.pay == 0 {
                 self.supply()
             } else {

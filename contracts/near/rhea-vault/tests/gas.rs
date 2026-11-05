@@ -166,6 +166,16 @@ async fn flex1_1_flex1_2_k10_queue_and_full_refund_resolvers_fit_300_tgas() -> R
         .await?;
         deposit(&root, &token, &vault, &users[index]).await?;
     }
+    // CR1-R3-1: one exit fits; the other nine must be dropped while a return
+    // still progresses. This is the new removal/logging work in the gas envelope.
+    let _ = invoke(
+        &root,
+        &rhea,
+        "set_liquidity",
+        json!({"amount":"1000000"}),
+        0,
+    )
+    .await?;
     let outcome = invoke(&root, &vault, "run", json!({}), 0).await?;
     println!(
         "K=10 returns + K=10 exits: gas_burnt={}, receipts={}",
@@ -198,6 +208,27 @@ async fn flex1_1_flex1_2_k10_queue_and_full_refund_resolvers_fit_300_tgas() -> R
             .any(|log| log.contains("cash_sent") && log.contains("return")),
         "CR1-2: returns must progress alongside exits"
     );
+
+    ensure!(
+        outcome
+            .logs()
+            .iter()
+            .filter(|log| log.contains("exit_unfunded"))
+            .count()
+            == 9,
+        "unfunded planned exits were not removed"
+    );
+    for user in users.iter().skip(1) {
+        let position: Value = vault
+            .view("position")
+            .args_json(json!({"user":user}))
+            .await?
+            .json()?;
+        ensure!(
+            position["principal"] == "1000000" && position["pending_out"].is_null(),
+            "dropping an exit changed principal or retained the request"
+        );
+    }
 
     // Treasury and exits are mutually exclusive; measure the separate worst-case
     // branch with ten queued returns and a real treasury payment.

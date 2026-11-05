@@ -744,23 +744,27 @@ proptest::proptest! {
     }
 }
 
-// CR1-1: partially funded claims must retain liquid cash until a claim fits.
+// CR1-1 / Flex1-R3-2: a dropped owner can authorize a smaller funded request.
 #[test]
-fn cr1_1_partial_liquidity_stays_idle_until_a_smaller_signed_replacement() {
+fn cr1_r3_dropped_owner_signs_a_smaller_request_that_pays_next_cycle() {
     let mut m = Model::new(0, 1_000_000);
     let owner = vector_user();
     m.accept(&owner, 1_000_000);
     m.cycle();
     caller("relay.near");
     request(&mut m.vault, "v27");
-    let claim = m.vault.position(owner.clone()).pending_out;
+    assert_eq!(m.vault.nonce(owner.clone()), 1);
     m.liquidity = 500_000;
     m.cycle();
     assert_eq!(m.vault.idle(), U128(500_000));
     assert_eq!(m.supplied, 500_000);
-    assert_eq!(m.vault.position(owner.clone()).pending_out, claim);
+    assert_eq!(m.vault.position(owner.clone()).pending_out, None);
+    assert_eq!(m.vault.position(owner.clone()).principal, U128(1_000_000));
+    assert_eq!(m.vault.nonce(owner.clone()), 1);
+    assert!(m.vault.outgoing.first(10).is_empty());
     assert!(m.intents.is_empty());
     caller("relay.near");
+    rejected(|| request(&mut m.vault, "v27")); // Dropping does not revive its nonce.
     request(&mut m.vault, "replace");
     m.liquidity = 0;
     m.cycle();
@@ -812,40 +816,107 @@ fn cr1_2_repeated_cycles_progress_both_queues_in_fifo_order() {
     assert_eq!(m.treasury, 0);
 }
 
-// CR1-R2-1 / Flex1-R2-2: B can use idle cash without A replacing its claim.
+// CR1-R3-1: an unfundable K-entry prefix is removed, not scanned forever.
 #[test]
-fn cr1_r2_1_unfunded_head_does_not_block_another_owner_with_zero_liquidity() {
-    let mut m = Model::new(0, 1000);
-    let a = user(1);
-    let b = user(2);
-    m.accept(&a, 900);
-    m.accept(&b, 100);
+fn cr1_r3_ten_unfunded_claims_do_not_exclude_the_fundable_eleventh() {
+    let mut m = Model::new(0, 1_000_000_000);
+    for i in 1..=10 {
+        m.accept(&user(i), 99_000_000);
+    }
     m.cycle();
-    m.claim(&a, 900);
-    let head = m.vault.outgoing.first(10)[0];
-    m.liquidity = 500;
+    m.accept(&user(11), 10_000_000);
     m.cycle();
-    assert!(m.intents.is_empty());
-    assert_eq!(m.vault.idle(), U128(500));
-    assert_eq!(m.supplied, 500);
-
-    // No more Rhea liquidity arrives. B cannot edit or replace A's authorization.
+    for i in 1..=10 {
+        m.claim(&user(i), 99_000_000);
+    }
+    m.claim(&user(11), 10_000_000);
+    // Move 50 USDC into accounted cash without changing assets or coverage.
+    m.supplied -= 50_000_000;
+    m.cash += 50_000_000;
+    m.vault.totals.idle += 50_000_000;
     m.liquidity = 0;
-    m.claim(&b, 100);
+    m.start();
+    m.measure();
+    assert!(!m.vault.busy());
+    let events: Vec<Value> = get_logs()
+        .into_iter()
+        .filter_map(|log| {
+            let event: Value =
+                near_sdk::serde_json::from_str(log.strip_prefix("EVENT_JSON:")?).ok()?;
+            (event["event"] == "exit_unfunded").then_some(event)
+        })
+        .collect();
+    assert_eq!(events.len(), 10);
+    for (index, event) in events.into_iter().enumerate() {
+        assert_eq!(event["standard"], "infernear");
+        assert_eq!(event["version"], "1.0.0");
+        assert_eq!(
+            event["data"],
+            json!([{"user":user(index as u64+1),"claim":"99000000","out":"99000000"}])
+        );
+        assert_eq!(
+            m.vault.position(user(index as u64 + 1)).principal,
+            U128(99_000_000)
+        );
+        assert_eq!(m.vault.position(user(index as u64 + 1)).pending_out, None);
+    }
+    assert_eq!(m.vault.outgoing.first(10).len(), 1);
+    assert_eq!(
+        m.vault.position(user(11)).pending_out,
+        Some(U128(10_000_000))
+    );
+    assert_eq!(m.vault.idle(), U128(50_000_000));
+    m.cash_invariant();
+    scaled_invariant(&m);
     m.cycle();
-    assert_eq!(m.intents[&b], 100);
-    assert!(!m.intents.contains_key(&a));
-    assert_eq!(m.vault.position(b).principal, U128(0));
-    assert_eq!(m.vault.position(a.clone()).principal, U128(900));
-    assert_eq!(m.vault.position(a.clone()).pending_out, Some(U128(900)));
-    assert_eq!(m.vault.outgoing.first(10), vec![head]);
-    assert_eq!(m.vault.outgoing.nodes.get(&head).unwrap().user, a);
-    assert_eq!(m.vault.idle(), U128(400));
-    assert_eq!(m.supplied, 500);
+    assert_eq!(m.intents[&user(11)], 10_000_000);
+    assert!(m.vault.outgoing.first(10).is_empty());
+    assert_eq!(m.vault.totals.principal, 990_000_000);
+    assert_eq!(m.vault.idle(), U128(40_000_000));
+    assert_eq!(m.treasury, 0);
+    m.cash_invariant();
+    scaled_invariant(&m);
+}
+
+#[test]
+fn cr1_r3_capacity_deferred_exits_keep_fifo_and_each_gets_paid() {
+    let mut m = Model::new(0, 1000);
+    for i in 1..=10 {
+        m.accept(&user(i), 100);
+    }
     m.cycle();
-    assert_eq!(m.intents[&user(2)], 100); // A retry does not repay B.
-    assert_eq!(m.vault.outgoing.first(10), vec![head]);
-    assert_eq!(m.vault.idle(), U128(400));
+    for i in 1..=10 {
+        m.claim(&user(i), 100);
+    }
+    let mut expected = m.vault.outgoing.first(10);
+    m.start();
+    m.measure();
+    m.resolve();
+    assert_eq!(m.vault.cycle.sent_len, 2);
+    for sent in &m.vault.cycle.sent[..2] {
+        assert_eq!(sent.kind, EXIT);
+        assert_eq!(sent.node, expected.remove(0));
+    }
+    assert_eq!(m.vault.outgoing.first(10), expected);
+    for i in 3..=10 {
+        assert_eq!(m.vault.position(user(i)).pending_out, Some(U128(100)));
+    }
+    m.finish();
+    m.liquidity = 0; // All remaining claims are funded from the first withdrawal.
+    while !expected.is_empty() {
+        m.start();
+        m.measure();
+        for sent in &m.vault.cycle.sent[..m.vault.cycle.sent_len as usize] {
+            assert_eq!(sent.kind, EXIT);
+            assert_eq!(sent.node, expected.remove(0));
+        }
+        assert_eq!(m.vault.outgoing.first(10), expected);
+        m.finish();
+    }
+    for i in 1..=10 {
+        assert_eq!(m.intents[&user(i)], 100);
+    }
+    assert_eq!(m.vault.totals.principal, 0);
     m.cash_invariant();
     scaled_invariant(&m);
 }
@@ -967,4 +1038,37 @@ fn flex2_3_position_saturates_without_trapping_or_mutating_checked_state() {
     assert!(record.settle(2).is_none(), "writes still reject overflow");
     assert_eq!(m.vault.users.get(&owner).unwrap().snap, 0);
     assert_eq!(m.vault.users.get(&owner).unwrap().credited_scaled, 1);
+}
+
+#[test]
+fn cr1_r3_ten_unfunded_exits_and_returns_fit_the_callback_budget() {
+    let mut m = Model::new(0, 1000);
+    for i in 1..=10 {
+        m.accept(&user(i), 100);
+    }
+    m.cycle();
+    for i in 1..=10 {
+        m.claim(&user(i), 100);
+        m.accept(&user(i + 10), 100);
+    }
+    m.liquidity = 50;
+    m.start();
+    m.measure();
+    m.resolve();
+    assert!(m.vault.outgoing.first(10).is_empty());
+    assert!(
+        m.vault.cycle.sent[..m.vault.cycle.sent_len as usize]
+            .iter()
+            .all(|sent| sent.kind == RETURN)
+    );
+    assert!(m.vault.cycle.sent_len > 0);
+    m.finish();
+    for i in 1..=10 {
+        assert_eq!(m.vault.position(user(i)).principal, U128(100));
+        assert_eq!(m.vault.position(user(i)).pending_out, None);
+    }
+    assert_eq!(m.vault.totals.principal, 1000);
+    assert_eq!(m.vault.idle(), U128(50));
+    m.cash_invariant();
+    scaled_invariant(&m);
 }

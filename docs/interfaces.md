@@ -63,7 +63,7 @@ Initialize once with `new(usdc: AccountId, rhea: AccountId, intents: AccountId, 
 |---|---|---|
 | `ft_on_transfer(sender_id: AccountId, amount: U128, msg: String) → U128` | configured USDC FT | `msg = {"user":"eip155:8453:0x<40 lower-case hex>"}`. Returns the full amount for wrong token, invalid user/message, below-minimum amount or insufficient storage balance. Otherwise allocates the whole user record, queues the received amount and returns `"0"`. No promises. |
 | `request_withdraw(message: String, signature: String)` | anyone | Verify the exact EIP-191 JSON below against the stored owner. Hex signature is 65-byte `r || s || v`, optional `0x`, v 0/1 or 27/28, low-s required. Requires not busy, current nonce, unexpired, `0 < amount <= principal`. Consume nonce and replace any unsent request. |
-| `run()` | anyone | Serialize one measure → attribute/admit/plan → Rhea withdrawal → send/resolve, or supply cycle. Requires 300 Tgas prepaid. Scans at most 10 entries from each queue; actual sends fit the remaining gas after reserving the terminal callback. Unsent entries remain queued. Exits precede treasury payments. |
+| `run()` | anyone | Serialize one measure → attribute/admit/plan → Rhea withdrawal → send/resolve, or supply cycle. Requires 300 Tgas prepaid. Scans at most 10 entries from each queue; actual sends fit the remaining gas after reserving the terminal callback. Each planned exit gets one funding attempt. If its coverage-adjusted payout exceeds idle after the Rhea withdrawal, remove the request with `exit_unfunded`, leaving principal and nonce unchanged. Only exits deferred for send capacity remain queued in order. Exits precede treasury payments. |
 | `position(user: String)` | view | `{ principal: U128, yield_credited: U128, pending_in: U128, pending_out: Option<U128> }`; yield includes unsettled index entitlement. |
 | `idle() → U128` | view | Accounted cash, excluding pending deposits and unsolicited FT transfers. |
 | `paid_total() → U128`, `unpaid() → U128`, `unattributed() → U128`, `coverage() → U128` | views | Yield paid / pending, attribution rounding dust, and last measured coverage (1e18 = full). |
@@ -77,20 +77,21 @@ The owner signs the **exact UTF-8 string**, with integer amount as a JSON string
 {"action":"withdraw","network":"mainnet","vault":"<vault account id>","user":"eip155:8453:0x<40 lower-case hex>","amount":"1000000","nonce":0,"expires_at":1794000000}
 ```
 
-Principal payouts and rejected-deposit returns are USDC `ft_transfer_call` transfers to the configured Intents verifier with `msg = "0x<owner address>"`. `simple_withdraw` receives `w * 1e12` internal Rhea units; only its terminal `true` result adds `w` to accounted idle. A terminal callback consumes each outgoing record exactly once. Partial exit refunds restore `floor(claim * refunded / out)` principal; complete failure restores the full claim. Requests are consumed at send; restored principal requires a new signature.
+Principal payouts and rejected-deposit returns are USDC `ft_transfer_call` transfers to the configured Intents verifier with `msg = "0x<owner address>"`. `simple_withdraw` receives `w * 1e12` internal Rhea units; only its terminal `true` result adds `w` to accounted idle. A terminal callback consumes each outgoing record exactly once. Partial exit refunds restore `floor(claim * refunded / out)` principal; complete failure restores the full claim. Requests are consumed when sent or dropped as unfunded; a failed funding attempt and restored principal both require a new signature.
 
 NEP-297 events use `standard: "infernear"`, `version: "1.0.0"`, one-element `data` arrays:
 
 - `deposit_queued`: `{ user, amount }`.
 - `deposit_activated`: `{ user, amount }`.
 - `withdraw_requested`: `{ user, amount, nonce }` (consumed nonce).
+- `exit_unfunded`: `{ user, claim, out }` (requested principal and coverage-adjusted payout; U128 strings). The funding attempt removed the request without burning principal; its nonce stays consumed. The owner must sign a new request, smaller or later.
 - `yield_attributed`: `{ amount, attributed, unattributed, attributed_scaled, unattributed_scaled, acc }` (this interval, new index). `attributed` and `unattributed` are floors in base units; the two `_scaled` fields retain the exact 1e18-scaled split.
 - `cycle_measured`: `{ supplied, liquidity, idle, coverage }`.
 - `cash_sent`: `{ kind: "return" | "exit" | "treasury" | "supply", user: string | null, amount, claim }` (claim 0 except exits).
 - `cash_resolved`: `{ kind, user, sent, used, restored_principal }`.
 - `cycle_failed`: `{ step, reason }` (fixed classifications, no credentials).
 
-Fractional user entitlements and index-floor dust are retained at scale 1e18 internally, so settling a user never drops a fraction. Exactly `sum(user scaled entitlements) + unattributed_scaled = (paid_total + unpaid) * 1e18`. Public `yield_credited` and `unattributed` floor those values to base units; their sum is bounded by, and can be below, paid plus unpaid. This rounding qualification and gas-bounded sends require reconciliation with the literal wording of architecture revision 10.3 before deployment.
+Fractional user entitlements and index-floor dust are retained at scale 1e18 internally, so settling a user never drops a fraction. Exactly `sum(user scaled entitlements) + unattributed_scaled = (paid_total + unpaid) * 1e18`. Public `yield_credited` and `unattributed` floor those values to base units; their sum is bounded by, and can be below, paid plus unpaid. The scaled identity and gas-bounded sends are part of architecture §14.3.
 
 The keeper posts `post_credits("near:mainnet:<vault>", paid_total, "1000000000000000000", finalized_near_block, [[user, position(user).yield_credited], …])` only when `!busy()` and `unpaid() == "0"`. Connector `source_block` and nonce/pagination arguments are JSON numbers; all U128 values are strings. Rhea callbacks are private and are not relay entry points.
 

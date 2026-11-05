@@ -17,6 +17,7 @@ pub struct Mock {
     balances: LookupMap<String, u128>,
     total: u128,
     refund_all: bool,
+    liquidity: Option<u128>,
 }
 #[near]
 impl Mock {
@@ -29,7 +30,11 @@ impl Mock {
             balances: LookupMap::new(b"b"),
             total: 0,
             refund_all: false,
+            liquidity: None,
         }
+    }
+    pub fn set_liquidity(&mut self, amount: U128) {
+        self.liquidity = Some(amount.0);
     }
     pub fn return_all_deposits(&mut self) {
         self.refund_all = true;
@@ -54,7 +59,10 @@ impl Mock {
     }
     pub fn get_asset(&self, token_id: AccountId) -> near_sdk::serde_json::Value {
         assert_eq!(token_id, self.usdc);
-        near_sdk::serde_json::json!({"supplied":{"balance":(self.total*1_000_000_000_000u128).to_string()},"borrowed":{"balance":"0"},"reserved":"0","prot_fee":"0","margin_debt":{"balance":"0"},"margin_pending_debt":"0"})
+        let borrowed = self
+            .total
+            .saturating_sub(self.liquidity.unwrap_or(self.total));
+        near_sdk::serde_json::json!({"supplied":{"balance":(self.total*1_000_000_000_000u128).to_string()},"borrowed":{"balance":(borrowed*1_000_000_000_000u128).to_string()},"reserved":"0","prot_fee":"0","margin_debt":{"balance":"0"},"margin_pending_debt":"0"})
     }
     pub fn received(&self, user: String) -> U128 {
         U128(self.balances.get(&user).unwrap_or(0))
