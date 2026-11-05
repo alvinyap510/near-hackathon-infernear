@@ -7,7 +7,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {PrincipalVault} from "./PrincipalVault.sol";
 import {IPendleMarket, IPendlePT, IPendleOracle} from "./interfaces/IYieldShapes.sol";
 
-/// @notice Holds PT and releases its deterministic discount to par. Not approved for live use pending A-004.
+/// @notice Holds PT and releases its deterministic discount to par. Depositors bear any loss pro-rata. Not live: this build credits USDC yield only.
 contract PendlePtVault is PrincipalVault {
     using SafeERC20 for IERC20;
     IPendleMarket internal immutable market;

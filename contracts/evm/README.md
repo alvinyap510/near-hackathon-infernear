@@ -86,13 +86,13 @@ forge test --offline --match-contract WstEthVaultForkTest -vv
 
 The verified token is `0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0`. At block 26,342,308, `stEthPerToken()` was `1248420541703429835`. Fork tests check native conversion/round-trip rounding and a locally funded token donation/payout. **A time warp alone does not create a Lido oracle rebase**; appreciation and slashing changes use an explicitly mocked rate in offline tests. [Lido's wstETH interface](https://docs.lido.fi/contracts/wsteth/) and [integration guide](https://docs.lido.fi/guides/lido-tokens-integration-guide/) describe the native rate.
 
-## Pendle PT — capped appreciation (not live; A-004 required)
+## Pendle PT — capped appreciation (not live)
 
 `PendlePtVault` derives its PT asset and expiry from the configured market. The fixed deployment curve is `c(t) = c0 + (1 − c0) × elapsed / duration`, rounded down and clamped to 1 at/after expiry. Units are the market's underlying-asset units; assets and yield are **PT units**. Deposits multiply PT by `c(t)`; redemptions divide units by it, so with a nondecreasing curve, redeemed PT cannot exceed deposited PT. The cushion is PT units and the cap is underlying units. The tested market uses 18 decimals for both PT and USDS.
 
 The admission check reads `getPtToAssetRate(market, 0)` and requires it to be at most `c(t)`. It runs in `_invest` on deposit/mint, after the transfer/mint but within the same transaction: rejection rolls back both. The gate does not run on exits. Previews show the deterministic curve, while admission also depends on the live rate. There is no TWAP, live valuation oracle, swap, SY redemption, or activation switch. `c0` must be positive and at most 1e18; expiry must be in the future so the curve is defined.
 
-**Loss-capable through the PT's SY/underlying backing. Live enablement requires Alvin's unresolved A-004 loss decision and explicit promotion.** Nominal PT accounting does not insure its underlying redemption value. A non-USDC conversion/credit path is outside this build.
+**Loss-capable through the PT's SY/underlying backing; depositors bear any loss pro-rata.** Nominal PT accounting does not insure its underlying redemption value. Not live: yield is paid in PT, and this build credits USDC yield only.
 
 Verified unit command:
 
