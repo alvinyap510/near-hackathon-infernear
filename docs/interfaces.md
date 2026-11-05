@@ -5,8 +5,8 @@ The vault, the connector, the relay and the dashboard are built in parallel agai
 ## Shared conventions
 
 - **User id:** the CAIP-10 id of the vault-share owner, with the address in lower case: `eip155:8453:0xabc…`. Users never need a NEAR account.
-- **Vault id:** the CAIP-10 id of the vault contract, same format.
-- **Amounts on NEAR:** JSON strings of integers (`U128`). Credits are in **micro-USD**. v1 has USDC vaults only, so 1 USDC base unit (6 decimals) = 1 micro-USD.
+- **Vault id:** `eip155:8453:<lower-case EVM address>` or `near:mainnet:<NEAR vault account id>`. The namespace identifies the chain of `source_block`.
+- **Amounts on NEAR:** JSON strings of integers (`U128`). Credits are in **micro-USD**. USDC yield uses `rate = "1000000000000000000"`; other yield tokens use the frozen rate below. Principal and token totals remain in their token base units.
 - **Prices:** NEAR AI quotes cost per token in nano-USD (`amount` at `scale: 9`). Cost in micro-USD = `ceil(tokens × nano_per_token / 1000)`.
 
 ## EVM: `PrincipalVault` (Base, Solidity, extends OpenZeppelin `ERC4626`)
@@ -29,11 +29,11 @@ Standard ERC-4626 and ERC-20 functions and events, plus:
 
 ## NEAR: connector contract (`near-sdk` 5)
 
-Initialized once with `new(keeper: AccountId, gateway: AccountId)`. There is no owner and no admin method. NEAR events use NEP-297 with `standard: "infernear"`, `version: "1.0.0"`. Each event has a one-element `data` array: `post_credits` → `{ vault, paid_cum, entries: [[user, "cum"], …] }` (stored maximum `paid_cum`); `debit` → `{ user, amount_micro, receipt }`; `key_epoch` → `{ user, key_epoch }`.
+Initialized once with `new(keeper: AccountId, gateway: AccountId)`. There is no owner and no admin method. NEAR events use NEP-297 with `standard: "infernear"`, `version: "1.0.0"`. Each event has a one-element `data` array: `post_credits` → `{ vault, paid_cum, rate, source_block, entries: [[user, "cum"], …] }` (stored maximum `paid_cum`); `debit` → `{ user, amount_micro, receipt }`; `key_epoch` → `{ user, key_epoch }`.
 
 | Method | Caller | Effect |
 |---|---|---|
-| `post_credits(vault: String, paid_cum: U128, entries: Vec<(String, U128)>)` | keeper | `paid_cum` stored as the max; each `(user, yield_credited_cum)` adds `cum − posted_cum` (must be ≥ 0) to `credited`; requires Σ posted ≤ `paid_cum` for the vault; replays change nothing. Event `post_credits` |
+| `post_credits(vault: String, paid_cum: U128, rate: U128, source_block: u64, entries: Vec<(String, U128)>)` | keeper | Store max `paid_cum`; `delta = cum − posted_cum >= 0` in yield-token base units. Per (user, vault): `x = remainder + delta * rate`, add `x / 1e18` micro-USD and retain `x % 1e18`. Checked u128 products/sums; requires Σ posted ≤ `paid_cum`. Replays, including a different rate, add nothing. Event `post_credits` |
 | `debit(user: String, amount_micro: U128, receipt: Receipt)` | gateway | idempotent by `receipt.inference_id` (a repeat is a no-op success); otherwise requires `spent + amount ≤ credited`; stores the amount under the inference id. Event `debit` with the receipt |
 | `bump_key_epoch(user: String) → u32` | gateway | increments the user's `key_epoch`, invalidating every API key issued under an earlier epoch. Event `key_epoch` |
 | `account(user: String) → { credited: U128, spent: U128, available: U128, key_epoch: u32 }` | view | one read for the gateway's checks |
@@ -55,6 +55,45 @@ Receipt {
 
 The connector holds no funds. It pays for its own storage (each debit stores one inference id and one amount).
 
+## NEAR: `RheaUsdcVault` (`near-sdk` 5.30)
+
+Initialize once with `new(usdc: AccountId, rhea: AccountId, intents: AccountId, treasury: AccountId, cushion: U128, min_deposit: U128, cap: U128)`. All amounts are USDC base units (6 decimals), index/coverage scale is 1e18. The deployer donates the cushion **before** initialization, registers storage, then deletes all vault full-access keys. No owner, admin, upgrade or busy-timeout method. Plain FT transfers after initialization are unaccounted and stranded.
+
+| Method | Caller | Result / effect |
+|---|---|---|
+| `ft_on_transfer(sender_id: AccountId, amount: U128, msg: String) → U128` | configured USDC FT | `msg = {"user":"eip155:8453:0x<40 lower-case hex>"}`. Returns the full amount for wrong token, invalid user/message, below-minimum amount or insufficient storage balance. Otherwise allocates the whole user record, queues the received amount and returns `"0"`. No promises. |
+| `request_withdraw(message: String, signature: String)` | anyone | Verify the exact EIP-191 JSON below against the stored owner. Hex signature is 65-byte `r || s || v`, optional `0x`, v 0/1 or 27/28, low-s required. Requires not busy, current nonce, unexpired, `0 < amount <= principal`. Consume nonce and replace any unsent request. |
+| `run()` | anyone | Serialize one measure → attribute/admit/plan → Rhea withdrawal → send/resolve, or supply cycle. Requires 300 Tgas prepaid. Scans at most 10 entries from each queue; actual sends fit the remaining gas after reserving the terminal callback. Unsent entries remain queued. Exits precede treasury payments. |
+| `position(user: String)` | view | `{ principal: U128, yield_credited: U128, pending_in: U128, pending_out: Option<U128> }`; yield includes unsettled index entitlement. |
+| `idle() → U128` | view | Accounted cash, excluding pending deposits and unsolicited FT transfers. |
+| `paid_total() → U128`, `unpaid() → U128`, `unattributed() → U128`, `coverage() → U128` | views | Yield paid / pending, attribution rounding dust, and last measured coverage (1e18 = full). |
+| `nonce(user: String) → u64` | view | Next withdrawal authorization nonce, initially 0. |
+| `holders(from: u64, limit: u64) → Vec<String>` | view | Iterable accepted users, including zero-principal and pending users. |
+| `busy() → bool` | view | A money cycle is in flight. Posting waits for false. |
+
+The owner signs the **exact UTF-8 string**, with integer amount as a JSON string and nonce/expiry as JSON numbers:
+
+```json
+{"action":"withdraw","network":"mainnet","vault":"<vault account id>","user":"eip155:8453:0x<40 lower-case hex>","amount":"1000000","nonce":0,"expires_at":1794000000}
+```
+
+Principal payouts and rejected-deposit returns are USDC `ft_transfer_call` transfers to the configured Intents verifier with `msg = "0x<owner address>"`. `simple_withdraw` receives `w * 1e12` internal Rhea units; only its terminal `true` result adds `w` to accounted idle. A terminal callback consumes each outgoing record exactly once. Partial exit refunds restore `floor(claim * refunded / out)` principal; complete failure restores the full claim. Requests are consumed at send; restored principal requires a new signature.
+
+NEP-297 events use `standard: "infernear"`, `version: "1.0.0"`, one-element `data` arrays:
+
+- `deposit_queued`: `{ user, amount }`.
+- `deposit_activated`: `{ user, amount }`.
+- `withdraw_requested`: `{ user, amount, nonce }` (consumed nonce).
+- `yield_attributed`: `{ amount, attributed, unattributed, attributed_scaled, unattributed_scaled, acc }` (this interval, new index). `attributed` and `unattributed` are floors in base units; the two `_scaled` fields retain the exact 1e18-scaled split.
+- `cycle_measured`: `{ supplied, liquidity, idle, coverage }`.
+- `cash_sent`: `{ kind: "return" | "exit" | "treasury" | "supply", user: string | null, amount, claim }` (claim 0 except exits).
+- `cash_resolved`: `{ kind, user, sent, used, restored_principal }`.
+- `cycle_failed`: `{ step, reason }` (fixed classifications, no credentials).
+
+Fractional user entitlements and index-floor dust are retained at scale 1e18 internally, so settling a user never drops a fraction. Exactly `sum(user scaled entitlements) + unattributed_scaled = (paid_total + unpaid) * 1e18`. Public `yield_credited` and `unattributed` floor those values to base units; their sum is bounded by, and can be below, paid plus unpaid. This rounding qualification and gas-bounded sends require reconciliation with the literal wording of architecture revision 10.3 before deployment.
+
+The keeper posts `post_credits("near:mainnet:<vault>", paid_total, "1000000000000000000", finalized_near_block, [[user, position(user).yield_credited], …])` only when `!busy()` and `unpaid() == "0"`. Connector `source_block` and nonce/pagination arguments are JSON numbers; all U128 values are strings. Rhea callbacks are private and are not relay entry points.
+
 ## Relay HTTP
 
 Base URL: `VITE_RELAY_URL` / `RELAY_PORT`. Errors on every route use OpenAI's error JSON: `{"error": {"message", "type", "code"}}`.
@@ -68,6 +107,15 @@ Base URL: `VITE_RELAY_URL` / `RELAY_PORT`. Errors on every route use OpenAI's er
 | `GET /auth/nonce` | none | → `{ nonce }`, single-use, 5-minute TTL |
 | `POST /keys` | wallet proof | → `{ key: "inf_…", key_epoch, expires_at }`. Issued under `max(key_epoch_read, key_epoch_mem)`, valid 30 days, shown once |
 | `POST /keys/revoke` | wallet proof | → `{ key_epoch, tx_hash }` after calling `bump_key_epoch` |
+
+### Signed NEAR transaction routes
+
+| Route | Auth | Body → response |
+|---|---|---|
+| `POST /rhea/withdraw` | EIP-191 wallet proof | `{ message, signature }` using the exact vault withdrawal message above and a `0x`-prefixed hex signature → `{ tx_hash }` |
+| `POST /intents/execute` | ERC-191 signed Intents payload | `{ signed: [{ standard: "erc191", payload: "<exact JSON string>", signature: "secp256k1:<base58 65-byte r-s-v>" }, …] }` → `{ tx_hash }` |
+
+These routes require no API key or inference credits. The relay checks signature, expiry and configured verifying contract before paying NEAR gas; the on-chain vault/verifier checks nonce and authorization. They share the anonymous per-IP bucket (30 requests/minute), including requests carrying an API key. Intents signatures use recovery id 0/1; the payload contains the verifier's `signer_id`, `verifying_contract`, `deadline`, `nonce` and `intents` fields. The vault route preserves the signed message bytes. Neither route accepts caller-selected NEAR receiver, method, gas or deposit fields.
 
 ### API routes (OpenAI format)
 

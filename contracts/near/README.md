@@ -1,46 +1,36 @@
-# NEAR credit connector
+# NEAR contracts
 
-Rust / `near-sdk` 5 ledger for USDC-backed inference credits. No tokens or principal enter this contract. Its NEAR account must be funded for code and ledger storage; calls attach no deposit. This component is tested locally and has not been deployed.
+Rust / `near-sdk` 5.30 workspace containing the inference credit connector and the [Rhea USDC vault](rhea-vault/README.md). Both are tested locally. Neither deployment nor a funded mainnet probe was run for this revision.
 
-## Build and test
+## Verified build and tests
 
-Prerequisites: Rust through rustup (verified with 1.97.1), the `wasm32-unknown-unknown` target, a native C/C++ toolchain and CMake for test dependencies, and `cargo-near` 0.22.0. Ensure rustup's `cargo` and `rustc` are first on `PATH` (rather than a separate system Rust without the WASM target).
-
-From the repository root:
+Prerequisites: rustup Rust 1.97.1, `wasm32-unknown-unknown`, a native C/C++ toolchain and CMake. Put rustup's tools first on `PATH` if another Rust installation lacks the WASM target. From this directory:
 
 ```sh
-cd contracts/near
 cargo fetch --locked
-cargo test --offline --locked
-cargo near build non-reproducible-wasm --locked
-cargo test --offline --locked debit_storage_measurement -- --nocapture
-cargo fmt -- --check
+cargo test --offline --locked --workspace
+cargo build --offline --locked --target wasm32-unknown-unknown --release --workspace
+cargo clippy --offline --workspace --all-targets --features sandbox-gas -- -D warnings
+cargo fmt --all -- --check
+cargo test --offline --locked -p infernear-connector debit_storage_measurement -- --nocapture
 ```
 
-Fetching dependencies requires network access once; tests then run offline using NEAR's mocked runtime. The suite includes generated sequences across multiple users and vaults, with storage flushed and contract state reloaded between operations. It checks `sum(spent) <= sum(credited) <= sum(paid_cum)`, per-vault budgets, rejected batches, replay safety, caller authorization, key epochs, integer boundaries and event JSON. No live network tests or deployment are run.
+Fetch requires network once. The 14 connector tests and 21 vault tests then run offline against NEAR's mocked runtime, including generated conservation sequences. The optional sandbox test is documented in the vault README. Release outputs are `target/wasm32-unknown-unknown/release/infernear_connector.wasm` (**352,481 bytes**) and `infernear_rhea_vault.wasm` (**421,474 bytes**) with this toolchain. These are plain Cargo release builds, without cargo-near's additional optimization.
 
-The build emits `target/near/infernear_connector.wasm` plus its JSON ABI. `target/` is generated and ignored. The local build embeds the ABI and runs cargo-near's WASM optimization; the verified binary is **164,336 bytes** with Rust 1.97.1 (rebuilt after the `reservation` receipt change).
+## Connector
 
-## Contract behavior
+Initialize once with `new(keeper, gateway)`. There is no owner or administrative method. The connector holds no funds or principal; its account pays for code and ledger storage. Runtime constructor accounts come from `.env.example`; there are no compiled deployment addresses.
 
-Initialize once with `new(keeper, gateway)`, using configured NEAR account IDs. The shared `.env.example` already names these as `NEAR_KEEPER_ACCOUNT`, `NEAR_GATEWAY_ACCOUNT` and `NEAR_CONNECTOR_ACCOUNT`; the contract itself has no compile-time environment variables. There is no owner or administrative method.
+The exact methods, JSON types, Receipt and NEP-297 events are in [interfaces.md](../../docs/interfaces.md). Credits use micro-USD; cumulative yield totals remain in each vault's yield-token units. Vault identifiers support `eip155:8453:` and `near:mainnet:` namespaces. The keeper posts:
 
-The public methods and `Receipt` are defined in [the component interface](../../docs/interfaces.md). The SDK also generates its standard read-only NEP-330 `contract_source_metadata` view. User and vault keys are canonical lower-case EVM CAIP-10 strings supplied by the relay. Amounts are JSON integer strings (`U128`); 1 USDC base unit equals 1 micro-USD. This version performs no conversion for other tokens.
+`post_credits(vault, paid_cum, rate, source_block, entries)`
 
-Only the keeper can post cumulative per-user yield. The stored vault payment watermark is the maximum ever posted. A negative cumulative delta or a batch exceeding that vault's paid watermark fails before any ledger write. Repeated users within a batch are processed in order. Exact replays do not write storage or emit another event.
+For each user/vault, the new cumulative delta is converted once at that post's frozen rate: `x = remainder + delta * rate`, credit `x / 1e18`, carry `x % 1e18`. Every product and sum is checked. USDC uses `rate = 1e18`. Historical totals are never repriced, and a replay with another rate adds nothing. `source_block` names the finalized block on the vault's chain; both fields appear in the event. The contract trusts the keeper's rate and attribution, and enforces `sum(posted token units) <= paid_cum`. The spending invariant is `spent <= credited = sum_vault floor(sum_posts(delta * rate) / 1e18)`.
 
-Only the gateway can debit or increment a user's key epoch. Every inference ID is global: once recorded, any retry of that ID succeeds without another charge, even if retry arguments differ. The original amount remains available through `debited_amount`. A fresh ID requires enough available credit. Zero-cost inferences are also recorded. Epochs start at zero and increments preserve credit balances.
+The vault payment watermark is the largest posted value. Negative deltas, over-budget batches and overflows fail before ledger writes; repeated entries are processed in order. Exact replays write nothing and emit nothing. Only the gateway can debit or bump key epochs. Inference IDs are globally idempotent, including zero-cost charges; a retry never charges twice. Receipts are event data, not stored balances.
 
-Events are NEP-297 (`infernear`, `1.0.0`) with a one-element `data` array:
-
-- `post_credits`: `{ vault, paid_cum, entries }`, using the stored maximum `paid_cum` and supplied cumulative entries.
-- `debit`: `{ user, amount_micro, receipt }`, with the complete receipt. For the `reservation` source the token counts are the reservation inputs (`input_bound`, `max_tokens`).
-- `key_epoch`: `{ user, key_epoch }`.
-
-Receipts are public event data, not stored ledger values. The keeper is trusted to report actual paid yield and its honest attribution; the gateway is trusted to report usage. The contract enforces cumulative posting and spending bounds; it does not verify EVM payments or model signatures.
+This revision changes the posting map's serialized value as well as its call signature. **Redeploy the connector; do not load an old deployment's state with this binary.** There is no migration or upgrade method.
 
 ## Storage per debit
 
-`debit_storage_measurement` measures `env::storage_usage()` after flushing collections and serializing contract state, with an existing credited account and a fresh 36-byte inference ID. One debit adds **97 bytes**: 1-byte map prefix + 4-byte string length + 36-byte ID + 16-byte `u128` amount + 40-byte runtime record overhead. Existing account balances have fixed serialized sizes. A duplicate adds zero bytes.
-
-At the SDK's `env::storage_byte_cost()` of `10^19` yoctoNEAR per byte, matching [NEAR's documented storage price](https://docs.near.org/protocol/storage/storage-staking), this locks **0.00097 NEAR** per such debit (0.97 NEAR per 1,000), excluding gas, code and initial account/vault records. In general the debit record adds `61 + inference_id UTF-8 bytes` bytes. Pre-fund and monitor the connector account; insufficient storage balance makes a transaction fail, and the gateway can retry the same inference ID.
+The storage test flushes collections and serializes state. A fresh 36-byte inference ID adds **97 bytes**; replay adds zero. The SDK storage price is `10^19` yoctoNEAR per byte, so this locks **0.00097 NEAR** per such debit, excluding gas, code and initial records. General size: `61 + inference_id UTF-8 bytes`. Pre-fund the connector account; insufficient storage makes the transaction fail, and the gateway can retry the same ID.

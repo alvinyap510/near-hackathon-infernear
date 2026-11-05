@@ -1,0 +1,132 @@
+{
+  "vectors": [
+    {
+      "name": "v27",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0x6312156d3f70876532104d92a19f698dd15a4fdd\",\"amount\":\"900003\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0xa0c1631d043c0849cbdbf57edcb8819db8d5d5fc10b48ce36abd3a74c1d6c408339da9cc34d7552cfa24af5eaf308635295ca88f3c76caa7974e543d8a4da9311b",
+      "address": "0x6312156d3f70876532104d92a19f698dd15a4fdd"
+    },
+    {
+      "name": "v28",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0x6312156d3f70876532104d92a19f698dd15a4fdd\",\"amount\":\"900000\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0xd9711d0355d549a54246699182547e8300515ba5582261f3884534a048a78f8d25f5f663f7cb7cbf315154a6fe2f595bbd32aeb42ea1e7c35f69f446c5cb2fa31c",
+      "address": "0x6312156d3f70876532104d92a19f698dd15a4fdd"
+    },
+    {
+      "name": "replace",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0x6312156d3f70876532104d92a19f698dd15a4fdd\",\"amount\":\"500000\",\"nonce\":1,\"expires_at\":4000000000}",
+      "signature": "0xadc2df4fb3a763e8d289825fd48147d93826ec04529db26a115affa2585cfd794765cf3eb92ad7b2027e38f93d375575eae04d6cd7e2a93c9baba6ab3abf662e1b",
+      "address": "0x6312156d3f70876532104d92a19f698dd15a4fdd"
+    },
+    {
+      "name": "zero",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0x6312156d3f70876532104d92a19f698dd15a4fdd\",\"amount\":\"0\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0x15a0b55b5cead0ba8f7fc7aa2594c3f4c17462e3569127f89efea20acc0a35fa58c30cfbbf805fab4e5359a9087bdf2576078d4b3ff59a35299f55f572ec65191b",
+      "address": "0x6312156d3f70876532104d92a19f698dd15a4fdd"
+    },
+    {
+      "name": "too_large",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0x6312156d3f70876532104d92a19f698dd15a4fdd\",\"amount\":\"1000001\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0x357870b5fa8d0918ab4625d802297edec8fb48f6b0be0553747c5166300f56bf684a2d82a00fb04992e6265c9ef1d69af126a77885629cd0e0a8e687da21c3701b",
+      "address": "0x6312156d3f70876532104d92a19f698dd15a4fdd"
+    },
+    {
+      "name": "expired",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0x6312156d3f70876532104d92a19f698dd15a4fdd\",\"amount\":\"900000\",\"nonce\":0,\"expires_at\":1}",
+      "signature": "0x4393dc2c6c9f11ee733ac24ecd56147c9f85d99b9586d277e98a7086765ea0216b418a4bca3db36acdd623d5f2c892b901981cd11a959e503a83dcff8b0b826a1b",
+      "address": "0x6312156d3f70876532104d92a19f698dd15a4fdd"
+    },
+    {
+      "name": "wrong_vault",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"other.near\",\"user\":\"eip155:8453:0x6312156d3f70876532104d92a19f698dd15a4fdd\",\"amount\":\"900000\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0x7dccaffa34895939bdf2ad0fe45ba09045c5b1881ad9a885f33334413bb77ca46d7505789985ae8babaf215dd56885b532523d1a622df04579b714318afb036b1b",
+      "address": "0x6312156d3f70876532104d92a19f698dd15a4fdd"
+    },
+    {
+      "name": "wrong_network",
+      "message": "{\"action\":\"withdraw\",\"network\":\"testnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0x6312156d3f70876532104d92a19f698dd15a4fdd\",\"amount\":\"900000\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0xcbcf941e160fe9639a3018ac66c249984928ee493b17b38c59520003f0778425189baad9d673f5303d3fa8ee6f6dda5fa21cbde4867dba1efb0b4bba2292c28c1b",
+      "address": "0x6312156d3f70876532104d92a19f698dd15a4fdd"
+    },
+    {
+      "name": "wrong_action",
+      "message": "{\"action\":\"harvest\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0x6312156d3f70876532104d92a19f698dd15a4fdd\",\"amount\":\"900000\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0x0a54fe4550bb645c0f87f03f655bdbb990ded68fca97ff6ad5bc255eb62e1fc80fbb20b1c5f122dab83471a94add28aa8bccf8708d7a5e06e293851925f03b0d1b",
+      "address": "0x6312156d3f70876532104d92a19f698dd15a4fdd"
+    },
+    {
+      "name": "wrong_signer",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0x6312156d3f70876532104d92a19f698dd15a4fdd\",\"amount\":\"900000\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0x9d87b334573f121aecb43c3f88405e5540bafc9bc033ebdae0bfbcf0b490c982395cb0702988862be8a0d273a1d835436b0721bf761804b7cb24aa7851f9544f1c",
+      "address": "0x5cb422afdc95f49df78998629e11f4beaf4ffe19"
+    },
+    {
+      "name": "high_s",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0x6312156d3f70876532104d92a19f698dd15a4fdd\",\"amount\":\"900003\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0xa0c1631d043c0849cbdbf57edcb8819db8d5d5fc10b48ce36abd3a74c1d6c408cc625633cb28aad305db50a150cf79c99152345772d1d59428840a4f45e898101c",
+      "address": "0x6312156d3f70876532104d92a19f698dd15a4fdd"
+    }
+  ],
+  "worst": [
+    {
+      "name": "holder_0",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0xbf7b6ac3944ad60808bc505cdeb11b25c239ca35\",\"amount\":\"1000000\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0x81d89f98e029fe519fbff2357877486f1a0dee96aeb97ad7c535047ab9a171e32e540a0ebd7a432bcf0ce6838040f05a7ae626768f497ccbe104151b647c69011c",
+      "address": "0xbf7b6ac3944ad60808bc505cdeb11b25c239ca35"
+    },
+    {
+      "name": "holder_1",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0x6835f7f4f8dcac02a48b5e239433808cca127e92\",\"amount\":\"1000000\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0x4ac62f674da83147a9ab554afc9ddae9fa5892018aa20fccf88c628ec18b81bd7ea964790acfdfde75c6a3ab73ed4f0fd208f9ba83de7ea36fd165958107e3501c",
+      "address": "0x6835f7f4f8dcac02a48b5e239433808cca127e92"
+    },
+    {
+      "name": "holder_2",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0xbc8b5bd6157034b6d7a7df3ad9cb6dbe6a9f4d63\",\"amount\":\"1000000\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0xbfffe53143faf26eaab74f6d12604fe664d8982c43aa57c3a0e29d7b0404ae3b14659b8d07179b09d4ca5ccc7669ffb9d2893b8e4f59b1a494d9cb70541be7681b",
+      "address": "0xbc8b5bd6157034b6d7a7df3ad9cb6dbe6a9f4d63"
+    },
+    {
+      "name": "holder_3",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0x19ea751a263c803deafaf6866f3b01de4ab04938\",\"amount\":\"1000000\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0x04a15a9da05d5c6eadb3cbb1b934414ba71faa85805b2006e4a44ba475b0a7b35058d9b9b0aa772160400ae8bf1d3d7b9f2b26fc8104e9715c4f92439d4b50f91c",
+      "address": "0x19ea751a263c803deafaf6866f3b01de4ab04938"
+    },
+    {
+      "name": "holder_4",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0x27d66510616530fe1941ebdda6ad8ab7831bfdc4\",\"amount\":\"1000000\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0x0e82f1d8bcbbbcb31675fdc41960b70d840a551d0ccec652d185636d758f44054f5098437926878d59ea35ba8d7620e8dd5e1c51f9f0bef334c3223b03cd67e21c",
+      "address": "0x27d66510616530fe1941ebdda6ad8ab7831bfdc4"
+    },
+    {
+      "name": "holder_5",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0xda84b0afee2e68ca60dfbd7c8f809cd8c6950ba1\",\"amount\":\"1000000\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0xef83882c1960be930b65afad4f39939ef5848ccc7425c378b3533fb938c234ef64efa2ef58093ff7c5a677909f686b5b57f478ddb8cb279df9d2e703ba5f2f401b",
+      "address": "0xda84b0afee2e68ca60dfbd7c8f809cd8c6950ba1"
+    },
+    {
+      "name": "holder_6",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0xa3d0a021786d486f0e6545685d23c5e5a3b6dc26\",\"amount\":\"1000000\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0xdd793b3c40bd1c804cde5a8efc34125b04375a3bee4c8279d68d3474cb26b405197aa417034ad1cfedaf6dfdb4af2f190359de4d2fe28bce1a27283316e327451c",
+      "address": "0xa3d0a021786d486f0e6545685d23c5e5a3b6dc26"
+    },
+    {
+      "name": "holder_7",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0xd6e32a9f69608c1362f8951aafe5d603be81a9aa\",\"amount\":\"1000000\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0x3dcca63353e095068f3e312482a2270e69c7a49288249f741647466a072fc46354e18a9fd940ee73612ff3408566a9c2f53b009aee28e3c00d77c658a65d92991c",
+      "address": "0xd6e32a9f69608c1362f8951aafe5d603be81a9aa"
+    },
+    {
+      "name": "holder_8",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0xc4a5bcaaa4e70345d92f25dee75077a6ad59e02a\",\"amount\":\"1000000\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0xc3d9f536407798245dee10911580a90037c1ddf1fc8541451b46133a61e21088522eb216ebc3e72d977169936d851d093543f69ff36bcebb190f62d4ff35da361b",
+      "address": "0xc4a5bcaaa4e70345d92f25dee75077a6ad59e02a"
+    },
+    {
+      "name": "holder_9",
+      "message": "{\"action\":\"withdraw\",\"network\":\"mainnet\",\"vault\":\"vault.near\",\"user\":\"eip155:8453:0xe75f299e61dae53426042d64941b509e19ee3285\",\"amount\":\"1000000\",\"nonce\":0,\"expires_at\":4000000000}",
+      "signature": "0x57dc31a4ea0310186bdcdef8a62abea376b8e74fed25fb43230c88f6a4689556275246b0c585792235570d8c7b1a96bfab7861051f4f34e3c2657ee89a9586e11c",
+      "address": "0xe75f299e61dae53426042d64941b509e19ee3285"
+    }
+  ]
+}
