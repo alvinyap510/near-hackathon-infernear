@@ -1,0 +1,9 @@
+{
+  "name": "infernear-near-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=24.22.1"},
+  "scripts": {"deploy:rhea":"node --env-file=../../../.env deploy-rhea.mjs"},
+  "dependencies": {"near-api-js":"7.4.0","viem":"2.57.16"}
+}
