@@ -1,22 +1,38 @@
 // The dashboard's view of the system. Shapes follow docs/interfaces.md; amounts
-// are bigint base units (USDC wei = micro-USD in v1), never floats.
+// are bigint token base units; only connector credits are micro-USD, never floats.
 
 export type Address = `0x${string}`;
 
 /** CAIP-10 id of the vault-share owner, address lower-cased. */
 export type UserId = string;
 
-/** PrincipalVault views on the vault chain, for one holder. */
+export type VaultKind = 'aave' | 'rate' | 'pendle' | 'rhea';
+export type Token = { address: string; symbol: string; decimals: 6 | 18 };
+export type VaultId = string;
+/** EVM principal is convertToAssets(shares), in deposit-asset base units, never dollars.
+ * Rhea shares denote the nominal USDC principal claim; principal applies coverage.
+ * For Rhea, walletBalance is Base USDC available to bridge and allowance is zero. */
 export type VaultPosition = {
-  /** `convertToAssets(balanceOf(user))`: what a full redeem returns now. */
   principal: bigint;
   shares: bigint;
-  /** `yieldCredited(user)`: cumulative yield attributed to the holder. */
+  /** Cumulative native yield-token units; priced credits are a separate connector read. */
   yieldCredited: bigint;
-  /** The holder's USDC wallet balance, for deposit. */
-  walletUsdc: bigint;
-  /** USDC approved for this vault. */
+  walletBalance: bigint;
   allowance: bigint;
+  rhea?: { pendingIn: bigint; pendingOut: bigint | null; coverage: bigint; busy: boolean; intentsBalance: bigint };
+};
+export type VaultAccount = {
+  id: VaultId;
+  kind: VaultKind;
+  name: string;
+  chain: Chain;
+  asset: Token;
+  yieldToken: Token;
+  unitsLabel: string;
+  lossNote: string;
+  /** Pendle app link to acquire PT separately; no zap. */
+  buyUrl?: string;
+  position: VaultPosition;
 };
 
 /** Connector `account(user)` on NEAR, in micro-USD. */
@@ -29,7 +45,9 @@ export type CreditAccount = {
 
 export type Overview = {
   user: UserId;
-  vault: VaultPosition;
+  vaults: VaultAccount[];
+  /** Aave compatibility alias for the existing screen; new UI uses vaults. */
+  vault: VaultPosition & { walletUsdc: bigint };
   credits: CreditAccount;
 };
 
@@ -114,14 +132,43 @@ export type BridgeQuote = {
   isMock: boolean;
 };
 
+export type RheaDirection = 'deposit' | 'withdraw';
+/** Read-only preview is always dry and has no funding address. Amounts are USDC-6dp. */
+export type RheaQuote = {
+  direction: RheaDirection;
+  amountIn: bigint;
+  amountOut: bigint;
+  minAmountOut: bigint;
+  etaSeconds: number;
+  deadline: string;
+  dry: boolean;
+  isMock: boolean;
+  depositAddress?: string;
+};
+export type RheaTransfer = TxResult & { quote: RheaQuote };
+export type RheaSwapStatus = { status: string; terminal: boolean; isMock: boolean };
+
 /** Everything the UI reads or does. A wired implementation replaces the mock. */
 export interface DashboardData {
   readonly isMock: boolean;
   readonly isRunMock: boolean;
   connect(): Promise<Address>;
+  /** Four vaults plus one aggregate connector credit account. Legacy vault aliases Aave only. */
   overview(address: Address): Promise<Overview>;
-  deposit(address: Address, assets: bigint): Promise<TxResult>;
-  redeem(address: Address, shares: bigint): Promise<TxResult>;
+  /** EVM only. Omitting vaultId selects Aave for the current screen. Assets/shares are native units. */
+  deposit(address: Address, assets: bigint, vaultId?: VaultId): Promise<TxResult>;
+  redeem(address: Address, shares: bigint, vaultId?: VaultId): Promise<TxResult>;
+  /** Always dry. direction withdraw previews Intents USDC -> the user's Base wallet. */
+  rheaQuote(address: Address, assets: bigint, direction: RheaDirection): Promise<RheaQuote>;
+  /** Call only after user confirmation: create non-dry quote and transfer Base USDC once. */
+  rheaDeposit(address: Address, assets: bigint): Promise<RheaTransfer>;
+  /** First withdrawal signature: nominal USDC claim, from the vault to the user's Intents balance.
+   * Refresh overview to observe pendingOut/busy and actual intentsBalance before the second step. */
+  rheaWithdraw(address: Address, claim: bigint): Promise<TxResult>;
+  /** Second, separately confirmed signature: quote actual Intents USDC and fund it with a transfer intent. */
+  rheaExit(address: Address, assets: bigint): Promise<RheaTransfer>;
+  /** One status read; poll until terminal. SUCCESS for deposits still needs vault activation (pendingIn). */
+  rheaStatus(depositAddress: string): Promise<RheaSwapStatus>;
   walletProof(address: Address): Promise<WalletProof>;
   createKey(proof: WalletProof): Promise<IssuedKey>;
   revokeAll(proof: WalletProof): Promise<Revoked>;

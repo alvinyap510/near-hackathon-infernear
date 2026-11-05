@@ -6,3 +6,9 @@ export class DataError extends Error {
     this.code = code;
   }
 }
+
+/** U128/uint amounts must arrive as decimal strings, never imprecise JSON numbers. */
+export function readAmount(value: unknown, code = 'near_rpc'): bigint {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) throw new DataError(code, 'Provider returned an invalid integer amount.');
+  return BigInt(value);
+}

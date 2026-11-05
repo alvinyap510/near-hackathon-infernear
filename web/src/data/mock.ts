@@ -13,6 +13,9 @@ import type {
   Overview,
   Receipt,
   RunEvent,
+  VaultAccount,
+  RheaQuote,
+  RheaDirection,
 } from './types.ts';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -44,32 +47,57 @@ export function createMockData(): DashboardData {
     proofs.delete(message);
     return user;
   };
-  const state = {
-    walletUsdc: 2_450_000_000n,
-    shares: 1_000_000_000n,
-    yieldCredited: 4_213_870n,
-    credited: 4_020_000n,
-    spent: 342_118n,
-    keyEpoch: 2,
-    debited: new Map<string, bigint>(),
+  const chainId = config.vaultChainId || '8453'; // Explicit mock chain, never used by a live transaction.
+  const base = { id: `eip155:${chainId}`, name: 'Base' };
+  const tokens = [
+    { address: '0x1111111111111111111111111111111111111111', symbol: 'USDC', decimals: 6 },
+    { address: '0x2222222222222222222222222222222222222222', symbol: 'cbETH', decimals: 18 },
+    { address: '0x3333333333333333333333333333333333333333', symbol: 'PT-deJAAA', decimals: 18 },
+    { address: 'mock-usdc.near', symbol: 'USDC', decimals: 6 },
+  ] as const;
+  const principals = [1_000_000_000n, 250_000_000_000_000_000n, 100n * 10n ** 18n, 100_000_000n];
+  const factors = [10n ** 18n, 1_143_299_420_807_401_681n, 997_201_215_082_272_248n, 10n ** 18n];
+  const vaults: VaultAccount[] = tokens.map((asset, i) => ({
+    id: i === 3 ? 'near:mainnet:mock-rhea.near' : `eip155:${chainId}:0x${String(i + 4).repeat(40)}`,
+    kind: (['aave', 'rate', 'pendle', 'rhea'] as const)[i], name: ['Aave USDC', 'cbETH RateVault', 'PT-deJAAA', 'Rhea USDC'][i],
+    chain: i === 3 ? { id: 'near:mainnet', name: 'NEAR' } : base,
+    asset, yieldToken: asset, unitsLabel: ['USDC', 'ETH wei', 'USDC-scaled18', 'USDC'][i],
+    lossNote: 'Mock strategy: depositors bear losses pro-rata; paid credits are not clawed back.',
+    ...(i === 2 ? { buyUrl: config.pendleAppUrl } : {}),
+    position: { principal: principals[i], shares: principals[i] * factors[i] / (10n ** 18n),
+      yieldCredited: [4_213_870n, 1_000_000_000_000_000n, 2n * 10n ** 18n, 110_000n][i],
+      walletBalance: [2_450_000_000n, 1_250_000_000_000_000_000n, 50n * 10n ** 18n, 2_450_000_000n][i], allowance: 0n,
+      ...(i === 3 ? { rhea: { pendingIn: 0n, pendingOut: null, coverage: 10n ** 18n, busy: false, intentsBalance: 0n } } : {}) },
+  }));
+  const state = { credited: 4_020_000n, spent: 342_118n, keyEpoch: 2, debited: new Map<string, bigint>() };
+  const rhea = vaults[3].position;
+  const swaps = new Map<string, () => void>();
+  const select = (id?: string) => {
+    const index = id === undefined ? 0 : vaults.findIndex(vault => vault.id === id && vault.kind !== 'rhea');
+    if (index < 0) throw new DataError('vault', 'Choose an EVM vault; Rhea uses its bridge and signed withdrawal methods.');
+    return index;
   };
-
-  const overview = (address: Address): Overview => ({
-    user: caip10(address),
-    vault: {
-      principal: state.shares, // shares are principal units, 1:1 with USDC at full coverage
-      shares: state.shares,
-      yieldCredited: state.yieldCredited,
-      walletUsdc: state.walletUsdc,
-      allowance: 0n,
-    },
-    credits: {
-      credited: state.credited,
-      spent: state.spent,
-      available: state.credited - state.spent,
-      keyEpoch: state.keyEpoch,
-    },
-  });
+  const positive = (assets: bigint) => { if (assets <= 0n) throw new DataError('amount', 'Enter an amount above zero.'); };
+  const quote = (assets: bigint, direction: RheaDirection, dry = true): RheaQuote => {
+    positive(assets);
+    const fee = assets / 1000n + 20_000n;
+    const out = assets > fee ? assets - fee : 0n;
+    return { direction, dry, isMock: true, amountIn: assets, amountOut: out, minAmountOut: out * 99n / 100n,
+      etaSeconds: 45, deadline: new Date(Date.now() + 600_000).toISOString(),
+      ...(!dry ? { depositAddress: direction === 'deposit' ? `0x${hex(20)}` : `mock-${hex(8)}.near` } : {}) };
+  };
+  const overview = (address: Address): Overview => {
+    // One synthetic keeper cycle on refresh settles a mock withdrawal request.
+    if (rhea.rhea!.pendingOut !== null) {
+      const claim = rhea.rhea!.pendingOut;
+      rhea.shares -= claim; rhea.principal = rhea.shares * rhea.rhea!.coverage / (10n ** 18n);
+      rhea.rhea!.intentsBalance += claim * rhea.rhea!.coverage / (10n ** 18n); rhea.rhea!.pendingOut = null;
+    }
+    rhea.walletBalance = vaults[0].position.walletBalance;
+    return { user: caip10(address, chainId), vaults: structuredClone(vaults),
+      vault: { ...vaults[0].position, walletUsdc: vaults[0].position.walletBalance },
+      credits: { credited: state.credited, spent: state.spent, available: state.credited - state.spent, keyEpoch: state.keyEpoch } };
+  };
 
   return {
     isMock: true,
@@ -85,22 +113,48 @@ export function createMockData(): DashboardData {
       return overview(address);
     },
 
-    async deposit(_address, assets) {
-      if (assets <= 0n) throw new DataError('amount', 'Enter an amount above zero.');
-      if (assets > state.walletUsdc) throw new DataError('balance', 'That is more USDC than the wallet holds.');
-      await sleep(900);
-      state.walletUsdc -= assets;
-      state.shares += assets;
+    async deposit(_address, assets, vaultId) {
+      positive(assets); const index = select(vaultId), position = vaults[index].position;
+      if (assets > position.walletBalance) throw new DataError('balance', 'That is more than the wallet holds.');
+      await sleep(900); position.walletBalance -= assets;
+      position.shares += assets * factors[index] / (10n ** 18n);
+      position.principal = position.shares * (10n ** 18n) / factors[index];
       return { txHash: `0x${hex(32)}` };
     },
-
-    async redeem(_address, shares) {
-      if (shares <= 0n) throw new DataError('amount', 'Enter an amount above zero.');
-      if (shares > state.shares) throw new DataError('balance', 'That is more than your principal.');
-      await sleep(900);
-      state.shares -= shares;
-      state.walletUsdc += shares;
+    async redeem(_address, shares, vaultId) {
+      positive(shares); const index = select(vaultId), position = vaults[index].position;
+      if (shares > position.shares) throw new DataError('balance', 'That is more than your principal.');
+      await sleep(900); position.shares -= shares;
+      position.walletBalance += shares * (10n ** 18n) / factors[index];
+      position.principal = position.shares * (10n ** 18n) / factors[index];
       return { txHash: `0x${hex(32)}` };
+    },
+    async rheaQuote(_address, assets, direction) { return quote(assets, direction); },
+    async rheaDeposit(_address, assets) {
+      positive(assets);
+      if (assets > vaults[0].position.walletBalance) throw new DataError('balance', 'That is more USDC than the wallet holds.');
+      const funded = quote(assets, 'deposit', false);
+      vaults[0].position.walletBalance -= assets; rhea.rhea!.pendingIn += funded.amountOut;
+      swaps.set(funded.depositAddress!, () => { rhea.rhea!.pendingIn -= funded.amountOut; rhea.shares += funded.amountOut; rhea.principal += funded.amountOut; });
+      return { txHash: `0x${hex(32)}`, quote: funded };
+    },
+    async rheaWithdraw(_address, claim) {
+      positive(claim);
+      if (claim > rhea.shares) throw new DataError('balance', 'That is more than your principal claim.');
+      rhea.rhea!.pendingOut = claim;
+      return { txHash: `mock-near-${hex(16)}` };
+    },
+    async rheaExit(_address, assets) {
+      positive(assets);
+      if (assets > rhea.rhea!.intentsBalance) throw new DataError('balance', 'Wait for USDC to reach your Intents balance.');
+      const funded = quote(assets, 'withdraw', false); rhea.rhea!.intentsBalance -= assets;
+      swaps.set(funded.depositAddress!, () => { vaults[0].position.walletBalance += funded.amountOut; });
+      return { txHash: `mock-near-${hex(16)}`, quote: funded };
+    },
+    async rheaStatus(depositAddress) {
+      const complete = swaps.get(depositAddress);
+      if (complete) { complete(); swaps.delete(depositAddress); }
+      return { status: 'SUCCESS', terminal: true, isMock: true };
     },
 
     async walletProof(address) {

@@ -48,3 +48,15 @@ test('integer billing never draws beyond the reserved credit amount', () => {
     }
   }
 });
+
+test('token formatting/parsing keeps 6dp USDC and 18dp LST/PT distinct without floating-point loss', async () => {
+  const { formatAmount, parseAmount } = await import('./money.ts');
+  assert.equal(formatAmount(1n, 18), '0.000000000000000001');
+  assert.equal(formatAmount(1_234_567n, 6, 2), '1.23');
+  assert.equal(formatAmount(1_234_567n, 6, 8), '1.23456700');
+  assert.equal(formatAmount(-123_456_789_123_456_789n, 18, 8), '−0.12345678');
+  assert.equal(parseAmount('9007199254740993.000000000000000001', 18), 9_007_199_254_740_993_000_000_000_000_000_001n);
+  assert.equal(parseAmount('0.000000000000000001', 18), 1n);
+  assert.equal(parseAmount('0.0000001', 6), null);
+  assert.equal(parseAmount('0.0000000000000000001', 18), null);
+});
