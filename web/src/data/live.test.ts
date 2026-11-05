@@ -437,10 +437,11 @@ test('labelled mock exposes four vaults and simulates both Rhea bridge stages wi
   const preview = await data.rheaQuote(ADDRESS, 5_000_000n, 'deposit');
   assert.equal(preview.dry, true); assert.equal(preview.isMock, true); assert.equal(preview.depositAddress, undefined);
   const deposit = await data.rheaDeposit(ADDRESS, 5_000_000n);
-  const pending = (await data.overview(ADDRESS)).vaults[3].position;
-  assert.equal(pending.rhea?.pendingIn, deposit.quote.amountOut);
+  assert.equal((await data.overview(ADDRESS)).vaults[3].position.rhea?.pendingIn, 0n); // still bridging
   await data.rheaStatus(deposit.quote.depositAddress!);
-  const landed = await data.overview(ADDRESS);
+  const pending = (await data.overview(ADDRESS)).vaults[3].position; // delivered, queued in the vault
+  assert.equal(pending.rhea?.pendingIn, deposit.quote.amountOut);
+  const landed = await data.overview(ADDRESS); // the next cycle activates it
   assert.equal(landed.vaults[3].position.principal, initial.vaults[3].position.principal + deposit.quote.amountOut);
   assert.equal(landed.vaults[0].position.walletBalance, initial.vaults[0].position.walletBalance - 5_000_000n);
   await data.rheaWithdraw(ADDRESS, 3_000_000n);

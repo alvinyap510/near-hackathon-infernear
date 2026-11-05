@@ -8,7 +8,7 @@ import { DataError, readAmount as amount } from './errors.ts';
 import { createMockData } from './mock.ts';
 import { createRheaData, type NearView } from './rhea.ts';
 import { walletProofMessage } from './proof.ts';
-import type { Address, DashboardData, VaultAccount } from './types.ts';
+import { LOSS_NOTES, type Address, type DashboardData, type VaultAccount } from './types.ts';
 
 type Dependencies = {
   ethereum?: Pick<EIP1193Provider, 'request'>;
@@ -135,9 +135,7 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
           return { id: caip10(vault.address, chain.id), kind: vault.kind, name: vault.name,
             chain: { id: `eip155:${chain.id}`, name: 'Base' }, asset: { address: asset, symbol: vault.symbol, decimals: vault.decimals },
             yieldToken: { address: yieldToken, symbol: vault.symbol, decimals: vault.decimals }, unitsLabel: vault.units,
-            lossNote: vault.kind === 'rate' ? 'Depositors bear losses pro-rata, including slashing and exchange-rate declines.'
-              : vault.kind === 'pendle' ? 'Depositors bear deJAAA/Centrifuge AAA-CLO backing losses pro-rata; PT quantity is not guaranteed USD value.'
-              : 'Depositors bear Aave strategy losses pro-rata. Paid credits are not clawed back.',
+            lossNote: LOSS_NOTES[vault.kind],
             ...(vault.kind === 'pendle' ? { buyUrl: settings.pendleAppUrl } : {}),
             position: { principal, shares, yieldCredited, walletBalance, allowance } };
         })),
@@ -151,7 +149,7 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
         throw new DataError('near_rpc', 'NEAR returned invalid account state.');
       const rheaToken = { address: settings.nearUsdcAccount, symbol: 'USDC', decimals: 6 } as const;
       vaults.push({ id: `near:mainnet:${settings.rheaVaultAccount}`, kind: 'rhea', name: 'Rhea USDC', chain: { id: 'near:mainnet', name: 'NEAR' },
-        asset: rheaToken, yieldToken: rheaToken, unitsLabel: 'USDC', lossNote: 'Depositors bear Rhea strategy losses pro-rata. Withdrawals queue and depend on available liquidity.',
+        asset: rheaToken, yieldToken: rheaToken, unitsLabel: 'USDC', lossNote: LOSS_NOTES.rhea,
         position: { principal: amount(rheaPosition.principal) * amount(coverage) / (10n ** 18n), shares: amount(rheaPosition.principal),
           yieldCredited: amount(rheaPosition.yield_credited), walletBalance: vaults[0].position.walletBalance, allowance: 0n,
           rhea: { pendingIn: amount(rheaPosition.pending_in), pendingOut: rheaPosition.pending_out === null ? null : amount(rheaPosition.pending_out),

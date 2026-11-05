@@ -5,6 +5,7 @@
 import { caip10, config } from '../config.ts';
 import { DataError } from './errors.ts';
 import { expectedDebit, tokenCost } from './money.ts';
+import { LOSS_NOTES } from './types.ts';
 import type {
   Address,
   Attestation,
@@ -62,7 +63,7 @@ export function createMockData(): DashboardData {
     kind: (['aave', 'rate', 'pendle', 'rhea'] as const)[i], name: ['Aave USDC', 'cbETH RateVault', 'PT-deJAAA', 'Rhea USDC'][i],
     chain: i === 3 ? { id: 'near:mainnet', name: 'NEAR' } : base,
     asset, yieldToken: asset, unitsLabel: ['USDC', 'ETH wei', 'USDC-scaled18', 'USDC'][i],
-    lossNote: 'Mock strategy: depositors bear losses pro-rata; paid credits are not clawed back.',
+    lossNote: LOSS_NOTES[(['aave', 'rate', 'pendle', 'rhea'] as const)[i]],
     ...(i === 2 ? { buyUrl: config.pendleAppUrl } : {}),
     position: { principal: principals[i], shares: principals[i] * factors[i] / (10n ** 18n),
       yieldCredited: [4_213_870n, 1_000_000_000_000_000n, 2n * 10n ** 18n, 110_000n][i],
@@ -110,7 +111,10 @@ export function createMockData(): DashboardData {
 
     async overview(address) {
       await sleep(250);
-      return overview(address);
+      const queued = rhea.rhea!.pendingIn;
+      const result = overview(address);
+      if (queued > 0n) { rhea.rhea!.pendingIn = 0n; rhea.shares += queued; rhea.principal += queued; }
+      return result;
     },
 
     async deposit(_address, assets, vaultId) {
@@ -134,8 +138,9 @@ export function createMockData(): DashboardData {
       positive(assets);
       if (assets > vaults[0].position.walletBalance) throw new DataError('balance', 'That is more USDC than the wallet holds.');
       const funded = quote(assets, 'deposit', false);
-      vaults[0].position.walletBalance -= assets; rhea.rhea!.pendingIn += funded.amountOut;
-      swaps.set(funded.depositAddress!, () => { rhea.rhea!.pendingIn -= funded.amountOut; rhea.shares += funded.amountOut; rhea.principal += funded.amountOut; });
+      vaults[0].position.walletBalance -= assets;
+      // Delivered by 1Click → queued in the vault; the next overview stands in for the vault's next cycle.
+      swaps.set(funded.depositAddress!, () => { rhea.rhea!.pendingIn += funded.amountOut; });
       return { txHash: `0x${hex(32)}`, quote: funded };
     },
     async rheaWithdraw(_address, claim) {

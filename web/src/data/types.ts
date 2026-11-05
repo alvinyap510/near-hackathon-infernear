@@ -7,6 +7,14 @@ export type Address = `0x${string}`;
 export type UserId = string;
 
 export type VaultKind = 'aave' | 'rate' | 'pendle' | 'rhea';
+
+/** What a depositor risks in each vault, shown in live and mock mode alike. */
+export const LOSS_NOTES: Record<VaultKind, string> = {
+  aave: 'Depositors bear Aave strategy losses pro-rata. Paid credits are not clawed back.',
+  rate: 'Depositors bear losses pro-rata, including slashing and exchange-rate declines.',
+  pendle: 'Depositors bear deJAAA/Centrifuge AAA-CLO backing losses pro-rata; PT quantity is not guaranteed USD value.',
+  rhea: 'Depositors bear Rhea strategy losses pro-rata. Withdrawals queue and depend on available liquidity.',
+};
 export type Token = { address: string; symbol: string; decimals: 6 | 18 };
 export type VaultId = string;
 /** EVM principal is convertToAssets(shares), in deposit-asset base units, never dollars.
