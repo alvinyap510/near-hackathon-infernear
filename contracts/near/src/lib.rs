@@ -31,6 +31,15 @@ struct UserState {
     key_epoch: u32,
 }
 
+const RATE_SCALE: u128 = 1_000_000_000_000_000_000;
+
+#[near(serializers = [borsh])]
+#[derive(Clone, Copy, Default, PartialEq)]
+struct Posting {
+    cumulative: u128,
+    remainder: u128,
+}
+
 #[near(serializers = [json])]
 #[derive(Debug, PartialEq)]
 pub struct Account {
@@ -54,7 +63,7 @@ pub struct Connector {
     gateway: AccountId,
     users: LookupMap<String, UserState>,
     vaults: LookupMap<String, Vault>,
-    posted: LookupMap<(String, String), u128>,
+    posted: LookupMap<(String, String), Posting>,
     debited: LookupMap<String, u128>,
 }
 
@@ -72,37 +81,49 @@ impl Connector {
         }
     }
 
-    pub fn post_credits(&mut self, vault: String, paid_cum: U128, entries: Vec<(String, U128)>) {
+    pub fn post_credits(
+        &mut self,
+        vault: String,
+        paid_cum: U128,
+        rate: U128,
+        source_block: u64,
+        entries: Vec<(String, U128)>,
+    ) {
         require!(env::predecessor_account_id() == self.keeper, "keeper only");
         let mut state = self.vault(vault.clone());
         state.paid_cum.0 = state.paid_cum.0.max(paid_cum.0);
 
         // Stage the whole batch, including repeated users, before any storage write.
-        let mut updates: BTreeMap<String, (u128, UserState)> = BTreeMap::new();
+        let mut updates: BTreeMap<String, (Posting, UserState)> = BTreeMap::new();
         for (user, cumulative) in &entries {
             let (posted, account) = updates.entry(user.clone()).or_insert_with(|| {
                 (
                     self.posted
                         .get(&(vault.clone(), user.clone()))
                         .copied()
-                        .unwrap_or(0),
+                        .unwrap_or_default(),
                     self.users.get(user).cloned().unwrap_or_default(),
                 )
             });
             let delta = cumulative
                 .0
-                .checked_sub(*posted)
+                .checked_sub(posted.cumulative)
                 .expect("negative credit delta");
+            let priced = delta
+                .checked_mul(rate.0)
+                .and_then(|value| value.checked_add(posted.remainder))
+                .expect("priced credit overflow");
             account.credited = account
                 .credited
-                .checked_add(delta)
+                .checked_add(priced / RATE_SCALE)
                 .expect("credit overflow");
             state.posted_total.0 = state
                 .posted_total
                 .0
                 .checked_add(delta)
                 .expect("posted total overflow");
-            *posted = cumulative.0;
+            posted.cumulative = cumulative.0;
+            posted.remainder = priced % RATE_SCALE;
         }
         require!(
             state.posted_total.0 <= state.paid_cum.0,
@@ -112,7 +133,7 @@ impl Connector {
         let mut changed = state != self.vault(vault.clone());
         for (user, (posted, account)) in updates {
             let key = (vault.clone(), user.clone());
-            if posted != self.posted.get(&key).copied().unwrap_or(0) {
+            if posted != self.posted.get(&key).copied().unwrap_or_default() {
                 self.posted.insert(key, posted);
                 self.users.insert(user, account);
                 changed = true;
@@ -123,7 +144,7 @@ impl Connector {
             emit(
                 "post_credits",
                 near_sdk::serde_json::json!({
-                    "vault": vault, "paid_cum": state.paid_cum, "entries": entries
+                    "vault": vault, "paid_cum": state.paid_cum, "rate": rate, "source_block": source_block, "entries": entries
                 }),
             );
         }

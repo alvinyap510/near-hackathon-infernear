@@ -33,6 +33,8 @@ fn post(contract: &mut Connector, paid: u128, entries: &[(&str, u128)]) {
     contract.post_credits(
         VAULT.into(),
         U128(paid),
+        U128(RATE_SCALE),
+        42,
         entries
             .iter()
             .map(|(u, n)| (u.to_string(), U128(*n)))
@@ -145,9 +147,23 @@ fn vault_budgets_are_independent_and_user_credit_aggregates() {
     let mut contract = setup();
     post(&mut contract, 100, &[(ALICE, 100)]);
     let other = "eip155:1:0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-    contract.post_credits(other.into(), U128(50), vec![(ALICE.into(), U128(50))]);
+    contract.post_credits(
+        other.into(),
+        U128(50),
+        U128(RATE_SCALE),
+        42,
+        vec![(ALICE.into(), U128(50))],
+    );
     assert_eq!(contract.account(ALICE.into()).credited, U128(150));
-    rejected(|| contract.post_credits(other.into(), U128(50), vec![(BOB.into(), U128(1))]));
+    rejected(|| {
+        contract.post_credits(
+            other.into(),
+            U128(50),
+            U128(RATE_SCALE),
+            42,
+            vec![(BOB.into(), U128(1))],
+        )
+    });
     assert_eq!(contract.account(BOB.into()).credited, U128(0));
 }
 
@@ -193,7 +209,15 @@ fn caller_checks_use_predecessor_for_every_mutation_and_retry() {
     }
     for wrong in ["outsider.near", GATEWAY] {
         caller(wrong);
-        rejected(|| contract.post_credits(VAULT.into(), U128(20), vec![(ALICE.into(), U128(20))]));
+        rejected(|| {
+            contract.post_credits(
+                VAULT.into(),
+                U128(20),
+                U128(RATE_SCALE),
+                42,
+                vec![(ALICE.into(), U128(20))],
+            )
+        });
     }
     assert_eq!(contract.account(ALICE.into()).credited, U128(10));
     assert_eq!(contract.account(ALICE.into()).spent, U128(1));
@@ -233,12 +257,17 @@ fn epoch_increments_without_moving_credit() {
 #[test]
 fn integer_boundaries_do_not_wrap_or_partially_post() {
     let mut contract = setup();
-    post(&mut contract, u128::MAX, &[(ALICE, u128::MAX)]);
-    rejected(|| post(&mut contract, u128::MAX, &[(BOB, 1)]));
+    let maximum_delta = u128::MAX / RATE_SCALE;
+    post(&mut contract, maximum_delta, &[(ALICE, maximum_delta)]);
+    rejected(|| post(&mut contract, maximum_delta, &[(BOB, 1)]));
+    rejected(|| post(&mut contract, u128::MAX, &[(BOB, u128::MAX)]));
+    contract.users.get_mut(&ALICE.to_string()).unwrap().credited = u128::MAX;
     rejected(|| {
         contract.post_credits(
             "second-vault".into(),
             U128(1),
+            U128(RATE_SCALE),
+            42,
             vec![(ALICE.into(), U128(1))],
         )
     });
@@ -268,7 +297,7 @@ fn nep297_events_include_cumulative_posts_receipts_and_epochs() {
     assert_eq!(posted["event"], "post_credits");
     assert_eq!(
         posted["data"][0],
-        near_sdk::serde_json::json!({"vault":VAULT,"paid_cum":"10","entries":[[ALICE,"10"]]})
+        near_sdk::serde_json::json!({"vault":VAULT,"paid_cum":"10","rate":"1000000000000000000","source_block":42,"entries":[[ALICE,"10"]]})
     );
     caller(GATEWAY);
     let usage = receipt("event-id");
@@ -325,6 +354,122 @@ fn debit_storage_measurement() {
     assert_eq!(reloaded.debited_amount(id.into()), Some(U128(1)));
 }
 
+#[test]
+fn priced_intervals_keep_fractional_carry_and_never_reprice_history() {
+    let mut contract = setup();
+    let rate = RATE_SCALE * 6 / 10;
+    contract.post_credits(
+        VAULT.into(),
+        U128(1),
+        U128(rate),
+        100,
+        vec![(ALICE.into(), U128(1))],
+    );
+    assert_eq!(contract.account(ALICE.into()).credited, U128(0));
+    contract.post_credits(
+        VAULT.into(),
+        U128(2),
+        U128(rate),
+        101,
+        vec![(ALICE.into(), U128(2))],
+    );
+    assert_eq!(contract.account(ALICE.into()).credited, U128(1));
+    assert_eq!(
+        contract
+            .posted
+            .get(&(VAULT.into(), ALICE.into()))
+            .unwrap()
+            .remainder,
+        RATE_SCALE / 5
+    );
+    caller(KEEPER);
+    contract.post_credits(
+        VAULT.into(),
+        U128(2),
+        U128(u128::MAX),
+        999,
+        vec![(ALICE.into(), U128(2))],
+    );
+    assert!(get_logs().is_empty());
+    assert_eq!(contract.account(ALICE.into()).credited, U128(1));
+    contract.post_credits(
+        VAULT.into(),
+        U128(3),
+        U128(RATE_SCALE * 2),
+        102,
+        vec![(ALICE.into(), U128(3))],
+    );
+    assert_eq!(contract.account(ALICE.into()).credited, U128(3));
+    let value: near_sdk::serde_json::Value = near_sdk::serde_json::from_str(
+        get_logs()
+            .last()
+            .unwrap()
+            .strip_prefix("EVENT_JSON:")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(value["data"][0]["source_block"], 102);
+    assert_eq!(value["data"][0]["rate"], (RATE_SCALE * 2).to_string());
+}
+
+#[test]
+fn priced_product_and_carry_overflow_reject_whole_batch() {
+    let mut contract = setup();
+    contract.post_credits(
+        VAULT.into(),
+        U128(1),
+        U128(RATE_SCALE - 1),
+        1,
+        vec![(ALICE.into(), U128(1))],
+    );
+    rejected(|| {
+        contract.post_credits(
+            VAULT.into(),
+            U128(3),
+            U128(u128::MAX),
+            2,
+            vec![(BOB.into(), U128(1)), (ALICE.into(), U128(2))],
+        )
+    });
+    assert_eq!(contract.account(BOB.into()).credited, U128(0));
+    assert_eq!(contract.vault(VAULT.into()).paid_cum, U128(1));
+    assert_eq!(
+        contract
+            .posted
+            .get(&(VAULT.into(), ALICE.into()))
+            .unwrap()
+            .cumulative,
+        1
+    );
+    rejected(|| {
+        contract.post_credits(
+            VAULT.into(),
+            U128(3),
+            U128(u128::MAX),
+            2,
+            vec![(BOB.into(), U128(2))],
+        )
+    });
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 48, failure_persistence: None, ..ProptestConfig::default() })]
+    #[test]
+    fn priced_marks_equal_one_floor_per_user_vault(posts in prop::collection::vec((0usize..2, 0u128..1000, 0u128..2_000_000_000_000_000_000), 1..40)) {
+        let mut contract = setup();
+        let mut cumulative = [0u128;2];
+        let mut products = [0u128;2];
+        for (v,delta,rate) in posts {
+            caller(KEEPER);
+            cumulative[v] += delta;
+            products[v] += delta * rate;
+            contract.post_credits(format!("near:mainnet:vault-{v}.near"), U128(cumulative[v]), U128(rate), 42, vec![(ALICE.into(), U128(cumulative[v]))]);
+            prop_assert_eq!(contract.account(ALICE.into()).credited.0, products.iter().map(|value| value / RATE_SCALE).sum::<u128>());
+            prop_assert!(contract.account(ALICE.into()).spent <= contract.account(ALICE.into()).credited);
+        }
+    }
+}
+
 proptest! {
     #![proptest_config(ProptestConfig { cases: 96, failure_persistence: None, ..ProptestConfig::default() })]
     #[test]
@@ -344,31 +489,33 @@ proptest! {
                     paid[v] += amount;
                     posted[v][u] += amount;
                     caller(KEEPER);
-                    contract.post_credits(vaults[v].into(), U128(paid[v]), vec![(users[u].into(), U128(posted[v][u]))]);
+                    contract.post_credits(vaults[v].into(), U128(paid[v]), U128(RATE_SCALE), 42, vec![(users[u].into(), U128(posted[v][u]))]);
                 }
                 1 => {
                     caller(KEEPER);
-                    contract.post_credits(vaults[v].into(), U128(0), vec![(users[u].into(), U128(posted[v][u]))]);
+                    contract.post_credits(vaults[v].into(), U128(0), U128(RATE_SCALE), 42, vec![(users[u].into(), U128(posted[v][u]))]);
                 }
                 2 if posted[v][u] > 0 => {
                     caller(KEEPER);
-                    rejected(|| contract.post_credits(vaults[v].into(), U128(paid[v]), vec![(users[u].into(), U128(posted[v][u] - 1))]));
+                    rejected(|| contract.post_credits(vaults[v].into(), U128(paid[v]), U128(RATE_SCALE), 42, vec![(users[u].into(), U128(posted[v][u] - 1))]));
                 }
                 3 => {
                     caller(KEEPER);
-                    rejected(|| contract.post_credits(vaults[v].into(), U128(paid[v]), vec![(users[u].into(), U128(posted[v][u] + paid[v] + 1))]));
+                    rejected(|| contract.post_credits(vaults[v].into(), U128(paid[v]), U128(RATE_SCALE), 42, vec![(users[u].into(), U128(posted[v][u] + paid[v] + 1))]));
                 }
                 4 => {
                     caller(GATEWAY);
                     let key = format!("inference-{id}");
-                    if debited.contains_key(&key) {
-                        contract.debit(users[u].into(), U128(amount), receipt(&key));
-                    } else if amount <= credit - spent[u] {
-                        contract.debit(users[u].into(), U128(amount), receipt(&key));
-                        debited.insert(key, amount);
-                        spent[u] += amount;
+                    if let std::collections::btree_map::Entry::Vacant(entry) = debited.entry(key.clone()) {
+                        if amount <= credit - spent[u] {
+                            contract.debit(users[u].into(), U128(amount), receipt(&key));
+                            entry.insert(amount);
+                            spent[u] += amount;
+                        } else {
+                            rejected(|| contract.debit(users[u].into(), U128(amount), receipt(&key)));
+                        }
                     } else {
-                        rejected(|| contract.debit(users[u].into(), U128(amount), receipt(&key)));
+                        contract.debit(users[u].into(), U128(amount), receipt(&key));
                     }
                 }
                 5 => {
