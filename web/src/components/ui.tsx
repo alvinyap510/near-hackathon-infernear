@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from 'react';
+import type { Token } from '../data/index.ts';
+import { formatAmount } from '../data/money.ts';
 
 export function CopyButton({ text, label = 'Copy', tone = 'paper' }: { text: string; label?: string; tone?: 'paper' | 'seal' }) {
   const [copied, setCopied] = useState(false);
@@ -53,3 +55,28 @@ export function SealGlyph({ size = 22 }: { size?: number }) {
 }
 
 export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** A token amount in its own decimals: cents for 6-dp tokens, four places for 18-dp ones. */
+export const tokenAmount = (amount: bigint, token: Token, fine = false) =>
+  `${formatAmount(amount, token.decimals, token.decimals === 6 ? (fine ? 4 : 2) : fine ? 6 : 4)} ${token.symbol}`;
+
+/** An amount as a user would type it back: no grouping, no trailing zeros. */
+export const plainAmount = (amount: bigint, token: Token) =>
+  formatAmount(amount, token.decimals).replace(/,/g, '').replace(/\.?0+$/, '');
+
+export function ChainBadge({ name }: { name: string }) {
+  return (
+    <span className={`badge chain ${name === 'NEAR' ? 'near' : 'base'}`}>
+      <span className="badge-dot" aria-hidden="true" /> {name}
+    </span>
+  );
+}
+
+export function LockIcon() {
+  return (
+    <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="3" y="7" width="10" height="7" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M5.5 7V5a2.5 2.5 0 015 0v2" fill="none" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
