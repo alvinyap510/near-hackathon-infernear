@@ -23,7 +23,18 @@ export function MockRibbon() {
   );
 }
 
-export function Header({ address, tab, onTab }: { address: Address | null; tab: Tab; onTab: (t: Tab) => void }) {
+export function Header({
+  address,
+  tab,
+  onTab,
+  onConnect,
+}: {
+  address: Address | null;
+  tab: Tab;
+  onTab: (t: Tab) => void;
+  /** Opens the wallet chooser; without it the header shows "Not connected". */
+  onConnect?: () => void;
+}) {
   const refs = useRef<(HTMLAnchorElement | null)[]>([]);
 
   // Arrow keys move between tabs, as in any tab list.
@@ -75,6 +86,11 @@ export function Header({ address, tab, onTab }: { address: Address | null; tab: 
                 {shortHex(address)}
               </span>
             </>
+          ) : onConnect ? (
+            <button type="button" className="btn primary header-connect" onClick={onConnect}>
+              <span className="btn-dot" aria-hidden="true" />
+              Connect wallet
+            </button>
           ) : (
             <span className="chip muted">Not connected</span>
           )}
