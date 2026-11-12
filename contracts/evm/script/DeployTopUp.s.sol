@@ -9,7 +9,9 @@ import {CreditTopUp} from "../src/CreditTopUp.sol";
 contract DeployTopUp is Script {
     function run() external returns (CreditTopUp topUp) {
         vm.startBroadcast(vm.envUint("EVM_DEPLOYER_PRIVATE_KEY"));
-        topUp = new CreditTopUp(IERC20(vm.envAddress("EVM_USDC")), vm.envAddress("EVM_YIELD_RECIPIENT"));
+        topUp = new CreditTopUp(
+            IERC20(vm.envAddress("EVM_USDC")), vm.envAddress("EVM_YIELD_RECIPIENT"), vm.envUint("EVM_TOPUP_MINIMUM")
+        );
         vm.stopBroadcast();
     }
 }

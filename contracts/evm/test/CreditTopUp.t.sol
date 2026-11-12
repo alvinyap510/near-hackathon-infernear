@@ -13,12 +13,13 @@ contract CreditTopUpTest is Test {
     address internal treasury = makeAddr("treasury");
     address internal alice = makeAddr("alice");
     address internal bob = makeAddr("bob");
+    uint256 internal constant MINIMUM = 1e6;
 
     event Paid(address indexed payer, address indexed beneficiary, uint256 amount);
 
     function setUp() public {
         usdc = new MockUSDC();
-        topUp = new CreditTopUp(IERC20(address(usdc)), treasury);
+        topUp = new CreditTopUp(IERC20(address(usdc)), treasury, MINIMUM);
         usdc.mint(alice, 100e6);
         usdc.mint(bob, 100e6);
         vm.prank(alice);
@@ -62,21 +63,25 @@ contract CreditTopUpTest is Test {
         assertEq(usdc.balanceOf(bob), 97e6);
     }
 
-    function test_RejectsZeroAmountAndZeroBeneficiary() public {
+    function test_RejectsDustAndZeroBeneficiary() public {
         vm.startPrank(alice);
-        vm.expectRevert(CreditTopUp.ZeroAmount.selector);
+        vm.expectRevert(CreditTopUp.BelowMinimum.selector);
         topUp.pay(0, alice);
+        vm.expectRevert(CreditTopUp.BelowMinimum.selector);
+        topUp.pay(MINIMUM - 1, alice);
         vm.expectRevert(CreditTopUp.ZeroAddress.selector);
         topUp.pay(1e6, address(0));
         vm.stopPrank();
         assertEq(topUp.paidTotal(), 0);
     }
 
-    function test_RejectsZeroConstructorAddresses() public {
+    function test_RejectsZeroConstructorInputs() public {
         vm.expectRevert(CreditTopUp.ZeroAddress.selector);
-        new CreditTopUp(IERC20(address(0)), treasury);
+        new CreditTopUp(IERC20(address(0)), treasury, MINIMUM);
         vm.expectRevert(CreditTopUp.ZeroAddress.selector);
-        new CreditTopUp(IERC20(address(usdc)), address(0));
+        new CreditTopUp(IERC20(address(usdc)), address(0), MINIMUM);
+        vm.expectRevert(CreditTopUp.BelowMinimum.selector);
+        new CreditTopUp(IERC20(address(usdc)), treasury, 0);
     }
 
     function test_FailedTransferRecordsNothing() public {
@@ -95,7 +100,7 @@ contract CreditTopUpTest is Test {
         uint256 expectedAlice;
         uint256 expectedBob;
         for (uint256 i = 0; i < amounts.length; i++) {
-            uint256 amount = bound(uint256(amounts[i]), 1, 1_000_000e6);
+            uint256 amount = bound(uint256(amounts[i]), MINIMUM, 1_000_000e6);
             address payer = fromBob[i] ? bob : alice;
             usdc.mint(payer, amount);
             vm.prank(payer);
@@ -114,9 +119,11 @@ contract CreditTopUpTest is Test {
         vm.setEnv("EVM_USDC", vm.toString(address(usdc)));
         vm.setEnv("EVM_YIELD_RECIPIENT", vm.toString(treasury));
         vm.setEnv("EVM_DEPLOYER_PRIVATE_KEY", vm.toString(uint256(123)));
+        vm.setEnv("EVM_TOPUP_MINIMUM", vm.toString(MINIMUM));
         CreditTopUp deployed = new DeployTopUp().run();
         assertEq(address(deployed.usdc()), address(usdc));
         assertEq(deployed.recipient(), treasury);
+        assertEq(deployed.minimum(), MINIMUM);
         assertEq(deployed.paidTotal(), 0);
     }
 }
