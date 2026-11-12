@@ -2994,3 +2994,86 @@ svg {
     opacity: 0.05;
   }
 }
+
+/* ---------- 007: two lines, footer on the content edge ---------- */
+
+.outro .outro-h {
+  max-width: none;
+  font-size: clamp(40px, 6vw, 104px);
+}
+
+.deck .outro .outro-h {
+  font-size: clamp(40px, min(6vw, 9.5vh), 104px);
+}
+
+.outro-h .line {
+  display: block;
+}
+
+.motion .outro-h .line {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 0.9s var(--ease), transform 0.9s var(--ease);
+}
+
+.motion .outro-h .line + .line {
+  transition-delay: 0.12s;
+}
+
+.motion .outro.in .outro-h .line {
+  opacity: 1;
+  transform: none;
+}
+
+.deck .outro > .wrap,
+.deck .outro > .foot {
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .outro .outro-h {
+    font-size: clamp(36px, 10.5vw, 56px);
+  }
+}
+
+.foot {
+  border-top: 0;
+  background: linear-gradient(var(--night-line), var(--night-line)) calc(var(--gutter) + var(--rail)) 0 / calc(100% - 2 * var(--gutter) - var(--rail)) 1px no-repeat;
+}
+
+/* Short laptop screens: a little less air so each slide still fits. */
+@media (max-height: 860px) {
+  .deck .sec {
+    padding: calc(var(--hud) + 18px) 0 40px;
+  }
+
+  .deck .h2 {
+    margin-top: 16px;
+    font-size: clamp(38px, min(5.6vw, 7.4vh), 92px);
+  }
+
+  .deck .vaults {
+    margin-top: 28px;
+  }
+
+  .deck .shape {
+    margin: 12px 0 10px;
+  }
+
+  .deck .rail,
+  .deck .i-steps,
+  .deck .tee,
+  .deck .addrs {
+    margin-top: 24px;
+  }
+
+  .deck .rules {
+    margin-top: 32px;
+  }
+}
+
+/* The status line only shows in slide mode, where every slide keeps room for it at the bottom.
+   In normal scrolling it would pass over content. */
+html:not(.deck) .hud-bottom {
+  display: none;
+}
