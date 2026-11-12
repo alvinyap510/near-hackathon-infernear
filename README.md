@@ -11,7 +11,21 @@ InferNear is an OpenAI-format API endpoint on top of NEAR AI's private TEE model
 
 Built at the NEAR HACKATHON (1–14 Nov 2026).
 
-> **Status: built and tested locally; not yet deployed.** Every command in this README runs from a clean clone, offline after install, against mocks and fixtures. **Live private inference has been tested once through the relay (see below); no mainnet deployment, deposit or bridge has been run yet.** The dashboard runs on clearly labelled mock data until the contracts are deployed, and its "Try the API" panel is a labelled simulation. This section will list deployed addresses and the live endpoint once they exist.
+> **Status (12 Nov 2026): deployed on mainnet, with small caps.** The API is live at `https://api.infernear.dev/v1` and the console at `https://app.infernear.dev`. Three Base vaults and the NEAR credit ledger are live; the **Rhea vault is deployed but paused** while a contract fix is redeployed (see known limits). No user deposit has been made yet, so no credits exist on the ledger. Every command under "Verify it yourself" still runs from a clean clone, offline after install, against mocks and fixtures.
+
+## Live deployment
+
+| Piece | Where |
+|---|---|
+| API endpoint | `https://api.infernear.dev/v1` (OpenAI Chat Completions format; `GET /v1/models` lists the served TEE models) |
+| Console | `https://app.infernear.dev` |
+| Aave USDC vault (Base) | [`0x19110449a361855d30090BC26112E9a5c3793198`](https://basescan.org/address/0x19110449a361855d30090BC26112E9a5c3793198) |
+| cbETH vault (Base) | [`0x20B3852c32FFCBfD6a713045e7eA411683446f40`](https://basescan.org/address/0x20B3852c32FFCBfD6a713045e7eA411683446f40) |
+| Pendle PT-deJAAA vault (Base) | [`0x5801707F6AF54f33Ab3E1910c09D79B81D4Be92c`](https://basescan.org/address/0x5801707F6AF54f33Ab3E1910c09D79B81D4Be92c) |
+| Credit ledger (NEAR) | [`connector.infernear-ai.near`](https://nearblocks.io/address/connector.infernear-ai.near) |
+| Rhea USDC vault (NEAR) | [`rhea.infernear-ai.near`](https://nearblocks.io/address/rhea.infernear-ai.near), paused |
+
+Each vault has a deposit cap of about $10,000 (10,000 USDC, 5 ETH of principal, 10,000 USD of PT principal, 10,000 USDC) and a small cushion donated at deployment that absorbs rounding.
 
 ## How it works
 
@@ -65,10 +79,10 @@ A fourth shape, staking with claimable rewards, is built and tested (`StakingRew
 Prerequisites: Node 24.22.1+, Foundry (Forge 1.5.1), rustup Rust 1.97.1 with the `wasm32-unknown-unknown` target, a C/C++ toolchain and CMake. Each step needs network access once to install dependencies.
 
 ```sh
-# API relay: gateway + keeper (42 tests, then an end-to-end demo on fixtures)
+# API relay: gateway + keeper (49 tests, then an end-to-end demo on fixtures)
 cd relay && npm ci --ignore-scripts && npm test && npm run demo && cd ..
 
-# Dashboard (36 tests, production build); `npm run dev` serves it on mock data
+# Dashboard (37 tests, production build); `npm run dev` serves it on mock data unless the live `VITE_*` settings are filled in
 cd web && npm ci --ignore-scripts && npm test && npm run build && cd ..
 
 # Base vaults (77 offline tests, including invariant fuzzing)
@@ -100,13 +114,17 @@ These are enforced in the contracts and tested in the contract and relay suites:
 3. Principal + unspent realized yield + unrealized yield = position value, in integer base units within documented rounding.
 4. You can always withdraw your principal, minus documented protocol exit costs and pro-rata strategy losses.
 
-No contract has an owner, admin, pause or upgrade path. The Rhea vault's full-access keys are deleted at deployment.
+The three Base vaults and the credit ledger have no owner, admin, pause or upgrade path. **The Rhea vault on mainnet is the exception: it keeps its deployment key during the hackathon**, so its code can be fixed and the deployment wound down afterwards. Whoever holds that key could replace the vault's code, so treat the Rhea vault as operator-controlled until the key is deleted (the deploy script deletes it by default; `NEAR_RHEA_KEEP_KEY=true` keeps it).
 
 ## Not done yet, and known limits
 
 - **Live inference was verified once, by probe.** On 2026-11-12 `npm run spike` in `relay` sent encrypted JS and Python requests, plain and streaming, through the relay to a NEAR AI TEE model; TEE signatures verified and every charge matched NEAR's bill after rounding up to whole micro-USD ([details](relay/README.md#live-sdk-probe--passed-on-2026-11-12)). It needs your own NEAR AI key to reproduce.
 - **The model build check is off.** The SDK still verifies the model's TEE hardware attestation and signatures, but NEAR's check that the model runs NEAR's published proxy build currently rejects NEAR's own deploys, so we leave it out until NEAR fixes it. The gateway build check stays on.
-- **Nothing is deployed.** No vault, connector or relay is live, so the dashboard uses mock data.
+- **The Rhea vault is paused.** On mainnet its first cycles failed because the contract gave Rhea's asset view too little gas; a second defect (idle cash not supplied in a cycle that also pays yield) is fixed in this repository. The fixed code has not been redeployed yet, so do not deposit into the Rhea vault.
+- **No deposit, credit or paid API call has happened on mainnet yet.** The contracts, relay and console are live, and wallet sign-in and API-key issue were checked against the live relay; the first funded round trip is still to come.
+- **The console's "Try the API" panel is a labelled simulation.** A real call is made with NEAR AI's SDK from your own code, as in the probe above.
+- **Every API call is settled by its own NEAR transaction.** That costs the operator roughly 0.0015 NEAR per call in gas and permanent ledger storage, far more than the inference itself; the ledger as funded covers about 590 calls. A production version would batch debits.
+- **PT-deJAAA expires on 26 Nov 2026.** After that the Pendle vault's PT stops appreciating.
 - **The relay is trusted for prices and attribution.** It cannot spend principal, but it decides how yield is priced and who earned it; both are publicly recomputable from chain data.
 - **Encryption hides content, not metadata.** A relay can still observe request size, timing and token counts.
 
