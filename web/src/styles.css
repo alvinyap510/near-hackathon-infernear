@@ -3462,3 +3462,34 @@ body:has(dialog.wd[open]) {
     grid-column: auto;
   }
 }
+
+/* Brand logos (chains, assets, protocols), drawn by @web3icons/react as shipped. */
+
+.brand-mark {
+  display: block;
+  flex: none;
+}
+
+/* A tile is the mark on its own brand-colour square; round it like the chips. */
+.brand-mark.is-tile {
+  border-radius: 25%;
+}
+
+.badge.has-logo {
+  gap: 5px;
+  padding-left: 4px;
+}
+
+/* A full-bleed tile reads larger than a round mark of the same box. */
+.badge-logo.is-tile {
+  width: 14px;
+  height: 14px;
+  margin: 0 1px;
+  border-radius: 3.5px;
+}
+
+.vc-name.has-mark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}

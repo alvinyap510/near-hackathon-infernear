@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import { ChainBadge, ErrorNote, LockIcon } from './ui.tsx';
+import { AssetBadge, BrandMark, ChainBadge, ErrorNote, LockIcon, type Brand } from './ui.tsx';
 
 // Presentation only: renders what the props carry and invents no figures.
 export type CatalogueVault = {
@@ -31,6 +31,9 @@ export type VaultCatalogueProps = {
 };
 
 const WALLET_NAME = { evm: 'EVM', near: 'NEAR' } as const;
+
+// The protocol behind each strategy. Rhea has none: @web3icons carries only the pre-rebrand Ref Finance mark.
+const PROTOCOL: Partial<Record<CatalogueVault['kind'], Brand>> = { aave: 'aave', rate: 'coinbase', pendle: 'pendle' };
 
 export function VaultCatalogue({ vaults, loading, error = null, connectedKind, onChoose, onConnect }: VaultCatalogueProps): JSX.Element {
   const skeleton = loading && vaults.length === 0;
@@ -123,13 +126,14 @@ function VaultCard({
   const fill = capFraction(vault.deposited, vault.cap);
   const nameId = `vc-${vault.id}`;
   const [rateValue, rateRest] = splitFirst(vault.rateNow);
+  const protocol = PROTOCOL[vault.kind];
 
   return (
     <article className={`vc-card rise d${Math.min(index + 2, 5)}${paused ? ' is-paused' : ''}`} aria-labelledby={nameId}>
       <div className="vc-head">
         <span className="ticket-badges">
           <ChainBadge name={vault.chainName} />
-          <span className="badge asset">{vault.assetSymbol}</span>
+          <AssetBadge symbol={vault.assetSymbol} />
           {paused && <span className="badge vc-paused">Paused</span>}
         </span>
         <span className="vc-shape">
@@ -138,7 +142,8 @@ function VaultCard({
         </span>
       </div>
 
-      <h2 id={nameId} className="vc-name">
+      <h2 id={nameId} className={`vc-name${protocol ? ' has-mark' : ''}`}>
+        {protocol && <BrandMark brand={protocol} size={20} tile className="vc-name-mark" />}
         {vault.name}
       </h2>
       <p className="vc-strategy">{vault.strategy}</p>

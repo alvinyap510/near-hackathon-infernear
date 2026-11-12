@@ -1,4 +1,11 @@
 import { useState, type ReactNode } from 'react';
+import ExchangeCoinbase from '@web3icons/react/icons/exchanges/ExchangeCoinbase';
+import NetworkBase from '@web3icons/react/icons/networks/NetworkBase';
+import NetworkNearProtocol from '@web3icons/react/icons/networks/NetworkNearProtocol';
+import TokenAAVE from '@web3icons/react/icons/tokens/TokenAAVE';
+import TokenCBETH from '@web3icons/react/icons/tokens/TokenCBETH';
+import TokenPENDLE from '@web3icons/react/icons/tokens/TokenPENDLE';
+import TokenUSDC from '@web3icons/react/icons/tokens/TokenUSDC';
 import type { Token } from '../data/index.ts';
 import { formatAmount } from '../data/money.ts';
 
@@ -70,10 +77,57 @@ export const tokenAmount = (amount: bigint, token: Token, fine = false) =>
 export const plainAmount = (amount: bigint, token: Token) =>
   formatAmount(amount, token.decimals).replace(/,/g, '').replace(/\.?0+$/, '');
 
-export function ChainBadge({ name }: { name: string }) {
+/**
+ * Brand marks from @web3icons/react, drawn as the package ships them: the plain mark, or
+ * with `tile` the package's own mark-on-brand-colour square. Pendle's plain mark is white on
+ * transparent and vanishes on a white card, so it is always a tile. PT-deJAAA has no token
+ * mark of its own: it is Pendle's token.
+ */
+const MARKS = {
+  base: NetworkBase,
+  near: NetworkNearProtocol,
+  usdc: TokenUSDC,
+  cbeth: TokenCBETH,
+  pendle: TokenPENDLE,
+  aave: TokenAAVE,
+  coinbase: ExchangeCoinbase,
+} as const;
+
+export type Brand = keyof typeof MARKS;
+
+export function BrandMark({ brand, size = 16, tile = false, className = '' }: { brand: Brand; size?: number; tile?: boolean; className?: string }) {
+  const Icon = MARKS[brand];
+  const asTile = tile || brand === 'pendle';
   return (
-    <span className={`badge chain ${name === 'NEAR' ? 'near' : 'base'}`}>
-      <span className="badge-dot" aria-hidden="true" /> {name}
+    <Icon
+      variant={asTile ? 'background' : 'branded'}
+      size={size}
+      className={`brand-mark${asTile ? ' is-tile' : ''} ${className}`.trim()}
+      aria-hidden="true"
+      focusable="false"
+    />
+  );
+}
+
+const CHAIN_BRAND: Record<string, Brand> = { Base: 'base', NEAR: 'near' };
+const ASSET_BRAND: Record<string, Brand> = { USDC: 'usdc', cbETH: 'cbeth', 'PT-deJAAA': 'pendle' };
+
+export function ChainBadge({ name }: { name: string }) {
+  const brand = CHAIN_BRAND[name];
+  return (
+    <span className={`badge chain ${name === 'NEAR' ? 'near' : 'base'}${brand ? ' has-logo' : ''}`}>
+      {brand ? <BrandMark brand={brand} className="badge-logo" /> : <span className="badge-dot" aria-hidden="true" />} {name}
+    </span>
+  );
+}
+
+/** A deposit asset's logo and symbol; an unknown symbol stays a plain text chip. */
+export function AssetBadge({ symbol }: { symbol: string }) {
+  const brand = ASSET_BRAND[symbol];
+  if (!brand) return <span className="badge asset">{symbol}</span>;
+  return (
+    <span className="badge asset has-logo">
+      <BrandMark brand={brand} className="badge-logo" /> {symbol}
     </span>
   );
 }
