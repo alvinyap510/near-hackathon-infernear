@@ -31,16 +31,18 @@ test('keeper sends a transaction only for reported work, backs off while it repe
   assert.equal(connector.vaults.get(VAULT)!.paid, 100n);
 });
 
-test('a failing post is retried with a growing delay, and a changed snapshot is posted at once', async () => {
+test('a rejected post waits longer each time even as its amounts change, and the delay ends once a post lands', async () => {
   const connector = new FakeConnector();
   let paid = 10n, credited = 11n, clock = 0;
   const vault: VaultPort = { id: VAULT, kind: 'aave', async skim() {}, async snapshot() { return { rate: 10n ** 18n, block: 1n, unpaid: 0n, paid, entries: [[USER, credited]] }; } };
   const keeper = new Keeper([vault], connector, { async tick() { return {}; } }, () => {}, undefined, () => clock);
   await keeper.tick(); await keeper.tick(); assert.equal(connector.postCalls, 1); // exceeds paid_cum: rejected
+  paid = 20n; credited = 21n; clock = 59_999; await keeper.tick(); assert.equal(connector.postCalls, 1); // new amounts, same failure: still waiting
   clock = 60_000; await keeper.tick(); assert.equal(connector.postCalls, 2);
-  clock = 120_000; await keeper.tick(); assert.equal(connector.postCalls, 2);
-  credited = 10n; await keeper.tick(); assert.equal(connector.postCalls, 3);
-  assert.equal((await connector.account(USER)).credited, 10n);
+  credited = 20n; clock = 179_999; await keeper.tick(); assert.equal(connector.postCalls, 2);
+  clock = 180_000; await keeper.tick(); assert.equal(connector.postCalls, 3);
+  assert.equal((await connector.account(USER)).credited, 20n);
+  paid = 30n; credited = 30n; await keeper.tick(); assert.equal(connector.postCalls, 4); // landed: next post is immediate
 });
 
 test('keeper cumulative batches respect independent connector budgets and replay safety', async () => {
@@ -49,12 +51,13 @@ test('keeper cumulative batches respect independent connector budgets and replay
   let paid = 50n, first = 30n, second = 20n;
   const errors: Record<string, unknown>[] = [];
   const vault: VaultPort = { id: VAULT, kind: 'aave', async skim() {}, async snapshot() { return { rate: 10n ** 18n, block: 20n, unpaid: 0n, paid, entries: [[USER, first], [other, second]] }; } };
-  const keeper = new Keeper([vault], connector, { async tick() { return { dry: true, amount: '0' }; } }, (event, data) => { if (event === 'keeper_retry') errors.push(data); });
+  let clock = 0;
+  const keeper = new Keeper([vault], connector, { async tick() { return { dry: true, amount: '0' }; } }, (event, data) => { if (event === 'keeper_retry') errors.push(data); }, undefined, () => clock);
   await keeper.tick(); await keeper.tick();
   assert.equal((await connector.account(USER)).credited, 30n);
   first = 31n; await keeper.tick(); assert.equal(errors.length, 1);
   assert.equal((await connector.account(USER)).credited, 30n);
-  paid = 70n; first = 40n; second = 30n; await keeper.tick();
+  paid = 70n; first = 40n; second = 30n; clock += 60_000; await keeper.tick();
   assert.equal((await connector.account(USER)).credited, 40n);
   assert.equal((await connector.account(other)).credited, 30n);
   first = 39n; await keeper.tick(); assert.equal(errors.length, 2);

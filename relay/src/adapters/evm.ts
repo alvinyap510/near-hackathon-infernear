@@ -72,12 +72,17 @@ export function evmPorts(config: { rpc: string; chainId: number; key: Hex; vault
           const amount = await publicClient.readContract({ address, abi: vaultAbi, functionName: 'yieldCredited', args: [owner], blockNumber });
           entries.push([`eip155:${config.chainId}:${owner}`, amount]);
         }
-        const paidTotal = encodeFunctionData({ abi: vaultAbi, functionName: 'paidTotal' });
-        const { result } = await publicClient.simulateContract({ address: MULTICALL3, abi: multicallAbi, functionName: 'aggregate3',
-          args: [[paidTotal, encodeFunctionData({ abi: vaultAbi, functionName: 'skim' }), paidTotal].map(callData => ({ target: address, allowFailure: false, callData }))] });
-        const payable = BigInt(result[2].returnData) - BigInt(result[0].returnData);
         // skim() is worth its gas only once the yield it pays out reaches the configured USD value.
-        const work = payable * rate / 1_000_000_000_000_000_000n >= config.minYieldMicro ? 'yield' : null;
+        // If the simulation fails (say the strategy is paused), there is nothing to send, and the
+        // finalized entries above must still be posted.
+        let work: string | null = null;
+        try {
+          const paidTotal = encodeFunctionData({ abi: vaultAbi, functionName: 'paidTotal' });
+          const { result } = await publicClient.simulateContract({ address: MULTICALL3, abi: multicallAbi, functionName: 'aggregate3',
+            args: [[paidTotal, encodeFunctionData({ abi: vaultAbi, functionName: 'skim' }), paidTotal].map(callData => ({ target: address, allowFailure: false, callData }))] });
+          const payable = BigInt(result[2].returnData) - BigInt(result[0].returnData);
+          if (payable * rate / 1_000_000_000_000_000_000n >= config.minYieldMicro) work = 'yield';
+        } catch { /* no skim this pass */ }
         return { block: blockNumber, unpaid: unpaid as bigint, paid: paid as bigint, rate, entries, work };
       },
     };

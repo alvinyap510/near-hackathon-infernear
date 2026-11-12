@@ -66,14 +66,17 @@ export async function nearConnector(config: { rpc: string; contract: string; gat
             }
             if (holders.length < 100) break;
           }
-          // run() is needed for queued deposits or exits, for yield awaiting payout, or once
-          // the yield it would realize (the vault's own surplus formula) is worth its gas.
+          // run() is needed for queued deposits or exits, for yield awaiting payout, for cash the vault
+          // holds but has not supplied (a refunded supply leaves it idle), or once the yield it would
+          // realize (the vault's own surplus formula) is worth its gas. Only the queue names amounts:
+          // a growing unpaid or surplus figure is not progress and must not reset the keeper's delay.
           if (incoming > 0n || exits > 0) work = `queue:${incoming}:${exits}`;
-          else if (unpaid > 0n) work = `unpaid:${unpaid}`;
+          else if (unpaid > 0n) work = 'unpaid';
           else {
             const [idle, lender] = await Promise.all([read('idle'), read('get_account', { account_id: config.rheaVault }, config.rheaLend)]);
             const supplied = BigInt(lender?.supplied?.find((asset: { token_id: string }) => asset.token_id === config.usdc)?.balance ?? 0) / 10n ** 12n;
-            if (supplied + BigInt(idle) - principal - config.rheaCushion >= config.minYieldMicro) work = 'yield';
+            if (BigInt(idle) > 0n) work = 'supply';
+            else if (supplied - principal - config.rheaCushion >= config.minYieldMicro) work = 'yield';
           }
         }
         return { block: BigInt(block), busy, unpaid, paid, rate: 10n ** 18n, entries, work };

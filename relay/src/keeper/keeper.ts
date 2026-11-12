@@ -51,9 +51,12 @@ export class Keeper {
         } else {
           // Cumulative entries only grow, so an equal total means the connector already has every one.
           const total = snapshot.entries.reduce((sum, [, amount]) => sum + amount, 0n);
-          if (total !== (await this.connector.posted(vault.id)).total &&
-              await this.send(`post:${vault.id}`, `${snapshot.paid}:${total}`, () => this.connector.postCredits(vault.id, snapshot.paid, snapshot.rate, snapshot.block, snapshot.entries)))
+          // A rejected post waits 1, 2, 4... minutes whatever the amounts become; the delay ends once a post lands.
+          if (total === (await this.connector.posted(vault.id)).total) this.sent.delete(`post:${vault.id}`);
+          else if (await this.send(`post:${vault.id}`, 'post', () => this.connector.postCredits(vault.id, snapshot.paid, snapshot.rate, snapshot.block, snapshot.entries))) {
+            this.sent.delete(`post:${vault.id}`);
             this.report('credits_posted', { vault: vault.id, kind: vault.kind, paid_cum: String(snapshot.paid), rate: String(snapshot.rate), source_block: String(snapshot.block), holders: snapshot.entries.length });
+          }
         }
         if (!snapshot.work || snapshot.busy) this.sent.delete(`work:${vault.id}`);
         else if (await this.send(`work:${vault.id}`, snapshot.work, () => vault.skim()))

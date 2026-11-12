@@ -36,7 +36,7 @@ test('real NEAR adapter uses finalized views, distinct signers, numeric receipts
   const key = KeyPair.fromRandom('ed25519');
   const accountValue = { credited: '100', spent: '7', available: '93', key_epoch: 1 };
   const calls: any[] = [];
-  let busy = false, unpaid = '0', pendingIn = '0', pendingOut: string | null = null, supplied = '0';
+  let busy = false, unpaid = '0', pendingIn = '0', pendingOut: string | null = null, supplied = '0', idle = '0';
   const fake = await rpc((method, params) => {
     calls.push({ method, params });
     if (method === 'block') return { header: { hash: '11111111111111111111111111111111', height: 10 } };
@@ -47,7 +47,7 @@ test('real NEAR adapter uses finalized views, distinct signers, numeric receipts
           if (params.method_name === 'busy') assert.equal(params.finality, 'final');
           else assert.equal(params.block_id, 10);
           const values: Record<string, unknown> = { busy, unpaid, paid_total: '101',
-            holders: Array.from({ length: args.from === 0 ? 100 : 1 }, (_, i) => 'user-' + (i + (args.from ?? 0))), idle: '1000000',
+            holders: Array.from({ length: args.from === 0 ? 100 : 1 }, (_, i) => 'user-' + (i + (args.from ?? 0))), idle,
             position: { principal: '10', yield_credited: '1', pending_in: args.user === 'user-0' ? pendingIn : '0', pending_out: args.user === 'user-0' ? pendingOut : null } };
           return { result: [...Buffer.from(JSON.stringify(values[params.method_name]))], logs: [], block_height: 10, block_hash: '11111111111111111111111111111111' };
         }
@@ -89,15 +89,20 @@ test('real NEAR adapter uses finalized views, distinct signers, numeric receipts
   const snapshot = await connector.rhea.snapshot();
   assert.equal(snapshot.block, 10n); assert.equal(snapshot.rate, 10n ** 18n); assert.equal(snapshot.entries.length, 101);
   assert.deepEqual(snapshot.entries[100], ['user-100', 1n]);
-  // 101 holders x 10 principal + 1.0 cushion are covered by 1.0 idle + supplied (12 extra decimals).
+  // 101 holders x 10 principal plus the 1.0 cushion, all supplied (Rhea keeps 12 extra decimals).
+  const backing = 1_001_010n;
   assert.equal(snapshot.work, null);
-  supplied = String(1014n * 10n ** 12n); assert.equal((await connector.rhea.snapshot()).work, null); // 4 micro-USD of yield < 5
-  supplied = String(1015n * 10n ** 12n); assert.equal((await connector.rhea.snapshot()).work, 'yield');
+  supplied = String((backing + 4n) * 10n ** 12n); assert.equal((await connector.rhea.snapshot()).work, null); // 4 micro-USD of yield < 5
+  supplied = String((backing + 5n) * 10n ** 12n); assert.equal((await connector.rhea.snapshot()).work, 'yield');
+  // Cash a refunded supply left in the vault must be supplied again, or it earns nothing.
+  supplied = '0'; idle = '7'; assert.equal((await connector.rhea.snapshot()).work, 'supply'); idle = '0';
   pendingIn = '2000000'; assert.equal((await connector.rhea.snapshot()).work, 'queue:2000000:0');
   pendingIn = '0'; pendingOut = '5'; assert.equal((await connector.rhea.snapshot()).work, 'queue:0:1');
-  pendingOut = null; supplied = '0';
+  pendingOut = null;
   busy = true; let settling = await connector.rhea.snapshot(); assert.equal(settling.entries.length, 0); assert.equal(settling.work, null);
-  busy = false; unpaid = '1'; settling = await connector.rhea.snapshot(); assert.equal(settling.entries.length, 0); assert.equal(settling.work, 'unpaid:1');
+  // Unpaid yield names no amount: a growing figure with nothing paid must not look like new work.
+  busy = false; unpaid = '1'; settling = await connector.rhea.snapshot(); assert.equal(settling.entries.length, 0); assert.equal(settling.work, 'unpaid');
+  unpaid = '2'; assert.equal((await connector.rhea.snapshot()).work, 'unpaid');
   assert.equal(signed.filter(tx => tx.method === 'run').length, 1); // Snapshots never send a transaction.
   await connector.withdraw('signed-json', '0xfixture-signature');
   await connector.executeIntents([{ standard: 'erc191', payload: 'signed-payload', signature: 'secp256k1:fixture' }]);
@@ -112,7 +117,7 @@ test('real NEAR adapter uses finalized views, distinct signers, numeric receipts
 });
 
 test('Flex2-3: real EVM adapter reads finalized holders and honors the configured bridge minimum', async t => {
-  let treasury = 100_000n, payable = 0n, clock = 0;
+  let treasury = 100_000n, payable = 0n, clock = 0, simulationFails = false;
   const reads: any[] = [], scans: any[] = [], transactions: Hex[] = [];
   let nonce = 0;
   const block = { number: '0x64', hash, parentHash: hash, nonce: '0x0000000000000000', sha3Uncles: hash, logsBloom: '0x' + '00'.repeat(256), transactionsRoot: hash, stateRoot: hash, receiptsRoot: hash,
@@ -132,7 +137,7 @@ test('Flex2-3: real EVM adapter reads finalized holders and honors the configure
     }
     if (method === 'eth_call') {
       const target = params[0].to.toLowerCase();
-      if (target === multicall) { assert.equal(params[1], 'latest'); return simulated(100n, 100n + payable); }
+      if (target === multicall) { assert.equal(params[1], 'latest'); if (simulationFails) throw new Error('fixture skim reverted'); return simulated(100n, 100n + payable); }
       if (target === usdc) return encodeAbiParameters([{ type: 'uint256' }], [treasury]);
       const call = decodeFunctionData({ abi: vaultAbi, data: params[0].data });
       reads.push({ ...call, block: params[1] });
@@ -160,6 +165,9 @@ test('Flex2-3: real EVM adapter reads finalized holders and honors the configure
   assert.equal(snapshot.work, null);
   payable = 9_999n; assert.equal((await ports.vaults[0].snapshot()).work, null);
   payable = 10_000n; assert.equal((await ports.vaults[0].snapshot()).work, 'yield');
+  // A skim that would revert means no transaction, but the finalized entries are still returned for posting.
+  simulationFails = true; const paused = await ports.vaults[0].snapshot(); simulationFails = false;
+  assert.equal(paused.work, null); assert.deepEqual(paused.entries, [[`eip155:8453:${holder}`, 100n]]);
   assert.equal(transactions.length, 1); // Snapshots never send a transaction.
   assert.ok(reads.every(read => read.block === '0x64'));
   assert.equal(scans[0].fromBlock, '0x5a'); assert.equal(scans[0].toBlock, '0x64');
