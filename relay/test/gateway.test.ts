@@ -13,7 +13,7 @@ import { harness, fixture, USER, e2ee, settle, eventually } from './harness.ts';
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const raw = (overrides: Record<string, unknown> = {}) => Buffer.from(JSON.stringify({ ...JSON.parse(fixture('chat.json').toString()), ...overrides }));
 
-test('chat rejects unsupported parameters and missing encryption headers before upstream inference', async t => {
+test('chat rejects unsupported parameters and incomplete encryption headers before upstream inference', async t => {
   const h = await harness(); t.after(h.close);
   const variants = [
     { max_completion_tokens: 10 }, { n: 2 }, { max_tokens: undefined }, { max_tokens: 101 }, { max_tokens: 1.1 },
@@ -28,8 +28,9 @@ test('chat rejects unsupported parameters and missing encryption headers before 
     const response = await fetch(h.base + '/v1/chat/completions', { method: 'POST', headers: { ...h.headers, ...patch }, body: raw() });
     assert.equal(response.status, 400);
   }
-  const unencrypted = await fetch(h.base + '/v1/chat/completions', { method: 'POST', headers: { authorization: `Bearer ${h.key}` }, body: raw() });
-  assert.equal(unencrypted.status, 400);
+  // Any encryption header means private mode: an incomplete set is refused, never sent on in the clear.
+  const partial = await fetch(h.base + '/v1/chat/completions', { method: 'POST', headers: { authorization: `Bearer ${h.key}`, 'x-encryption-version': '3' }, body: raw() });
+  assert.equal(partial.status, 400);
   for (const model of ['fixture/external', 'fixture/unattested', 'fixture-alias', 'unknown', 'fixture/image']) {
     const response = await fetch(h.base + '/v1/chat/completions', { method: 'POST', headers: h.headers, body: raw({ model }) });
     assert.equal(response.status, 404);

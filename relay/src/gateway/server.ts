@@ -112,7 +112,7 @@ export function createRelayServer(gateway: Gateway, options: { publicUrl: string
         let status = 0;
         let id: string | undefined;
         try {
-          const upstream = await gateway.upstream.request('/chat/completions' + url.search, 'POST', req.headers, raw);
+          const upstream = await gateway.upstream.request('/chat/completions' + url.search, 'POST', req.headers, reservation.body);
           status = upstream.statusCode ?? 502;
           id = typeof upstream.headers['inference-id'] === 'string' ? upstream.headers['inference-id'] : undefined;
           res.writeHead(status, endToEndHeaders(upstream.headers));
