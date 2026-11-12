@@ -79,7 +79,7 @@ export function createRelayServer(gateway: Gateway, options: { publicUrl: string
         limitIp(req);
         let proof;
         const raw = await body(req);
-        try { proof = JSON.parse(raw.toString()); } catch { throw new HttpError(400, 'invalid_json', 'Expected wallet proof JSON'); }
+        try { proof = JSON.parse(raw.toString()); } catch { throw new HttpError(401, 'invalid_api_key', 'Bad, expired or revoked credentials'); }
         const user = await gateway.auth.walletProof(proof);
         if (path === '/keys') { json(res, 200, await gateway.issue(user)); return; }
         sponsor();

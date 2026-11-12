@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { decodeFunctionData, encodeAbiParameters, encodeEventTopics, erc20Abi, parseAbi, parseTransaction, zeroAddress, type Hex } from 'viem';
 import { KeyPair, decodeSignedTransaction } from 'near-api-js';
 import { evmPorts } from '../src/adapters/evm.ts';
-import { nearConnector } from '../src/adapters/near.ts';
+import { nearConnector, nearFullAccessKey } from '../src/adapters/near.ts';
 import { Keeper } from '../src/keeper/keeper.ts';
 import { FakeConnector } from './harness.ts';
 import type { Receipt } from '../src/types.ts';
@@ -256,4 +256,18 @@ test('priced EVM snapshots use one finalized block, heartbeat boundaries and nat
   const held = (await ports.bridge.tick()).tokens as { token: string; status: string }[];
   assert.ok(held.some(entry => entry.token === lst && entry.status === 'held_unconfigured'));
   assert.ok(held.some(entry => entry.token === pt && entry.status === 'held_unconfigured'));
+});
+
+
+test('NEAR proof key lookup reads finalized permission and rejects function-call keys',async t=>{
+  let permission:unknown='FullAccess';
+  const key=KeyPair.fromRandom('ed25519').getPublicKey().toString();
+  const fake=await rpc((method,params)=>{
+    assert.equal(method,'query');assert.equal(params.request_type,'view_access_key');assert.equal(params.finality,'final');
+    assert.equal(params.account_id,'alice.near');assert.equal(params.public_key,key);
+    return {nonce:1,permission,block_hash:'11111111111111111111111111111111',block_height:10};
+  });t.after(fake.close);
+  assert.equal(await nearFullAccessKey('alice.near',key,fake.url),true);
+  permission={FunctionCall:{allowance:null,receiver_id:'vault.near',method_names:[]}};
+  assert.equal(await nearFullAccessKey('alice.near',key,fake.url),false);
 });

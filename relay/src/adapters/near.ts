@@ -105,3 +105,11 @@ export async function nearConnector(config: { rpc: string; contract: string; gat
     },
   };
 }
+
+/** Authorization reads use finalized state and accept only full-access keys. */
+export async function nearFullAccessKey(accountId: string, publicKey: string, rpc = process.env.NEAR_RPC_URL): Promise<boolean> {
+  if (!rpc) return false;
+  const provider = new JsonRpcProvider({ url: rpc });
+  const key = await provider.viewAccessKey({ accountId, publicKey, finalityQuery: { finality: 'final' } });
+  return key.permission === 'FullAccess';
+}

@@ -1,7 +1,7 @@
 import { createServer, type IncomingHttpHeaders } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { setImmediate as turn } from 'node:timers/promises';
-import { Auth } from '../src/gateway/auth.ts';
+import { Auth, type NearKeyLookup } from '../src/gateway/auth.ts';
 import { Gateway } from '../src/gateway/ledger.ts';
 import { createRelayServer } from '../src/gateway/server.ts';
 import { SignedRequests, type SignedOperations } from '../src/gateway/signed.ts';
@@ -69,7 +69,7 @@ export class FakeConnector implements Connector {
   async storageBalance() { return { amount: '1000000000000000000000000', storage_usage: 1000 }; }
 }
 
-export async function harness(options: { now?: () => number; seed?: boolean; deadlineMs?: number; signedOperations?: Omit<SignedOperations, 'withdrawable'> & Partial<SignedOperations>; clientIpHeader?: string; retryMs?: number; sponsoredPerDay?: number } = {}) {
+export async function harness(options: { nearKey?: NearKeyLookup; now?: () => number; seed?: boolean; deadlineMs?: number; signedOperations?: Omit<SignedOperations, 'withdrawable'> & Partial<SignedOperations>; clientIpHeader?: string; retryMs?: number; sponsoredPerDay?: number } = {}) {
   const connector = new FakeConnector();
   if (options.seed !== false) connector.seed();
   const events: { event: string; details: Record<string, unknown> }[] = [];
@@ -104,7 +104,7 @@ export async function harness(options: { now?: () => number; seed?: boolean; dea
   await new Promise<void>(resolve => upstreamServer.listen(0, '127.0.0.1', resolve));
   const upstreamPort = (upstreamServer.address() as import('node:net').AddressInfo).port;
   const publicUrl = 'http://relay.test';
-  const auth = new Auth('fixture-test-secret', publicUrl, 8453, options.now);
+  const auth = new Auth('fixture-test-secret', publicUrl, 8453, options.now, options.nearKey);
   const gateway = new Gateway({ auth, connector, upstream: new Upstream(`http://127.0.0.1:${upstreamPort}/v1`, 'fixture-upstream-key', options.now, options.deadlineMs), maxTokens: 100, report: (event, details) => events.push({ event, details }), now: options.now, retryMs: options.retryMs ?? 0 });
   const server = createRelayServer(gateway, { publicUrl, now: options.now, report: (event, details) => events.push({ event, details }), allowedOrigin: 'https://dashboard.test', clientIpHeader: options.clientIpHeader, sponsoredPerDay: options.sponsoredPerDay,
     signedRequests: options.signedOperations ? new SignedRequests({ async withdrawable() { return { principal: 10n ** 12n, nonce: 0 }; }, ...options.signedOperations }, { vault: 'vault.near', intents: 'intents.near', chainId: 8453 }, options.now) : undefined });
