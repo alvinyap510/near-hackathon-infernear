@@ -65,6 +65,12 @@ Every balance-changing entry point attributes yield first and attempts payment l
 
 With enough gas, a reverting payout emits `PayFailed`, retains unpaid attribution and leaves the operation intact. An entry point must carry enough gas for its payout attempt: a starved self-call can leave insufficient gas for the outer frame to return, reverting the whole transaction. Retry with more gas; the keeper's public `skim()` is the deferred payment path and propagates payment failure. The coverage `assert` remains; Solidity 0.8 reports `Panic(0x01)` without inherently consuming the frame's remaining gas.
 
+## Credit top-up
+
+`src/CreditTopUp.sol` sells credits for USDC. `pay(amount, beneficiary)` moves the caller's USDC straight to the immutable recipient and adds `amount` to `paid[beneficiary]` and `paidTotal`; it emits `Paid(payer, beneficiary, amount)`. **It is a purchase, not a deposit: nothing can be redeemed**, the contract never holds tokens, and it has no owner, admin, pause or upgrade path. The keeper posts `paid(beneficiary)` to the NEAR ledger at 1 USDC = 1 USD of credits. Eight tests cover exact delivery to the recipient, accumulation, paying for another address, rejected zero inputs, a failed transfer recording nothing, and a fuzzed check that recorded credits equal the USDC the recipient received.
+
+`script/DeployTopUp.s.sol:DeployTopUp.run()` reads `EVM_USDC`, `EVM_YIELD_RECIPIENT` and `EVM_DEPLOYER_PRIVATE_KEY`. It moves no tokens.
+
 ## One deployment script, three kinds
 
 `script/Deploy.s.sol:Deploy.run()` reads **`EVM_VAULT_KIND=aave|rate|pendle`**. Common env inputs are `EVM_YIELD_RECIPIENT`, `EVM_CUSHION`, `EVM_DEPOSIT_CAP`, `EVM_DEPLOYER_PRIVATE_KEY`. The cap is in principal/share units from the table; the cushion is in deposit-asset base units. The operator chooses the cap and must fund the deployer with the cushion asset.
