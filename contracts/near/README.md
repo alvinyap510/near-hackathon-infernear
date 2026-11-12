@@ -8,6 +8,7 @@ Prerequisites: rustup Rust 1.97.1, `wasm32-unknown-unknown`, a native C/C++ tool
 
 ```sh
 cargo fetch --locked
+cargo fetch --locked --manifest-path rhea-vault/test-contracts/mock/Cargo.toml
 cargo test --locked --workspace
 cargo build --locked --target wasm32-unknown-unknown --release --workspace
 cargo build --offline --locked --manifest-path rhea-vault/test-contracts/mock/Cargo.toml --target-dir target/mock --target wasm32-unknown-unknown --release
@@ -17,7 +18,7 @@ cargo fmt --all -- --check
 cargo test --offline --locked -p infernear-connector debit_storage_measurement -- --nocapture
 ```
 
-Fetch requires network once. The 14 connector tests and 31 vault tests then run offline against NEAR's mocked runtime, including generated conservation sequences. The same verification block also runs the sandbox gas test; its first run may download near-sandbox 2.14.0. The default workspace test alone excludes that feature-gated test. Local mock prerequisites are detailed in the vault README. Release outputs are `target/wasm32-unknown-unknown/release/infernear_connector.wasm` (**352,481 bytes**) and `infernear_rhea_vault.wasm` (**422,267 bytes**) with this toolchain. These are plain Cargo release builds, without cargo-near's additional optimization.
+The two fetches require network once; the second fetches the local mock contract, which has its own manifest. The 14 connector tests and 31 vault tests then run offline against NEAR's mocked runtime, including generated conservation sequences. The same verification block also runs the sandbox gas test; its first run may download near-sandbox 2.14.0. The default workspace test alone excludes that feature-gated test. Local mock prerequisites are detailed in the vault README. Release outputs are `target/wasm32-unknown-unknown/release/infernear_connector.wasm` (**352,481 bytes**) and `infernear_rhea_vault.wasm` (**422,267 bytes**) with this toolchain; sizes vary by a few hundred bytes with the checkout path, which is embedded in panic locations. These are plain Cargo release builds, without cargo-near's additional optimization.
 
 ## Connector
 
