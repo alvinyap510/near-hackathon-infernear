@@ -72,6 +72,15 @@ test('CR1-1: a wallet submission error with no hash is uncertain, never permissi
  const f=fixture();f.state.payFailure='rpc';await assert.rejects(f.data.topUp(session,1_000_000n));assert.equal((await f.data.topUpPurchase(session))?.status,'submitting');
  await assert.rejects(f.data.topUp(session,1_000_000n),code('purchase_pending'));assert.equal(f.calls.filter(c=>c.name==='pay').length,1);
 });
+test('a hashless record can be set aside only by the explicit action; a record with a hash never can',async()=>{
+ const f=fixture();f.state.payFailure='rpc';await assert.rejects(f.data.topUp(session,1_000_000n));assert.equal((await f.data.topUpPurchase(session))?.status,'submitting');
+ await assert.rejects(f.data.reviewTopUp(session),code('purchase_pending'),'a review alone never clears it');
+ await f.data.setAsideUnsentTopUp(session);assert.equal(await f.data.topUpPurchase(session),null);
+ f.state.payFailure='';await f.data.reviewTopUp(session);await f.data.topUp(session,1_000_000n);assert.equal(f.calls.filter(c=>c.name==='pay').length,2);
+ const g=fixture();g.state.receiptMissing=true;g.state.wait=async()=>{if(g.calls.at(-1)?.name==='pay')throw Error('receipt RPC offline');return{status:'success'};};
+ await assert.rejects(g.data.topUp(session,1_000_000n),code('purchase_pending'));assert((await g.data.topUpPurchase(session))?.hash);
+ await assert.rejects(g.data.setAsideUnsentTopUp(session),code('purchase_pending'));assert.equal((await g.data.topUpPurchase(session))?.status,'pending');assert.equal(g.calls.filter(c=>c.name==='pay').length,1);
+});
 test('CR1-2/Flex2-5: disconnect, account change, or disconnect/reconnect during approval prevents pay',async()=>{
  for(const action of ['disconnect','account','reconnect'] as const){
   const f=fixture(),approved=gate(),resume=gate();await f.data.connectWallet('evm:injected');

@@ -30,5 +30,12 @@ export function createPurchaseJournal(chainId:number,contract:Address|undefined,
       if(old?.hash && old.hash!==settledHash)throw new DataError('purchase_pending','Show and acknowledge the reconciled transaction before another purchase.');
       try{backend.removeItem(key(payer));emergency.delete(key(payer));}catch{throw new DataError('purchase_storage','Cannot clear the reconciled purchase.');}
     },
+    /** The one way out of a submission the wallet never returned a hash for: the user states that nothing was sent. A record with a hash can never be set aside. */
+    setAsideUnsent(payer:Address){
+      const old=this.read(payer);
+      if(!old)return;
+      if(old.hash||old.status!=='submitting')throw new DataError('purchase_pending','This purchase has a transaction. Check its receipt instead.');
+      try{backend.removeItem(key(payer));emergency.delete(key(payer));}catch{throw new DataError('purchase_storage','Cannot clear the purchase record.');}
+    },
   };
 }

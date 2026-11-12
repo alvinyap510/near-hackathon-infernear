@@ -148,6 +148,7 @@ export function createMockData(): DashboardData {
     subscribeWallet(listener){walletListeners.add(listener);return()=>{walletListeners.delete(listener);};},
     async topUpPurchase(){return null;},
     async reviewTopUp(){},
+    async setAsideUnsentTopUp(){},
     async topUpAccount(input) {
       if(!config.topUpAddress || (typeof input!=='string' && input.kind!=='evm')) return null;
       return {minimum:1_000_000n,paid:purchases.get(evmAddress(input).toLowerCase())??0n,paidTotal:purchased,walletBalance:vaults[0].position.walletBalance,allowance:0n,token:tokens[0].address};

@@ -184,6 +184,8 @@ export interface DashboardData {
   subscribeWallet(listener: () => void): () => void;
   topUpPurchase(session: SessionInput): Promise<PurchaseState | null>;
   reviewTopUp(session: SessionInput, settledHash?: `0x${string}`): Promise<void>;
+  /** Clears a purchase record that has no transaction hash, after the user states nothing was sent. */
+  setAsideUnsentTopUp(session: SessionInput): Promise<void>;
   topUpAccount(session: SessionInput): Promise<TopUpAccount | null>;
   topUp(session: SessionInput, assets: bigint): Promise<TxResult>;
   connect(): Promise<Address>;

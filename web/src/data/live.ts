@@ -176,6 +176,12 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
     subscribeWallet: listener=>wallets.subscribe(listener),
     topUpPurchase: input=>guarded(()=>reconcilePurchase(input)),
     reviewTopUp: (input,hash)=>guarded(async()=>{purchases.review(evmAddress(input),hash);}),
+    setAsideUnsentTopUp: input=>guarded(async()=>{
+      const address=evmAddress(input);
+      // Not while this page is still waiting on the wallet for that very request.
+      if(purchasing.has(address.toLowerCase()))throw new DataError('purchase_pending','A purchase is still waiting in your wallet.');
+      purchases.setAsideUnsent(address);
+    }),
     topUpAccount: input => guarded(async () => {
       if (!settings.topUpAddress || (typeof input!=='string' && input.kind!=='evm')) return null;
       const address=evmAddress(input), blockNumber=await publicClient.getBlockNumber({cacheTime:0});

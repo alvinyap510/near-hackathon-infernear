@@ -29,6 +29,10 @@ export function TopUp({session,onChanged}:{session:Session;onChanged():Promise<v
     setBusy(true);setError(null);
     try{setPurchase(await data.topUpPurchase(session));setAccount(await data.topUpAccount(session));}catch(e){setError(errorText(e));}finally{setBusy(false);}
   };
+  const setAside=async()=>{
+    setBusy(true);setError(null);
+    try{await data.setAsideUnsentTopUp(session);setPurchase(await data.topUpPurchase(session));}catch(e){setError(errorText(e));}finally{setBusy(false);}
+  };
   const buy=async()=>{
     if(reviewed===null)return;const amount=reviewed;
     setConfirm(null);setInput('');setBusy(true);setError(null);
@@ -44,9 +48,10 @@ export function TopUp({session,onChanged}:{session:Session;onChanged():Promise<v
     <form onSubmit={e=>void review(e)}><label className="field"><span className="field-k">Amount · minimum {exact(account.minimum)}</span><span className="input-wrap"><input inputMode="decimal" value={input} disabled={busy||pending} onChange={e=>{setInput(e.target.value);setConfirm(null);}} placeholder="0.00"/><span className="unit"><AssetBadge symbol="USDC"/></span></span></label>
       <p className="loss-note">{PURCHASE_NOTICE}</p><button className="btn primary" disabled={busy||pending||!input}>Review purchase</button></form>
     {reviewed!==null&&!pending&&<div className="confirm"><p>{PURCHASE_NOTICE}</p><p>Pay {exact(reviewed)} for yourself. Approval, if needed, is followed by a separate purchase transaction.</p><button className="btn primary" onClick={()=>void buy()} disabled={busy}>{busy?<Spinner/>:null}Confirm purchase</button><button className="btn ghost" disabled={busy} onClick={()=>setConfirm(null)}>Cancel</button></div>}
-    {purchase&&<div className="confirm"><p>{purchase.status==='confirmed'?'Previous purchase confirmed. A fresh review is required for another purchase.':purchase.status==='reverted'?'The previous purchase did not complete. Review a fresh purchase to try again.':purchase.hash?'Purchase pending or uncertain. Check its receipt; do not submit another purchase.':'The wallet did not return a transaction hash. Check wallet activity; this console will not submit another purchase.'}</p>
+    {purchase&&<div className="confirm"><p>{purchase.status==='confirmed'?'Previous purchase confirmed. A fresh review is required for another purchase.':purchase.status==='reverted'?'The previous purchase did not complete. Review a fresh purchase to try again.':purchase.hash?'Purchase pending or uncertain. Check its receipt; do not submit another purchase.':'The wallet did not return a transaction. Check your wallet activity and reject any request still waiting there. If no purchase was sent, you can start again.'}</p>
       <p className="fineprint">Previous request: {exact(BigInt(purchase.amount))}</p>
-      {purchase.hash&&<div className="endpoint-url"><code>{purchase.hash}</code><CopyButton text={purchase.hash}/></div>}<button type="button" className="btn outline" disabled={busy} onClick={()=>void reconcile()}>Check purchase status</button></div>}
+      {purchase.hash&&<div className="endpoint-url"><code>{purchase.hash}</code><CopyButton text={purchase.hash}/></div>}<button type="button" className="btn outline" disabled={busy} onClick={()=>void reconcile()}>Check purchase status</button>
+      {pending&&!purchase.hash&&<button type="button" className="btn ghost" disabled={busy} onClick={()=>void setAside()}>No purchase was sent: start again</button>}</div>}
     <p className="fineprint">Credits appear after Base finality (about 20 minutes), when the keeper posts the purchase to NEAR.</p><ErrorNote error={error}/>
   </section>;
 }
