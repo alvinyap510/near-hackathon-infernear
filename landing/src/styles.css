@@ -613,7 +613,7 @@ svg {
   justify-content: flex-end;
   min-height: 100vh;
   min-height: 100svh;
-  padding: var(--hud) 0 120px;
+  padding: var(--hud) 0 min(120px, 13vh);
   overflow: hidden;
   background: var(--night);
   color: var(--snow);
@@ -759,8 +759,11 @@ svg {
   text-transform: uppercase;
 }
 
+/* Three lines sit below the particle stream (34% down) and left of the 3D mark,
+   so on desktop the size follows both the viewport width and height. */
 .hero .mega {
   margin-top: 22px;
+  font-size: clamp(54px, min(6.6vw, 15.6vh - 46px), 100px);
 }
 
 .mega .line {
@@ -840,6 +843,7 @@ svg {
 
 .motion .hero .line:nth-child(1) { animation-delay: 0.1s; }
 .motion .hero .line:nth-child(2) { animation-delay: 0.2s; }
+.motion .hero .line:nth-child(3) { animation-delay: 0.3s; }
 .motion .hero-sub { animation-delay: 0.35s; }
 .motion .ctas { animation-delay: 0.45s; }
 .motion .stream-k { animation-delay: 1.2s; }
@@ -2603,8 +2607,9 @@ svg {
     right: 16px;
   }
 
-  .mega {
-    font-size: clamp(50px, 15vw, 72px);
+  /* Width-bound on phones: the longest line, FROM EVERY CHAIN., still fits. */
+  .hero .mega {
+    font-size: clamp(32px, 10.2vw, 72px);
   }
 
   .ctas .btn {
