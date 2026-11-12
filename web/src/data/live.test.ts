@@ -1,5 +1,6 @@
 // Offline fixtures: no wallet, transaction, relay or chain network is contacted.
 import assert from 'node:assert/strict';
+import { walletProofMessage } from './proof.ts';
 import { test } from 'node:test';
 import { base58 } from '@scure/base';
 import { decodeFunctionData, encodeFunctionResult, getAddress, hexToString, hexToBytes, type EIP1193Provider, type Hex } from 'viem';
@@ -36,7 +37,7 @@ function fixture() {
     chainId: 1, selected: ADDRESS, rejected: false, allowance: 0n,
     shares: huge, assets: huge - 3n, wallet: huge * 2n, spent: huge, credited: huge + 99n,
     nonceNear: 8, coverage: '900000000000000000', busy: false, pendingIn: '2000000', pendingOut: '1000000' as string | null,
-    quoteMismatch: false, missingFunding: false, wrongAmount: false, quoteStatus: 201, expiredQuote: false,
+    quoteMismatch: false, missingFunding: false, wrongAmount: false, quoteStatus: 201, expiredQuote: false, minOut: '4900000',
     swapStatus: 'PROCESSING',
     reverted: false, failNear: false, malformedAmount: false, failNetwork: false,
     relayStatus: 200, relayCode: 'invalid_api_key', nonce: 0, debit: '9007199254740993' as string | null,
@@ -87,7 +88,7 @@ function fixture() {
       if (state.quoteStatus !== 201) return json({ message: 'Fixture route unavailable' }, state.quoteStatus);
       if (url.includes('/v0/status?')) return json({ status: state.swapStatus });
       return json({ quoteRequest: { ...body, ...(state.quoteMismatch ? { recipient: 'attacker.near' } : {}) }, quote: {
-        amountIn: state.wrongAmount ? '1' : body.amount, amountOut: String(BigInt(body.amount as string) - 1000n), minAmountOut: '4900000', timeEstimate: 35,
+        amountIn: state.wrongAmount ? '1' : body.amount, amountOut: String(BigInt(body.amount as string) - 1000n), minAmountOut: state.minOut, timeEstimate: 35,
         ...(state.expiredQuote ? { deadline: '2020-01-01T00:00:00Z' } : {}),
         ...(!body.dry && !state.missingFunding ? { depositAddress: body.depositType === 'INTENTS' ? 'quote.near' : '0x7777777777777777777777777777777777777777' } : {}),
       } }, 201);
@@ -195,6 +196,10 @@ test('redeem encodes bigint shares and uses the owner as receiver, without appro
   assert.equal(redeem.functionName, 'redeem');
   assert.deepEqual(redeem.args, [huge, getAddress(ADDRESS), getAddress(ADDRESS)]);
   assert.equal(f.receiptsRead.length, 1);
+});
+test('wallet proof names the site that asks for the signature, so wallets see a matching domain', () => {
+  const parsed = parseSiweMessage(walletProofMessage(ADDRESS, 'fixtureNonce1', 'https://app.example', 8453));
+  assert.equal(parsed.domain, 'app.example'); assert.equal(parsed.uri, 'https://app.example');
 });
 test('wallet proof binds to relay host/origin, chain, nonce, issued-at and expiration', async () => {
   const f = fixture(); const proof = await f.data.walletProof(ADDRESS);
@@ -415,6 +420,10 @@ test('Rhea maps quote, relay and wallet errors and never funds mismatched/expire
     await assert.rejects(f.data.rheaDeposit(ADDRESS, 5_000_000n), rejectsCode('quote'));
     assert.equal(f.transactions.length, 0);
   }
+  // A deposit that would arrive below the vault's 1 USDC minimum is refused before any transfer.
+  const small = fixture(); small.state.minOut = '999999';
+  await assert.rejects(small.data.rheaDeposit(ADDRESS, 1_000_000n), rejectsCode('amount'));
+  assert.equal(small.transactions.length, 0);
   const f = fixture(); f.state.quoteStatus = 400;
   await assert.rejects(f.data.rheaQuote(ADDRESS, 1n, 'deposit'), rejectsCode('oneclick'));
   await assert.rejects(f.data.rheaStatus('quote.near'), rejectsCode('oneclick'));

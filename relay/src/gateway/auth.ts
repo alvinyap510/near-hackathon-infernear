@@ -13,8 +13,9 @@ export class Auth {
   private origin: URL;
   private chainId: number;
   private now: () => number;
-  constructor(secret: string, publicUrl: string, chainId: number, now = Date.now) {
-    this.secret = secret; this.origin = new URL(publicUrl); this.chainId = chainId; this.now = now;
+  // `siteUrl` is the origin whose page asks the wallet to sign: the dashboard, not the API host.
+  constructor(secret: string, siteUrl: string, chainId: number, now = Date.now) {
+    this.secret = secret; this.origin = new URL(siteUrl); this.chainId = chainId; this.now = now;
     this.nonces = new ExpiringMap(300_000, now);
   }
   nonce(): string {

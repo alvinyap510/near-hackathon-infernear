@@ -101,7 +101,7 @@ Base URL: `VITE_RELAY_URL` / `RELAY_PORT`. Errors on every route use OpenAI's er
 
 ### Key routes (wallet proof)
 
-`POST /keys` and `POST /keys/revoke` each take `{ message, signature }`: an EIP-4361 message (chain 8453, `domain` and `uri` = this API's host, the nonce below, a required `expirationTime`) and its signature. The nonce is consumed. There is no session token.
+`POST /keys` and `POST /keys/revoke` each take `{ message, signature }`: an EIP-4361 message (chain 8453, `domain` and `uri` = the dashboard's origin (`RELAY_WEB_ORIGIN`), the site the wallet signs on, the nonce below, a required `expirationTime`) and its signature. The nonce is consumed. There is no session token.
 
 | Route | Auth | Body → response |
 |---|---|---|

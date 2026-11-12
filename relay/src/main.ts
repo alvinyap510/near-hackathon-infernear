@@ -22,7 +22,7 @@ async function main() {
   const connector = await nearConnector({ rpc: required('NEAR_RPC_URL'), contract: required('NEAR_CONNECTOR_ACCOUNT'),
     gatewayAccount: required('NEAR_GATEWAY_ACCOUNT'), gatewayKey: required('NEAR_GATEWAY_PRIVATE_KEY'), keeperAccount: required('NEAR_KEEPER_ACCOUNT'), keeperKey: required('NEAR_KEEPER_PRIVATE_KEY'), relayAccount: required('NEAR_RELAY_ACCOUNT'), relayKey: required('NEAR_RELAY_PRIVATE_KEY'), rheaVault, intents,
     rheaLend: required('NEAR_RHEA_ACCOUNT'), usdc: required('NEAR_USDC_ACCOUNT'), rheaCushion: BigInt(required('NEAR_RHEA_CUSHION')), minYieldMicro });
-  const gateway = new Gateway({ auth: new Auth(required('API_KEY_SECRET'), publicUrl, chainId), upstream: new Upstream(required('NEAR_AI_BASE_URL'), required('NEAR_AI_API_KEY'), Date.now, integer('RELAY_UPSTREAM_TIMEOUT_MS')),
+  const gateway = new Gateway({ auth: new Auth(required('API_KEY_SECRET'), required('RELAY_WEB_ORIGIN'), chainId), upstream: new Upstream(required('NEAR_AI_BASE_URL'), required('NEAR_AI_API_KEY'), Date.now, integer('RELAY_UPSTREAM_TIMEOUT_MS')),
     connector, maxTokens: integer('RELAY_MAX_TOKENS'), report });
   const ports = evmPorts({ rpc: required('BASE_RPC_URL'), chainId, key: required('TREASURY_EVM_PRIVATE_KEY') as Hex,
     vaults: JSON.parse(required('EVM_VAULTS')) as EvmVaultConfig[], fromBlock: BigInt(required('VAULT_START_BLOCK')),

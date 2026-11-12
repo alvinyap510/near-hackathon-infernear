@@ -14,6 +14,8 @@ type Dependencies = {
   ethereum?: Pick<EIP1193Provider, 'request'>;
   fetch?: typeof globalThis.fetch;
   now?: () => Date;
+  // The dashboard's own origin; defaults to the page's.
+  origin?: string;
 };
 
 export function dataError(error: unknown): DataError {
@@ -187,7 +189,7 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
     walletProof: (address) => guarded(async () => {
       const client = await readyWallet(address);
       const { nonce } = await relay<{ nonce: string }>('/auth/nonce');
-      const message = walletProofMessage(address, nonce, settings.relayUrl, chain.id, now());
+      const message = walletProofMessage(address, nonce, dependencies.origin ?? globalThis.location?.origin ?? settings.relayUrl, chain.id, now());
       return { message, signature: await client.signMessage({ account: getAddress(address), message }) };
     }),
     createKey: (proof) => guarded(async () => {
