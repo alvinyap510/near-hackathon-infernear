@@ -9,7 +9,7 @@ import { endToEndHeaders } from './upstream.ts';
 // Bound untrusted buffered envelopes in the process that also settles credits.
 export const MAX_BODY_BYTES = 1_048_576;
 
-export function createRelayServer(gateway: Gateway, options: { publicUrl: string; report: Report; now?: () => number; allowedOrigin?: string; signedRequests?: SignedRequests }) {
+export function createRelayServer(gateway: Gateway, options: { publicUrl: string; report: Report; now?: () => number; allowedOrigin?: string; signedRequests?: SignedRequests; clientIpHeader?: string }) {
   const now = options.now ?? Date.now;
   const ipLimits = new ExpiringMap<{ count: number }>(60_000, now);
   const origin = new URL(options.publicUrl).origin;
@@ -30,7 +30,9 @@ export function createRelayServer(gateway: Gateway, options: { publicUrl: string
     return Buffer.concat(chunks);
   };
   const limitIp = (req: IncomingMessage) => {
-    const ip = req.socket.remoteAddress ?? '';
+    // Behind a tunnel every socket is the proxy's; only a configured header names the client.
+    const forwarded = options.clientIpHeader ? req.headers[options.clientIpHeader.toLowerCase()] : undefined;
+    const ip = typeof forwarded === 'string' && forwarded ? forwarded : req.socket.remoteAddress ?? '';
     let window = ipLimits.get(ip);
     if (!window) { window = { count: 0 }; ipLimits.set(ip, window); }
     if (window.count >= 30) throw new HttpError(429, 'read_rate_limit', 'Limit: 30 requests per minute per IP');

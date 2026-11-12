@@ -275,6 +275,15 @@ test('anonymous read bootstrap is byte-exact and limited; valid keys bypass the 
   assert.equal((await fetch(h.base + '/v1/attestation/report')).status, 200);
 });
 
+test('a configured client IP header gives each tunnel client its own bucket', async t => {
+  const h = await harness({ clientIpHeader: 'CF-Connecting-IP' }); t.after(h.close);
+  const read = (ip?: string) => fetch(h.base + '/v1/attestation/report', { headers: ip ? { 'cf-connecting-ip': ip } : {} });
+  for (let i = 0; i < 30; i++) assert.equal((await read('203.0.113.1')).status, 200);
+  assert.equal((await read('203.0.113.1')).status, 429);
+  assert.equal((await read('203.0.113.2')).status, 200);
+  assert.equal((await read()).status, 200);
+});
+
 test('meter handles arbitrary byte boundaries and reservation fallback on malformed metadata', () => {
   const meter = new Meter(true);
   const bytes = fixture('stream.sse');

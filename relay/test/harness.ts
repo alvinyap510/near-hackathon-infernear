@@ -68,7 +68,7 @@ export class FakeConnector implements Connector {
   async storageBalance() { return { amount: '1000000000000000000000000', storage_usage: 1000 }; }
 }
 
-export async function harness(options: { now?: () => number; seed?: boolean; deadlineMs?: number; signedOperations?: SignedOperations } = {}) {
+export async function harness(options: { now?: () => number; seed?: boolean; deadlineMs?: number; signedOperations?: SignedOperations; clientIpHeader?: string } = {}) {
   const connector = new FakeConnector();
   if (options.seed !== false) connector.seed();
   const events: { event: string; details: Record<string, unknown> }[] = [];
@@ -105,7 +105,7 @@ export async function harness(options: { now?: () => number; seed?: boolean; dea
   const publicUrl = 'http://relay.test';
   const auth = new Auth('fixture-test-secret', publicUrl, 8453, options.now);
   const gateway = new Gateway({ auth, connector, upstream: new Upstream(`http://127.0.0.1:${upstreamPort}/v1`, 'fixture-upstream-key', options.now, options.deadlineMs), maxTokens: 100, report: (event, details) => events.push({ event, details }) });
-  const server = createRelayServer(gateway, { publicUrl, now: options.now, report: (event, details) => events.push({ event, details }), allowedOrigin: 'https://dashboard.test', signedRequests: options.signedOperations ? new SignedRequests(options.signedOperations, { vault: 'vault.near', intents: 'intents.near', chainId: 8453 }, options.now) : undefined });
+  const server = createRelayServer(gateway, { publicUrl, now: options.now, report: (event, details) => events.push({ event, details }), allowedOrigin: 'https://dashboard.test', clientIpHeader: options.clientIpHeader, signedRequests: options.signedOperations ? new SignedRequests(options.signedOperations, { vault: 'vault.near', intents: 'intents.near', chainId: 8453 }, options.now) : undefined });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}`;
   const key = auth.issue(USER, 0).key;
