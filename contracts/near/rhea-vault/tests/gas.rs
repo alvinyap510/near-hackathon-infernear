@@ -61,11 +61,20 @@ async fn init_vault(
     Ok(())
 }
 async fn deposit(root: &Account, token: &Contract, vault: &Contract, user: &str) -> Result<()> {
+    deposit_amount(root, token, vault, user, 1_000_000).await
+}
+async fn deposit_amount(
+    root: &Account,
+    token: &Contract,
+    vault: &Contract,
+    user: &str,
+    amount: u128,
+) -> Result<()> {
     let _ = invoke(
         root,
         token,
         "ft_transfer_call",
-        json!({"receiver_id":vault.id(),"amount":"1000000","msg":json!({"user":user}).to_string()}),
+        json!({"receiver_id":vault.id(),"amount":amount.to_string(),"msg":json!({"user":user}).to_string()}),
         1,
     )
     .await?;
@@ -301,11 +310,222 @@ async fn flex1_1_flex1_2_k10_queue_and_full_refund_resolvers_fit_300_tgas() -> R
         .cloned()
         .expect("joined resolver receipt");
     println!(
-        "direct returns/full refunds: gas_burnt={}, records={}, resolver_burnt={}, resolver_budget={}",
+        "direct returns/full refunds: gas_burnt={}, receipts={}, records={}, resolver_burnt={}, resolver_budget={}",
         outcome.total_gas_burnt.as_gas(),
+        outcome.receipt_outcomes().len(),
         returns,
         resolver.gas_burnt.as_gas(),
         (20 + 8 * returns as u64) * 1_000_000_000_000
     );
+    Ok(())
+}
+
+async fn token_balance(token: &Contract, account: &AccountId) -> Result<u128> {
+    Ok(token
+        .view("ft_balance_of")
+        .args_json(json!({"account_id":account}))
+        .await?
+        .json::<String>()?
+        .parse()?)
+}
+async fn supplied(rhea: &Contract, vault: &Contract) -> Result<u128> {
+    Ok(rhea
+        .view("received")
+        .args_json(json!({"user":vault.id()}))
+        .await?
+        .json::<String>()?
+        .parse()?)
+}
+async fn accrue(
+    root: &Account,
+    token: &Contract,
+    rhea: &Contract,
+    vault: &Contract,
+    amount: u128,
+) -> Result<()> {
+    let _ = invoke(
+        root,
+        rhea,
+        "add_yield",
+        json!({"account_id":vault.id(),"amount":amount.to_string()}),
+        0,
+    )
+    .await?;
+    let _ = invoke(
+        root,
+        token,
+        "mint",
+        json!({"account_id":rhea.id(),"amount":amount.to_string()}),
+        0,
+    )
+    .await?;
+    Ok(())
+}
+fn report_gas(label: &str, outcome: &near_workspaces::result::ExecutionFinalResult) {
+    println!(
+        "{label}: gas_burnt={}, receipts={}",
+        outcome.total_gas_burnt.as_gas(),
+        outcome.receipt_outcomes().len()
+    );
+}
+
+#[tokio::test]
+async fn interest_payment_supplies_new_cash_and_refunds_in_the_same_300_tgas_run() -> Result<()> {
+    let worker = near_workspaces::sandbox().await?;
+    let root = worker.root_account()?;
+    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target");
+    let wasm =
+        std::fs::read(base.join("wasm32-unknown-unknown/release/infernear_rhea_vault.wasm"))?;
+    let mock = std::fs::read(
+        base.join("mock/wasm32-unknown-unknown/release/infernear_rhea_test_mock.wasm"),
+    )?;
+    let token = fixture(&worker, &mock, "token", None).await?;
+    let rhea = fixture(&worker, &mock, "rhea", Some(token.id())).await?;
+    let intents = fixture(&worker, &mock, "intents", Some(token.id())).await?;
+    let treasury = worker.dev_create_account().await?;
+    let vault = worker.dev_deploy(&wasm).await?;
+    init_vault(
+        &root,
+        &vault,
+        &token,
+        &rhea,
+        &intents,
+        &treasury,
+        500_000_000,
+    )
+    .await?;
+    let _ = invoke(
+        &root,
+        &token,
+        "mint",
+        json!({"account_id":root.id(),"amount":"410000000"}),
+        0,
+    )
+    .await?;
+    let users: Vec<String> = (1..=3).map(|i| format!("eip155:8453:0x{i:040x}")).collect();
+    deposit_amount(&root, &token, &vault, &users[0], 100_000_000).await?;
+    let _ = invoke(&root, &vault, "run", json!({}), 0).await?;
+    ensure!(supplied(&rhea, &vault).await? == 100_000_000);
+
+    accrue(&root, &token, &rhea, &vault, 1).await?;
+    deposit_amount(&root, &token, &vault, &users[1], 100_000_000).await?;
+    let outcome = invoke(&root, &vault, "run", json!({}), 0).await?;
+    report_gas(
+        "interest + activated deposit -> treasury -> supply",
+        &outcome,
+    );
+    ensure!(
+        outcome.logs().iter().any(|log| log.contains("cash_sent")
+            && log.contains("supply")
+            && log.contains("99999999")),
+        "supply was not scheduled after payment"
+    );
+    ensure!(token_balance(&token, treasury.id()).await? == 1);
+    ensure!(supplied(&rhea, &vault).await? == 200_000_000);
+    ensure!(vault.view("idle").await?.json::<String>()? == "0");
+    assert_cash(&vault, &token, &users).await?;
+
+    accrue(&root, &token, &rhea, &vault, 1).await?;
+    let outcome = invoke(&root, &vault, "run", json!({}), 0).await?;
+    report_gas(
+        "further interest -> withdraw -> treasury, no idle",
+        &outcome,
+    );
+    ensure!(token_balance(&token, treasury.id()).await? == 2);
+    ensure!(supplied(&rhea, &vault).await? == 200_000_000);
+    ensure!(vault.view("idle").await?.json::<String>()? == "0");
+    assert_cash(&vault, &token, &users).await?;
+
+    let _ = invoke(&root, &rhea, "return_all_deposits", json!({}), 0).await?;
+    accrue(&root, &token, &rhea, &vault, 1).await?;
+    deposit_amount(&root, &token, &vault, &users[2], 100_000_000).await?;
+    let outcome = invoke(&root, &vault, "run", json!({}), 0).await?;
+    report_gas("treasury -> refunded supply", &outcome);
+    ensure!(token_balance(&token, treasury.id()).await? == 3);
+    ensure!(supplied(&rhea, &vault).await? == 200_000_001);
+    ensure!(vault.view("idle").await?.json::<String>()? == "99999999");
+    assert_cash(&vault, &token, &users).await?;
+
+    let _ = invoke(&root, &rhea, "accept_deposits", json!({}), 0).await?;
+    accrue(&root, &token, &rhea, &vault, 1).await?;
+    let outcome = invoke(&root, &vault, "run", json!({}), 0).await?;
+    report_gas(
+        "further interest -> treasury -> retry refunded cash",
+        &outcome,
+    );
+    ensure!(token_balance(&token, treasury.id()).await? == 4);
+    ensure!(supplied(&rhea, &vault).await? == 300_000_000);
+    ensure!(vault.view("idle").await?.json::<String>()? == "0");
+    assert_cash(&vault, &token, &users).await?;
+
+    // A nonregistered treasury forces the longest tail: Rhea withdrawal, failed
+    // payment, restored cash supply, and after_supply. Only this FT send may fail.
+    let failing = worker.dev_deploy(&wasm).await?;
+    let unregistered = worker.dev_create_account().await?;
+    let _ = invoke(
+        &root,
+        &token,
+        "register",
+        json!({"account_id":failing.id()}),
+        0,
+    )
+    .await?;
+    let _ = invoke(&root, &failing, "new", json!({"usdc":token.id(),"rhea":rhea.id(),"intents":intents.id(),"treasury":unregistered.id(),"cushion":"0","min_deposit":"1000000","cap":"110000000"}), 0).await?;
+    deposit_amount(&root, &token, &failing, &users[0], 100_000_000).await?;
+    let _ = invoke(&root, &failing, "run", json!({}), 0).await?;
+    let failed_users: Vec<String> = (1..=11)
+        .map(|i| format!("eip155:8453:0x{i:040x}"))
+        .collect();
+    for user in failed_users.iter().skip(1) {
+        deposit(&root, &token, &failing, user).await?;
+    }
+    accrue(&root, &token, &rhea, &failing, 20_000_000).await?;
+    let outcome = root
+        .call(failing.id(), "run")
+        .args_json(json!({}))
+        .gas(Gas::from_tgas(300))
+        .transact()
+        .await?;
+    report_gas(
+        "K=10 activations -> withdraw -> failed treasury -> supply",
+        &outcome,
+    );
+    ensure!(outcome.is_success(), "final supply resolver failed");
+    ensure!(
+        outcome.failures().len() == 1 && outcome.failures()[0].executor_id == *token.id(),
+        "unexpected failed receipt: {:?}",
+        outcome.failures()
+    );
+    ensure!(failing.view("unpaid").await?.json::<String>()? == "20000000");
+    ensure!(failing.view("paid_total").await?.json::<String>()? == "0");
+    ensure!(failing.view("idle").await?.json::<String>()? == "0");
+    ensure!(supplied(&rhea, &failing).await? == 130_000_000);
+    assert_cash(&failing, &token, &failed_users).await?;
+    let resolver = outcome
+        .receipt_outcomes()
+        .iter()
+        .find(|receipt| {
+            receipt
+                .logs
+                .iter()
+                .any(|log| log.contains("cash_resolved") && log.contains("treasury"))
+        })
+        .expect("treasury resolver");
+    println!(
+        "treasury/supply resolver: gas_burnt={}, reserved_tgas=106",
+        resolver.gas_burnt.as_gas()
+    );
+    let _ = invoke(
+        &root,
+        &token,
+        "register",
+        json!({"account_id":unregistered.id()}),
+        0,
+    )
+    .await?;
+    let _ = invoke(&root, &failing, "run", json!({}), 0).await?;
+    ensure!(token_balance(&token, unregistered.id()).await? == 20_000_000);
+    ensure!(failing.view("unpaid").await?.json::<String>()? == "0");
+    assert_cash(&failing, &token, &failed_users).await?;
     Ok(())
 }

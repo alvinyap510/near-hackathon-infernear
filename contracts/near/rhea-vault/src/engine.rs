@@ -7,6 +7,9 @@ const RESOLVE_GAS: u64 = 20;
 const RESOLVE_RECORD_GAS: u64 = 8;
 const LOCAL_GAS: u64 = 20;
 const SEND_OVERHEAD_GAS: u64 = 8; // Receipt creation and joining, per send.
+const SUPPLY_GAS: u64 = 60;
+// after_send must fund the supply transfer-call, its resolver and receipt creation.
+const SUPPLY_RESERVE_GAS: u64 = SUPPLY_GAS + RESOLVE_GAS + 2 * SEND_OVERHEAD_GAS;
 
 struct Plan {
     totals: Totals,
@@ -89,10 +92,11 @@ impl RheaUsdcVault {
         }
         if self.cycle.withdraw > 0 {
             self.cycle.phase = 2;
+            let callback_gas = if self.can_supply() { 168 } else { 160 };
             PromiseOrValue::Promise(call(&self.rhea,"simple_withdraw",near_sdk::serde_json::json!({
                 "token_id":self.usdc,"amount_with_inner_decimal":U128(self.cycle.withdraw.checked_mul(INTERNAL_SCALE).expect("validated Rhea units")),
                 "recipient_id":env::current_account_id()
-            }),1,60).then(self_callback("after_withdraw",160)))
+            }),1,60).then(self_callback("after_withdraw",callback_gas)))
         } else {
             self.send_or_supply()
         }
@@ -198,6 +202,10 @@ impl RheaUsdcVault {
         self.send_or_supply()
     }
 
+    fn can_supply(&self) -> bool {
+        self.cycle.exits == 0 && self.cycle.returns == 0
+    }
+
     fn send_or_supply(&mut self) -> PromiseOrValue<bool> {
         // K bounds work scanned; the prepaid-gas budget bounds actual cross-contract
         // sends. Capacity-deferred requests remain queued. Reserving the joined
@@ -205,8 +213,26 @@ impl RheaUsdcVault {
         let free_gas = env::prepaid_gas()
             .as_gas()
             .saturating_sub(env::used_gas().as_gas());
-        let mut slots = (free_gas.saturating_sub(Gas::from_tgas(RESOLVE_GAS + LOCAL_GAS).as_gas())
-            / Gas::from_tgas(TRANSFER_GAS + RESOLVE_RECORD_GAS + SEND_OVERHEAD_GAS).as_gas())
+        // Without principal queues the resolver handles only one fixed treasury
+        // record; it needs no per-user refund/storage budget. Reserve the supply
+        // tail even if treasury fails and its cash is restored.
+        let (resolve_gas, record_gas, local_gas, send_overhead, supply_reserve) =
+            if self.can_supply() {
+                // A single fixed treasury record: 12 Tgas covers its remaining local
+                // work and receipt creation; no principal-queue scan/refund budget.
+                (10, 0, 0, 12, SUPPLY_RESERVE_GAS)
+            } else {
+                (
+                    RESOLVE_GAS,
+                    RESOLVE_RECORD_GAS,
+                    LOCAL_GAS,
+                    SEND_OVERHEAD_GAS,
+                    0,
+                )
+            };
+        let mut slots = (free_gas
+            .saturating_sub(Gas::from_tgas(resolve_gas + local_gas + supply_reserve).as_gas())
+            / Gas::from_tgas(TRANSFER_GAS + record_gas + send_overhead).as_gas())
             as usize;
         // Both principal queues must progress even under continuous exit traffic.
         let return_slot = usize::from(self.cycle.returns > 0);
@@ -327,9 +353,8 @@ impl RheaUsdcVault {
             );
         }
         if promises.is_empty() {
-            // A cycle with an outflow plan retains any unused cash. Dropped
-            // owners can sign again; supply belongs only to a no-outflow plan.
-            return if self.cycle.exits == 0 && self.cycle.returns == 0 && self.cycle.pay == 0 {
+            // Exit/return plans retain unused cash, even if every send was dropped.
+            return if self.can_supply() {
                 self.supply()
             } else {
                 PromiseOrValue::Value(self.finish())
@@ -340,7 +365,8 @@ impl RheaUsdcVault {
             .into_iter()
             .reduce(Promise::and)
             .expect("nonempty sends");
-        let resolver_gas = RESOLVE_GAS + RESOLVE_RECORD_GAS * u64::from(self.cycle.sent_len);
+        let resolver_gas =
+            resolve_gas + record_gas * u64::from(self.cycle.sent_len) + supply_reserve;
         PromiseOrValue::Promise(joined.then(self_callback("after_send", resolver_gas)))
     }
     fn record(&mut self, sent: Sent) {
@@ -356,9 +382,9 @@ impl RheaUsdcVault {
             TRANSFER_GAS,
         )
     }
-    pub(crate) fn resolve_sends(&mut self) -> bool {
+    pub(crate) fn resolve_sends(&mut self) -> PromiseOrValue<bool> {
         if !self.busy || self.cycle.phase != 3 {
-            return false;
+            return PromiseOrValue::Value(false);
         }
         for i in 0..self.cycle.sent_len as usize {
             let sent = self.cycle.sent[i];
@@ -457,7 +483,11 @@ impl RheaUsdcVault {
                 near_sdk::serde_json::json!({"kind":kind,"user":user_id,"sent":U128(sent.amount),"used":U128(used),"restored_principal":U128(restored)}),
             );
         }
-        self.finish()
+        if self.can_supply() {
+            self.supply()
+        } else {
+            PromiseOrValue::Value(self.finish())
+        }
     }
     fn supply(&mut self) -> PromiseOrValue<bool> {
         if self.totals.idle == 0 {
@@ -471,7 +501,7 @@ impl RheaUsdcVault {
             "cash_sent",
             near_sdk::serde_json::json!({"kind":"supply","user":null,"amount":U128(amount),"claim":U128(0)}),
         );
-        PromiseOrValue::Promise(call(&self.usdc,"ft_transfer_call",near_sdk::serde_json::json!({"receiver_id":self.rhea,"amount":U128(amount),"msg":""}),1,60)
+        PromiseOrValue::Promise(call(&self.usdc,"ft_transfer_call",near_sdk::serde_json::json!({"receiver_id":self.rhea,"amount":U128(amount),"msg":""}),1,SUPPLY_GAS)
             .then(self_callback("after_supply",RESOLVE_GAS)))
     }
     pub(crate) fn resolve_supply(&mut self) -> bool {

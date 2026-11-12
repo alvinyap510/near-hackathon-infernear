@@ -226,7 +226,7 @@ impl RheaUsdcVault {
             0,
             5,
         ))
-        .then(self_callback("after_measure", 250))
+        .then(self_callback("after_measure", 255))
     }
 
     #[private]
@@ -238,7 +238,7 @@ impl RheaUsdcVault {
         self.withdraw_and_send()
     }
     #[private]
-    pub fn after_send(&mut self) -> bool {
+    pub fn after_send(&mut self) -> PromiseOrValue<bool> {
         self.resolve_sends()
     }
     #[private]

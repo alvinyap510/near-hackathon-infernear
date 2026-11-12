@@ -77,6 +77,7 @@ struct Model {
     supply_used: u128,
     delivery_used: u128,
     send_failed: bool,
+    callback_gas: u64,
 }
 impl Model {
     fn new(cushion: u128, cap: u128) -> Self {
@@ -103,6 +104,7 @@ impl Model {
             supply_used: 10_000,
             delivery_used: 10_000,
             send_failed: false,
+            callback_gas: 0,
         }
     }
     fn accept(&mut self, user: &str, amount: u128) {
@@ -118,10 +120,40 @@ impl Model {
     fn start(&mut self) {
         caller("keeper.near");
         drop(self.vault.run());
+        self.remember_callback_gas();
+    }
+    fn remember_callback_gas(&mut self) {
+        if !self.vault.busy {
+            return;
+        }
+        let method = match self.vault.cycle.phase {
+            1 => b"after_measure".as_slice(),
+            2 => b"after_withdraw".as_slice(),
+            3 => b"after_send".as_slice(),
+            4 => b"after_supply".as_slice(),
+            phase => panic!("unexpected model phase {phase}"),
+        };
+        self.callback_gas = get_created_receipts()
+            .into_iter()
+            .flat_map(|r| r.actions)
+            .find_map(|action| {
+                if let near_sdk::mock::MockAction::FunctionCallWeight {
+                    method_name,
+                    prepaid_gas,
+                    ..
+                } = action
+                    && method_name == method
+                {
+                    Some(prepaid_gas.as_gas() / 1_000_000_000_000)
+                } else {
+                    None
+                }
+            })
+            .expect("scheduled callback");
     }
     fn measure(&mut self) {
         callback(
-            250,
+            self.callback_gas,
             vec![
                 ok(
                     json!({"supplied":[{"token_id":"usdc.near","balance":(self.supplied*INTERNAL_SCALE).to_string()}]}),
@@ -133,6 +165,7 @@ impl Model {
             ],
         );
         drop(self.vault.after_measure());
+        self.remember_callback_gas();
     }
     fn resolve(&mut self) {
         match self.vault.cycle.phase {
@@ -143,7 +176,7 @@ impl Model {
                     self.supplied -= w;
                     self.cash += w;
                 }
-                callback(160, vec![ok(json!(self.withdraw_ok))]);
+                callback(self.callback_gas, vec![ok(json!(self.withdraw_ok))]);
                 drop(self.vault.after_withdraw());
             }
             3 => {
@@ -176,8 +209,8 @@ impl Model {
                         results.push(ok(json!(used.to_string())));
                     }
                 }
-                callback(20 + 8 * u64::from(self.vault.cycle.sent_len), results);
-                assert!(self.vault.after_send());
+                callback(self.callback_gas, results);
+                drop(self.vault.after_send());
             }
             4 => {
                 let sent = self.vault.cycle.supply;
@@ -189,7 +222,7 @@ impl Model {
                 self.cash -= used;
                 self.supplied += used;
                 callback(
-                    20,
+                    self.callback_gas,
                     vec![if self.send_failed {
                         PromiseResult::Failed
                     } else {
@@ -200,6 +233,7 @@ impl Model {
             }
             phase => panic!("unexpected model phase {phase}"),
         }
+        self.remember_callback_gas();
     }
     fn finish(&mut self) {
         for _ in 0..4 {
@@ -418,7 +452,7 @@ fn complete_exit_failure_restores_claim_once_and_preserves_concurrent_incoming_c
     assert_eq!(m.vault.position(b).pending_in, U128(2_000_000));
     let principal = m.vault.totals.principal;
     callback(20, vec![PromiseResult::Failed]);
-    assert!(!m.vault.after_send());
+    assert!(matches!(m.vault.after_send(), PromiseOrValue::Value(false)));
     assert_eq!(m.vault.totals.principal, principal);
 }
 
@@ -1070,5 +1104,187 @@ fn cr1_r3_ten_unfunded_exits_and_returns_fit_the_callback_budget() {
     assert_eq!(m.vault.totals.principal, 1000);
     assert_eq!(m.vault.idle(), U128(50));
     m.cash_invariant();
+    scaled_invariant(&m);
+}
+
+#[test]
+fn fresh_interest_and_newly_activated_deposit_pay_then_supply_in_one_cycle() {
+    let mut m = Model::new(1_000_000, 1_000_000_000);
+    let first = user(1);
+    let newcomer = user(2);
+    m.accept(&first, 100_000_000);
+    m.cycle();
+    assert_eq!(m.supplied, 101_000_000);
+    m.supplied += 1;
+    m.accept(&newcomer, 100_000_000);
+    m.start();
+    m.measure();
+    assert_eq!(m.vault.position(first.clone()).yield_credited, U128(1));
+    assert_eq!(m.vault.position(newcomer.clone()).yield_credited, U128(0));
+    assert_eq!(m.vault.cycle.phase, 3);
+    assert_eq!(m.callback_gas, 106); // Resolve payment, then fund supply + resolver.
+    m.resolve();
+    assert_eq!(m.treasury, 1);
+    assert_eq!(m.vault.unpaid(), U128(0));
+    assert!(m.vault.busy());
+    assert_eq!(m.vault.cycle.phase, 4);
+    assert_eq!(m.vault.cycle.supply, 99_999_999);
+    assert_eq!(m.vault.idle(), U128(0));
+    m.finish();
+    assert_eq!(m.supplied, 201_000_000);
+    assert_eq!(m.cash, 0);
+    assert_eq!(m.vault.paid_total(), U128(1));
+    scaled_invariant(&m);
+
+    // Further interest without incoming cash exercises the withdrawal branch.
+    m.supplied += 1;
+    m.cycle();
+    assert_eq!(m.treasury, 2);
+    assert_eq!(m.supplied, 201_000_000);
+    assert_eq!(m.vault.idle(), U128(0));
+    assert!(!m.vault.busy());
+    scaled_invariant(&m);
+
+    m.supplied += 1;
+    m.accept(&newcomer, 50_000_000);
+    m.cycle();
+    assert_eq!(m.treasury, 3);
+    assert_eq!(m.supplied, 251_000_000);
+    assert_eq!(m.cash, 0);
+    scaled_invariant(&m);
+}
+
+#[test]
+fn refunded_or_failed_supply_is_retried_after_next_cycles_interest_and_payment() {
+    for (failed, used) in [(false, 0), (false, 6000), (true, 0)] {
+        let mut m = Model::new(1_000_000, 1_000_000_000);
+        m.accept(&user(1), 100_000_000);
+        m.cycle();
+        m.accept(&user(2), 100_000_000);
+        m.supplied += 1;
+        m.start();
+        m.measure();
+        m.resolve();
+        assert_eq!(m.vault.cycle.phase, 4);
+        m.send_failed = failed;
+        m.supply_used = used;
+        let attempted = m.vault.cycle.supply;
+        m.finish();
+        let refunded = attempted - attempted * used / 10_000;
+        assert_eq!(m.vault.idle(), U128(refunded));
+        assert_eq!(m.cash, refunded);
+        assert_eq!(m.treasury, 1);
+        scaled_invariant(&m);
+        m.supplied += 1;
+        m.send_failed = false;
+        m.supply_used = 10_000;
+        m.cycle();
+        assert_eq!(m.treasury, 2);
+        assert_eq!(m.supplied, 201_000_000);
+        assert_eq!(m.vault.idle(), U128(0));
+        assert!(!m.vault.busy());
+        scaled_invariant(&m);
+    }
+}
+
+#[test]
+fn treasury_failure_supplies_restored_cash_without_marking_yield_paid() {
+    let mut m = Model::new(1_000_000, 1_000_000_000);
+    m.accept(&user(1), 100_000_000);
+    m.cycle();
+    m.supplied += 1;
+    m.start();
+    m.measure();
+    assert_eq!(m.vault.cycle.phase, 2);
+    assert_eq!(m.callback_gas, 168);
+    m.resolve();
+    assert_eq!(m.vault.cycle.phase, 3);
+    assert_eq!(m.callback_gas, 106);
+    m.send_failed = true;
+    m.resolve();
+    assert_eq!(m.vault.cycle.phase, 4);
+    assert_eq!(m.vault.cycle.supply, 1);
+    assert_eq!(m.vault.unpaid(), U128(1));
+    assert_eq!(m.vault.paid_total(), U128(0));
+    let acc = m.vault.totals.acc;
+    callback(106, vec![PromiseResult::Failed]);
+    assert!(matches!(m.vault.after_send(), PromiseOrValue::Value(false)));
+    assert_eq!(m.vault.cycle.supply, 1);
+    m.send_failed = false;
+    m.finish();
+    assert_eq!(m.supplied, 101_000_001);
+    assert_eq!(m.vault.totals.acc, acc);
+    assert_eq!(m.treasury, 0);
+    scaled_invariant(&m);
+    m.cycle();
+    assert_eq!(m.treasury, 1);
+    assert_eq!(m.vault.unpaid(), U128(0));
+    assert_eq!(m.vault.totals.acc, acc);
+    scaled_invariant(&m);
+}
+
+#[test]
+fn exits_and_returns_still_retain_idle_cash_without_supply() {
+    let mut m = Model::new(1_000_000, 1_000_000_000);
+    m.accept(&user(1), 100_000_000);
+    m.cycle();
+    m.supplied += 1;
+    m.accept(&user(2), 100_000_000);
+    m.claim(&user(1), 10_000_000);
+    m.cycle();
+    assert_eq!(m.supplied, 101_000_001);
+    assert_eq!(m.vault.idle(), U128(90_000_000));
+    assert_eq!(m.treasury, 0);
+    assert_eq!(m.intents[&user(1)], 10_000_000);
+    scaled_invariant(&m);
+
+    let mut m = Model::new(1_000_000, 100_000_000);
+    m.accept(&user(1), 100_000_000);
+    m.cycle();
+    m.supplied += 1;
+    m.supplied -= 10_000_000;
+    m.cash += 10_000_000;
+    m.vault.totals.idle += 10_000_000;
+    m.accept(&user(2), 1_000_000);
+    m.cycle();
+    assert_eq!(m.supplied, 91_000_001);
+    assert_eq!(m.vault.idle(), U128(9_999_999));
+    assert_eq!(m.treasury, 1);
+    assert_eq!(m.intents[&user(2)], 1_000_000);
+    scaled_invariant(&m);
+}
+
+#[test]
+fn run_below_required_gas_rejects_before_setting_busy() {
+    let mut m = Model::new(0, 100);
+    context("keeper.near", 299, vec![], NearToken::from_near(1000));
+    rejected(|| drop(m.vault.run()));
+    assert!(!m.vault.busy());
+}
+
+#[test]
+fn ten_activations_then_withdraw_pay_and_supply_fit_scheduled_callback_gas() {
+    let mut m = Model::new(1_000_000, 1_000_000_000);
+    m.accept(&user(1), 100_000_000);
+    m.cycle();
+    m.supplied += 20_000_000;
+    for i in 2..=11 {
+        m.accept(&user(i), 1_000_000);
+    }
+    m.start();
+    m.measure();
+    assert_eq!(m.vault.cycle.phase, 2);
+    assert_eq!(m.vault.cycle.withdraw, 10_000_000);
+    m.resolve();
+    assert_eq!(m.vault.cycle.phase, 3);
+    m.send_failed = true;
+    m.resolve();
+    assert_eq!(m.vault.cycle.phase, 4);
+    assert_eq!(m.vault.cycle.supply, 20_000_000);
+    m.send_failed = false;
+    m.finish();
+    assert_eq!(m.vault.totals.principal, 110_000_000);
+    assert_eq!(m.vault.idle(), U128(0));
+    assert_eq!(m.supplied, 131_000_000);
     scaled_invariant(&m);
 }

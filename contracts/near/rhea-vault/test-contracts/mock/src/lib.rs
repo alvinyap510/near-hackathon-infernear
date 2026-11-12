@@ -39,6 +39,9 @@ impl Mock {
     pub fn return_all_deposits(&mut self) {
         self.refund_all = true;
     }
+    pub fn accept_deposits(&mut self) {
+        self.refund_all = false;
+    }
     pub fn register(&mut self, account_id: AccountId) {
         if !self.token.accounts.contains_key(&account_id) {
             self.token.internal_register_account(&account_id);
