@@ -1,5 +1,5 @@
 // The copy-paste quickstart shown on "Try the API". It uses NEAR AI's own SDK
-// at the commit that adds E2EE v3 (nearai/inference-sdk#127, not yet released);
+// at the commit that adds E2EE v3 (nearai/inference-sdk#127, later released in v0.3.0);
 // the relay rejects anything older.
 export const SDK_PIN = {
   repo: 'nearai/inference-sdk',
@@ -14,22 +14,17 @@ const pinComment = (c: string) =>
 
 export function quickstartJs({ baseUrl, model, maxTokens }: Params): string {
   return `${pinComment('//')}
-import {
-  InferenceClient,
-  verifyComposeManagerDeploymentImageProvenance,
-  verifyDeploymentImageProvenance,
-} from '@nearai/inference-sdk';
+import { InferenceClient, verifyDeploymentImageProvenance } from '@nearai/inference-sdk';
 
-// NEAR's image-provenance policy: "verified" must mean NEAR's own images,
-// not just genuine TEE hardware.
+// NEAR's image-provenance policy for the gateway: "verified" must mean NEAR's
+// own gateway images, not just genuine TEE hardware. The SDK still checks the
+// model's TEE hardware attestation; its model image check is left out because
+// it currently rejects NEAR's own model deploys.
 const build = (repository, workflow = '.github/workflows/build.yml') => ({ repository, workflow });
 const GATEWAY_IMAGES = {
   'nearaidev/cloud-api': build('nearai/cloud-api'),
   'nearaidev/cvm-ingress': build('nearai/cvm-ingress', '.github/workflows/build-push.yml'),
-  'nearaidev/dstack-vpc': build('nearai/dstack-vpc'),
-  'nearaidev/dstack-vpc-client': build('nearai/dstack-vpc-client'),
 };
-const MODEL_IMAGES = { 'nearaidev/vllm-proxy-rs': build('nearai/inference-proxy') };
 
 const client = new InferenceClient({
   baseUrl: '${baseUrl}',
@@ -39,19 +34,6 @@ const client = new InferenceClient({
     verifiers: {
       deployment: ({ appCompose }) =>
         verifyDeploymentImageProvenance({ appCompose, imagePolicies: GATEWAY_IMAGES }),
-    },
-  },
-  modelVerification: {
-    verifiers: {
-      deployment: (deployment) =>
-        verifyComposeManagerDeploymentImageProvenance({
-          deployment,
-          imagePolicies: MODEL_IMAGES,
-          composeManagerImagePolicy: {
-            imageRepository: 'nearaidev/compose-manager',
-            ...build('nearai/compose-manager'),
-          },
-        }),
     },
   },
 });
@@ -72,33 +54,23 @@ export function quickstartPython({ baseUrl, model, maxTokens }: Params): string 
   return `${pinComment('#')}
 import asyncio, os
 from nearai_inference_sdk import (
-    AttestationVerifiers, ComposeManagerImagePolicy, GatewayVerificationOptions,
-    ImageProvenancePolicy as Build, InferenceClient, ModelAttestationVerifiers,
-    ModelVerificationOptions, verify_compose_manager_deployment_image_provenance,
+    AttestationVerifiers, GatewayVerificationOptions,
+    ImageProvenancePolicy as Build, InferenceClient,
     verify_deployment_image_provenance,
 )
 
-# NEAR's image-provenance policy: "verified" must mean NEAR's own images,
-# not just genuine TEE hardware.
+# NEAR's image-provenance policy for the gateway: "verified" must mean NEAR's
+# own gateway images, not just genuine TEE hardware. The SDK still checks the
+# model's TEE hardware attestation; its model image check is left out because
+# it currently rejects NEAR's own model deploys.
 WF = '.github/workflows/build.yml'
 GATEWAY_IMAGES = {
     'nearaidev/cloud-api': Build(repository='nearai/cloud-api', workflow=WF),
     'nearaidev/cvm-ingress': Build(repository='nearai/cvm-ingress', workflow='.github/workflows/build-push.yml'),
-    'nearaidev/dstack-vpc': Build(repository='nearai/dstack-vpc', workflow=WF),
-    'nearaidev/dstack-vpc-client': Build(repository='nearai/dstack-vpc-client', workflow=WF),
 }
-MODEL_IMAGES = {'nearaidev/vllm-proxy-rs': Build(repository='nearai/inference-proxy', workflow=WF)}
 
 async def gateway_images(d):
     await verify_deployment_image_provenance(d.app_compose, GATEWAY_IMAGES)
-
-async def model_images(d):
-    await verify_compose_manager_deployment_image_provenance(
-        d, MODEL_IMAGES,
-        compose_manager_image_policy=ComposeManagerImagePolicy(
-            image_repository='nearaidev/compose-manager',
-            repository='nearai/compose-manager', workflow=WF),
-    )
 
 async def main():
     async with InferenceClient(
@@ -109,8 +81,6 @@ async def main():
         gateway_verification=GatewayVerificationOptions(
             include_spki_fingerprint=False,
             verifiers=AttestationVerifiers(deployment=gateway_images)),
-        model_verification=ModelVerificationOptions(
-            verifiers=ModelAttestationVerifiers(deployment=model_images)),
     ) as client:
         completion = await client.chat.completions.create(
             model='${model}',
