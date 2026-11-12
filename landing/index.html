@@ -142,57 +142,91 @@
       <section class="sec dark" id="vaults" data-tone="dark" data-index="002" data-name="Vaults" aria-labelledby="vaults-h">
         <div class="wrap">
           <p class="label" data-reveal><b>002</b> Vaults</p>
-          <h2 id="vaults-h" class="h2" data-split>Four vaults. Four yield shapes.</h2>
+          <h2 id="vaults-h" class="h2" data-split>Four yield types. NEAR and EVM.</h2>
 
-          <ul class="vaults">
-            <li class="vault ticks" data-reveal>
-              <div class="v-top"><span class="tok" title="USDC on NEAR"><i data-icon="usdc" class="tok-coin"></i><i data-icon="near" class="tok-chain"></i></span><span class="chainb"><i data-icon="near"></i>NEAR</span></div>
-              <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
-                <path class="base" d="M10 76H190" /><path class="area" d="M10 76H40V68H70V60H100V52H130V44H160V36H190V76Z" /><path class="line" d="M10 76H40V68H70V60H100V52H130V44H160V36H190" pathLength="1" />
-                <circle class="dot" r="4" cx="10" cy="76" />
-              </svg>
-              <h3>Rhea USDC vault</h3>
-              <p class="v-shape">Lending interest</p>
-              <p class="v-meta"><img class="rhea" src="./src/assets/rhea-logo.svg" alt="" width="34" height="31" />Rhea Lend</p>
-              <p class="chip chip-amber">Operator key · hackathon</p>
-            </li>
-            <li class="vault ticks" data-reveal>
-              <div class="v-top"><span class="tok" title="USDC on Base"><i data-icon="usdc" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span><span class="chainb"><i data-icon="base"></i>Base</span></div>
-              <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
-                <path class="base" d="M10 76H190" /><path class="area" d="M10 76L190 20V76Z" /><path class="line" d="M10 76L190 20" pathLength="1" />
-                <circle class="dot" r="4" cx="10" cy="76" />
-              </svg>
-              <h3>Aave USDC vault</h3>
-              <p class="v-shape">Growing balance</p>
-              <p class="v-meta"><i data-icon="aave"></i>Aave v3</p>
-            </li>
-            <li class="vault ticks" data-reveal>
-              <div class="v-top"><span class="tok" title="cbETH on Base"><i data-icon="cbeth" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span><span class="chainb"><i data-icon="base"></i>Base</span></div>
-              <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
-                <path class="base" d="M10 76H190" /><path class="area" d="M10 76C90 74 140 56 190 12V76Z" /><path class="line" d="M10 76C90 74 140 56 190 12" pathLength="1" />
-                <circle class="dot" r="4" cx="10" cy="76" />
-              </svg>
-              <h3>cbETH vault</h3>
-              <p class="v-shape">Uncapped appreciation</p>
-              <p class="v-meta">Chainlink cbETH/USD</p>
-            </li>
-            <li class="vault ticks" data-reveal>
-              <div class="v-top"><span class="tok" title="Pendle PT-deJAAA on Base"><i data-icon="pendle" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span><span class="chainb"><i data-icon="base"></i>Base</span></div>
-              <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
-                <path class="base" d="M10 76H190" /><path class="base" d="M10 22H190" /><path class="area" d="M10 76L150 22H190V76Z" /><path class="line" d="M10 76L150 22H190" pathLength="1" />
-                <circle class="dot" r="4" cx="10" cy="76" />
-              </svg>
-              <h3>Pendle PT-deJAAA vault</h3>
-              <p class="v-shape">Capped appreciation</p>
-              <p class="v-meta"><i data-icon="pendle"></i>Matures 26 Nov 2026</p>
-            </li>
-          </ul>
+          <div class="ytypes">
+            <div class="yt-group yt-near" role="group" aria-labelledby="yt-near-h">
+              <p class="yt-h" id="yt-near-h"><i data-icon="near"></i>NEAR</p>
+              <ul class="yt-list">
+                <li class="vault ticks" data-reveal>
+                  <div class="yt-top">
+                    <span class="yt-n">01</span>
+                    <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
+                      <path class="base" d="M10 76H190" /><path class="area" d="M10 76H40V68H70V60H100V52H130V44H160V36H190V76Z" /><path class="line" d="M10 76H40V68H70V60H100V52H130V44H160V36H190" pathLength="1" />
+                      <circle class="dot" r="4" cx="10" cy="76" />
+                    </svg>
+                  </div>
+                  <h3 class="yt-name">Lending interest</h3>
+                  <p class="yt-how">Interest from lending USDC on <img class="rhea" src="./src/assets/rhea-logo.svg" alt="" width="34" height="31" />Rhea Lend.</p>
+                  <p class="chip chip-amber">Operator key · hackathon</p>
+                  <p class="yt-ex"><span class="tok" title="USDC on NEAR"><i data-icon="usdc" class="tok-coin"></i><i data-icon="near" class="tok-chain"></i></span>Rhea USDC vault</p>
+                </li>
+              </ul>
+            </div>
+            <div class="yt-group yt-evm" role="group" aria-labelledby="yt-evm-h">
+              <p class="yt-h" id="yt-evm-h">EVM</p>
+              <ul class="yt-list">
+                <li class="vault ticks" data-reveal>
+                  <div class="yt-top">
+                    <span class="yt-n">02</span>
+                    <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
+                      <path class="base" d="M10 76H190" /><path class="area" d="M10 76L190 20V76Z" /><path class="line" d="M10 76L190 20" pathLength="1" />
+                      <circle class="dot" r="4" cx="10" cy="76" />
+                    </svg>
+                  </div>
+                  <h3 class="yt-name">Growing balance</h3>
+                  <p class="yt-how">The USDC balance on <i data-icon="aave"></i>Aave itself grows.</p>
+                  <p class="yt-ex"><span class="tok" title="USDC on Base"><i data-icon="usdc" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span>Aave USDC vault</p>
+                </li>
+                <li class="vault ticks" data-reveal>
+                  <div class="yt-top">
+                    <span class="yt-n">03</span>
+                    <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
+                      <path class="base" d="M10 76H190" /><path class="area" d="M10 76C90 74 140 56 190 12V76Z" /><path class="line" d="M10 76C90 74 140 56 190 12" pathLength="1" />
+                      <circle class="dot" r="4" cx="10" cy="76" />
+                    </svg>
+                  </div>
+                  <h3 class="yt-name">Uncapped appreciation</h3>
+                  <p class="yt-how">cbETH's rate to ETH grows from staking, with no ceiling.</p>
+                  <p class="yt-ex"><span class="tok" title="cbETH on Base"><i data-icon="cbeth" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span>cbETH vault</p>
+                </li>
+                <li class="vault ticks" data-reveal>
+                  <div class="yt-top">
+                    <span class="yt-n">04</span>
+                    <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
+                      <path class="base" d="M10 76H190" /><path class="base" d="M10 22H190" /><path class="area" d="M10 76L150 22H190V76Z" /><path class="line" d="M10 76L150 22H190" pathLength="1" />
+                      <circle class="dot" r="4" cx="10" cy="76" />
+                    </svg>
+                  </div>
+                  <h3 class="yt-name">Capped appreciation</h3>
+                  <p class="yt-how">The PT rises to a fixed value at maturity.</p>
+                  <p class="yt-meta">Matures 26 Nov 2026</p>
+                  <p class="yt-ex"><span class="tok" title="Pendle PT-deJAAA on Base"><i data-icon="pendle" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span>Pendle PT-deJAAA vault</p>
+                </li>
+              </ul>
+            </div>
+          </div>
 
-          <ul class="facts" data-reveal aria-label="Vault facts">
-            <li class="fact-warn">Depositors bear strategy losses, pro-rata</li>
-            <li>Base vaults and credit ledger: no admin key</li>
-            <li class="fact-warn">Rhea vault: operator key during the hackathon</li>
-          </ul>
+          <div class="yt-next" data-reveal>
+            <p class="yt-next-k">Expanding to</p>
+            <div class="yt-next-g">
+              <span class="yt-next-h">More EVM chains</span>
+              <ul>
+                <li><i data-icon="ethereum"></i>Ethereum</li>
+                <li><i data-icon="bnb"></i>BNB Chain</li>
+                <li><i data-icon="arbitrum"></i>Arbitrum</li>
+                <li><i data-icon="robinhood"></i>Robinhood Chain</li>
+              </ul>
+            </div>
+            <div class="yt-next-g">
+              <span class="yt-next-h">Non-EVM chains</span>
+              <ul>
+                <li><i data-icon="solana"></i>Solana</li>
+                <li><i data-icon="sui"></i>Sui</li>
+              </ul>
+            </div>
+          </div>
+          <p class="yt-loss" data-reveal>Depositors bear strategy losses, pro-rata.</p>
         </div>
       </section>
 

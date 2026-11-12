@@ -3077,3 +3077,303 @@ svg {
 html:not(.deck) .hud-bottom {
   display: none;
 }
+
+/* ---------- 002: four yield types, in two groups (NEAR, then EVM) ----------
+   Each card is named for its yield type, with its chart; the vault is the example. */
+
+.ytypes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 4px repeat(3, minmax(0, 1fr));
+  gap: 0 16px;
+  margin-top: 56px;
+}
+
+.yt-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.yt-near {
+  grid-column: 1;
+}
+
+.yt-evm {
+  grid-column: 3 / -1;
+}
+
+.yt-h {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--snow);
+  font-family: var(--mono);
+  font-stretch: 87.5%;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--snow);
+}
+
+.yt-h .icon {
+  width: 16px;
+  height: 16px;
+  color: var(--snow);
+}
+
+.yt-list {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.yt-evm .yt-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.yt-top {
+  position: relative;
+}
+
+.yt-n {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-family: var(--mono);
+  font-stretch: 87.5%;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--mint);
+}
+
+.yt-top .shape {
+  margin: 22px 0 12px;
+}
+
+.vault .yt-name {
+  font-size: clamp(19px, 1.72vw, 22px);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  color: var(--snow);
+}
+
+.yt-how {
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--snow-2);
+}
+
+.yt-how .icon,
+.yt-how .rhea {
+  display: inline-block;
+  vertical-align: -4px;
+  margin: 0 4px 0 1px;
+}
+
+.yt-how .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.yt-how .rhea {
+  width: 20px;
+  height: 18px;
+  padding: 2px;
+  border-radius: 4px;
+}
+
+.yt-ex {
+  --tok: 26px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 16px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--snow);
+}
+
+.yt-meta {
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-stretch: 87.5%;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--snow-2);
+}
+
+.deck .ytypes {
+  margin-top: 36px;
+}
+
+@media (max-height: 860px) {
+  .deck .ytypes {
+    margin-top: 24px;
+  }
+
+  .deck .yt-top .shape {
+    margin: 18px 0 8px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .vault .yt-name {
+    font-size: 19px;
+  }
+
+  .yt-list .chip-amber {
+    height: auto;
+    min-height: 22px;
+    padding-block: 4px 3px;
+    line-height: 1.4;
+    white-space: normal;
+  }
+
+  .yt-list .chip-amber::before {
+    flex-shrink: 0;
+  }
+}
+
+/* Normal scrolling on tablets and phones: the NEAR group, then the EVM group. */
+@media (max-width: 900px) {
+  .ytypes {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 36px;
+  }
+
+  .yt-near,
+  .yt-evm {
+    grid-column: 1;
+  }
+
+  .yt-list,
+  .yt-evm .yt-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .yt-list,
+  .yt-evm .yt-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* What comes next: a quiet footnote row under the four yield types. */
+.yt-next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 40px;
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--night-line);
+}
+
+.yt-next-k {
+  font-family: var(--mono);
+  font-stretch: 87.5%;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--snow-2);
+}
+
+.yt-next-g {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 20px;
+}
+
+.yt-next-h {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--snow-2);
+}
+
+.yt-next ul {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 20px;
+}
+
+.yt-next li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--snow);
+}
+
+.yt-next .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.yt-loss {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--snow-2);
+}
+
+.yt-loss::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 1.5px;
+  background: var(--amber);
+}
+
+.deck .ytypes {
+  margin-top: 28px;
+}
+
+.deck .yt-top .shape {
+  margin: 18px 0 8px;
+}
+
+@media (max-height: 860px) {
+  .deck .yt-next {
+    margin-top: 18px;
+    padding-top: 12px;
+  }
+
+  .deck .yt-loss {
+    margin-top: 10px;
+  }
+
+  .deck .yt-top .shape {
+    margin: 14px 0 6px;
+  }
+
+  .deck .vault {
+    padding: 16px 18px 18px;
+  }
+}
+
+@media (max-width: 720px) {
+  .yt-next {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .yt-next-g {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+}

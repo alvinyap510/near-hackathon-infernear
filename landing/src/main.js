@@ -102,7 +102,7 @@ for (const h of $$('[data-split]')) {
     .map((w, i) => `<span class="w" aria-hidden="true"><span class="wi" style="--i:${i}">${w}</span></span>`)
     .join(' ');
 }
-for (const group of $$('.vaults, .rules, .facts, .flow, .i-steps')) {
+for (const group of $$('.yt-list, .rules, .facts, .flow, .i-steps')) {
   [...group.children].forEach((el, i) => el.style.setProperty('--d', `${i * 90}ms`));
 }
 const revealer = new IntersectionObserver(
@@ -114,7 +114,7 @@ const revealer = new IntersectionObserver(
       revealer.unobserve(e.target);
     }
   },
-  { rootMargin: '0px 0px -12% 0px', threshold: 0.12 },
+  { rootMargin: '0px 0px -4% 0px', threshold: 0.01 },
 );
 for (const el of $$('[data-reveal], [data-split], .vault, .outro')) revealer.observe(el);
 
