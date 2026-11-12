@@ -69,7 +69,7 @@ export type Overview = {
   credits: CreditAccount;
 };
 
-export type PurchaseState = { amount: string; hash?: `0x${string}`; status: 'submitting' | 'pending' | 'confirmed' | 'reverted' };
+export type PurchaseState = { amount: string; paid?: string; hash?: `0x${string}`; status: 'submitting' | 'pending' | 'confirmed' | 'reverted' };
 export type TopUpAccount = { minimum: bigint; paid: bigint; paidTotal: bigint; walletBalance: bigint; allowance: bigint; token: Address };
 export const PURCHASE_NOTICE = "This is a purchase, not a deposit. The USDC goes to InferNear and cannot be redeemed.";
 

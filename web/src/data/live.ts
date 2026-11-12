@@ -5,7 +5,7 @@ import {
 import { caip10, type LiveConfig } from '../config.ts';
 import { vaultAbi, usdcAbi, aavePoolAbi, topUpAbi } from './abi.ts';
 import { DataError, readAmount as amount } from './errors.ts';
-import { createPurchaseJournal, type PurchaseStorage } from './purchases.ts';
+import { createPurchaseJournal, type PurchaseStorage, type PurchaseLock } from './purchases.ts';
 import { createChatData } from './chat.ts';
 import { createBridgeData } from './bridge.ts';
 import { createRheaData, type NearView } from './rhea.ts';
@@ -20,6 +20,7 @@ import { LOSS_NOTES, type Address, type DashboardData, type VaultAccount, type S
 type Dependencies = {
   wallets?: Wallets;
   purchaseStorage?: PurchaseStorage;
+  purchaseLock?: PurchaseLock;
   waitForReceipt?: (hash: Hash) => Promise<{ status: 'success' | 'reverted' }>;
   ethereum?: Pick<EIP1193Provider, 'request'>;
   fetch?: typeof globalThis.fetch;
@@ -158,16 +159,15 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
     });
   }
 
-  const purchases=createPurchaseJournal(chain.id,settings.topUpAddress,dependencies.purchaseStorage);
-  const purchasing=new Set<string>();
-  const reconcilePurchase=async(input:SessionInput)=>{
+  const purchases=createPurchaseJournal(chain.id,settings.topUpAddress,dependencies.purchaseStorage,dependencies.purchaseLock);
+  const reconcilePurchase=async(input:SessionInput,locked=false)=>{
     const address=evmAddress(input),state=purchases.read(address);
     if(!state?.hash || state.status==='confirmed'||state.status==='reverted')return state;
     let receipt;
     try{receipt=await publicClient.getTransactionReceipt({hash:state.hash});}
-    catch{return state;} // Missing/unavailable receipt never means another pay is safe.
-    state.status=receipt.status==='success'?'confirmed':'reverted';purchases.write(address,state);
-    return state;
+    catch{return purchases.read(address);} // A failed or delayed read must not revive an old record.
+    const status=receipt.status==='success'?'confirmed':'reverted';
+    return locked?purchases.replace(address,state,{...state,status}):purchases.settle(address,state,status);
   };
 
   const result: DashboardData = {
@@ -175,12 +175,14 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
     isRunMock: false,
     subscribeWallet: listener=>wallets.subscribe(listener),
     topUpPurchase: input=>guarded(()=>reconcilePurchase(input)),
-    reviewTopUp: (input,hash)=>guarded(async()=>{purchases.review(evmAddress(input),hash);}),
+    reviewTopUp: (input,hash)=>guarded(async()=>{const address=evmAddress(input);await purchases.mutate(address,()=>purchases.review(address,hash));}),
     setAsideUnsentTopUp: input=>guarded(async()=>{
       const address=evmAddress(input);
-      // Not while this page is still waiting on the wallet for that very request.
-      if(purchasing.has(address.toLowerCase()))throw new DataError('purchase_pending','A purchase is still waiting in your wallet.');
-      purchases.setAsideUnsent(address);
+      await purchases.mutate(address,async()=>{
+        const account=await result.topUpAccount(input);
+        if(!account)throw new DataError('topup_unavailable','Credit purchases are not configured.');
+        purchases.setAsideUnsent(address,account.paid);
+      });
     }),
     topUpAccount: input => guarded(async () => {
       if (!settings.topUpAddress || (typeof input!=='string' && input.kind!=='evm')) return null;
@@ -191,11 +193,10 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
       return{minimum,paid,paidTotal,walletBalance,allowance,token:usdc};
     }),
     topUp: (input,assets) => guarded(async () => {
-      const check=wallets.operation(),address=evmAddress(input),owner=address.toLowerCase();
-      if(purchasing.has(owner))throw new DataError('purchase_pending','A purchase is already in progress.');
-      purchasing.add(owner);
+      const check=wallets.operation(),address=evmAddress(input);
+      const release=await purchases.lock(address);
       try{
-        const previous=await reconcilePurchase(input);check();
+        const previous=await reconcilePurchase(input,true);check();
         if(previous){
           if(previous.status==='confirmed'&&previous.amount===String(assets))return{txHash:previous.hash!};
           if(previous.status==='reverted')throw new DataError('transaction_reverted','The previous purchase reverted. Review a fresh purchase.');
@@ -210,21 +211,23 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
         if(account.allowance<assets){check();await confirmed(await client.writeContract({address:account.token,abi:usdcAbi,functionName:'approve',args:[settings.topUpAddress,assets],account:address}));}
         client=await readyWallet(address,check);check();
         if(purchases.read(address))throw new DataError('purchase_pending','Another purchase was recorded while approval was pending. Reconcile it first.');
-        purchases.write(address,{amount:String(assets),status:'submitting'});
+        const intent={amount:String(assets),paid:String(account.paid),status:'submitting' as const};
+        purchases.write(address,intent);
         let hash:Hash;
         try{hash=await client.writeContract({address:settings.topUpAddress,abi:topUpAbi,functionName:'pay',args:[assets,address],account:address});}
         catch(error){
-          if(['wallet_rejected','wallet_session_changed'].includes(dataError(error).code)){purchases.write(address,{amount:String(assets),status:'reverted'});}
+          if(['wallet_rejected','wallet_session_changed'].includes(dataError(error).code)){purchases.replace(address,intent,{...intent,status:'reverted'});}
           // Other wallet/RPC failures may have broadcast without returning a hash.
           throw error;
         }
-        purchases.write(address,{amount:String(assets),hash,status:'pending'});
-        try{const result=await confirmed(hash);purchases.write(address,{amount:String(assets),hash,status:'confirmed'});return result;}
+        const pending={...intent,hash,status:'pending' as const};
+        purchases.replace(address,intent,pending);release();
+        try{const result=await confirmed(hash);await purchases.settle(address,pending,'confirmed');return result;}
         catch(error){
-          if(dataError(error).code==='transaction_reverted'){purchases.write(address,{amount:String(assets),hash,status:'reverted'});throw error;}
+          if(dataError(error).code==='transaction_reverted'){await purchases.settle(address,pending,'reverted');throw error;}
           throw new DataError('purchase_pending',`Purchase ${hash} may have mined. Check its receipt; do not submit it again.`);
         }
-      }finally{purchasing.delete(owner);}
+      }finally{release();}
     }),
     walletOptions: () => wallets.walletOptions(),
     connectWallet: id => guarded(async () => { const owner=await wallets.connectWallet(id); if(owner.kind==='evm') await readyWallet(owner.address); return owner; }),

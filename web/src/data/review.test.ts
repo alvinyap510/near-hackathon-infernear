@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { decodeFunctionData,encodeFunctionResult } from 'viem';
 import { createLiveData } from './live.ts';
-import { createPurchaseJournal } from './purchases.ts';
+import { createPurchaseJournal, type PurchaseLock } from './purchases.ts';
 import { createWallets } from './wallets.ts';
 import { topUpAbi,usdcAbi,vaultAbi } from './abi.ts';
 import { DataError } from './errors.ts';
@@ -18,7 +18,7 @@ const code=(c:string)=>(e:unknown)=>e instanceof DataError&&e.code===c;
 const gate=()=>{let release!:()=>void;const promise=new Promise<void>(resolve=>{release=resolve;});return{promise,release};};
 function fixture(){
  const calls:{to:string;name:string;args:readonly unknown[]|undefined}[]=[],reads:string[]=[];
- const state={account:owner as string,receiptMissing:false,payFailure:'' as ''|'reject'|'rpc',wait:undefined as undefined|((hash:`0x${string}`)=>Promise<{status:'success'|'reverted'}>),coverage:'1000000000000000000',beforeRequest:undefined as undefined|((method:string)=>Promise<void>),beforeFetch:undefined as undefined|((url:string,body:any)=>Promise<void>)};
+ const state={account:owner as string,receiptMissing:false,payFailure:'' as ''|'reject'|'rpc',paid:100_000_000n,payReply:undefined as undefined|(()=>Promise<void>),wait:undefined as undefined|((hash:`0x${string}`)=>Promise<{status:'success'|'reverted'}>),coverage:'1000000000000000000',beforeRequest:undefined as undefined|((method:string)=>Promise<void>),beforeFetch:undefined as undefined|((url:string,body:any)=>Promise<void>)};
  const events=new Map<string,(value?:unknown)=>void>();
  const provider={on(event:string,listener:(value?:unknown)=>void){events.set(event,listener);},async request({method,params}:any){
   await state.beforeRequest?.(method);
@@ -28,18 +28,19 @@ function fixture(){
    const tx=params[0],abi=tx.to===topup?topUpAbi:tx.to===vault?vaultAbi:usdcAbi,decoded=decodeFunctionData({abi,data:tx.data});
    calls.push({to:tx.to,name:decoded.functionName,args:decoded.args});
    if(decoded.functionName==='pay'&&state.payFailure)throw state.payFailure==='reject'?{code:4001}:Error('RPC lost wallet response');
+   if(decoded.functionName==='pay')await state.payReply?.();
    return`0x${calls.length.toString(16).padStart(64,'0')}`;
   }
   throw Error(method);
  }};
  const memory=new Map<string,string>(),storage={getItem:(k:string)=>memory.get(k)??null,setItem:(k:string,v:string)=>{memory.set(k,v);},removeItem:(k:string)=>{memory.delete(k);}};
  const fetcher:typeof fetch=async(input,init)=>{
-  const url=String(input),body=init?.body?JSON.parse(String(init.body)):{};reads.push(url);await state.beforeFetch?.(url,body);
+  const url=String(input),body=init?.body?JSON.parse(String(init.body)):{};const receiptMissing=state.receiptMissing;reads.push(url);await state.beforeFetch?.(url,body);
   if(url.startsWith(settings.baseRpcUrl)){let result:unknown='0x64';
-   if(body.method==='eth_getTransactionReceipt')result=state.receiptMissing?null:{transactionHash:body.params[0],transactionIndex:'0x0',blockHash:`0x${'b'.repeat(64)}`,blockNumber:'0x64',from:owner,to:topup,cumulativeGasUsed:'0x5208',gasUsed:'0x5208',effectiveGasPrice:'0x1',logs:[],logsBloom:`0x${'0'.repeat(512)}`,status:'0x1',type:'0x2',contractAddress:null};
+   if(body.method==='eth_getTransactionReceipt')result=receiptMissing?null:{transactionHash:body.params[0],transactionIndex:'0x0',blockHash:`0x${'b'.repeat(64)}`,blockNumber:'0x64',from:owner,to:topup,cumulativeGasUsed:'0x5208',gasUsed:'0x5208',effectiveGasPrice:'0x1',logs:[],logsBloom:`0x${'0'.repeat(512)}`,status:'0x1',type:'0x2',contractAddress:null};
    if(body.method==='eth_call'){
     const tx=body.params[0],abi=tx.to===topup?topUpAbi:tx.to===vault?vaultAbi:usdcAbi,decoded=decodeFunctionData({abi,data:tx.data});
-    const value=decoded.functionName==='usdc'||decoded.functionName==='asset'?usdc:decoded.functionName==='minimum'?1_000_000n:decoded.functionName==='allowance'?0n:100_000_000n;
+    const value=decoded.functionName==='usdc'||decoded.functionName==='asset'?usdc:decoded.functionName==='paid'?state.paid:decoded.functionName==='minimum'?1_000_000n:decoded.functionName==='allowance'?0n:100_000_000n;
     result=encodeFunctionResult({abi,functionName:decoded.functionName,result:value} as any);
    }return json({jsonrpc:'2.0',id:body.id,result});
   }
@@ -48,7 +49,8 @@ function fixture(){
   if(url.endsWith('/rhea/withdraw')||url.endsWith('/intents/execute'))return json({tx_hash:'fixture-relay-hash'});
   throw Error(url);
  };
- const wallets=createWallets(settings,{ethereum:provider as any}),make=()=>createLiveData(settings,{wallets,fetch:fetcher,purchaseStorage:storage,waitForReceipt:hash=>state.wait?state.wait(hash):Promise.resolve({status:'success'})});
+ const locked=new Set<string>(),purchaseLock:PurchaseLock=async name=>{if(locked.has(name))throw new DataError('purchase_pending','Locked');locked.add(name);return()=>{locked.delete(name);};};
+ const wallets=createWallets(settings,{ethereum:provider as any}),make=()=>createLiveData(settings,{wallets,fetch:fetcher,purchaseStorage:storage,purchaseLock,waitForReceipt:hash=>state.wait?state.wait(hash):Promise.resolve({status:'success'})});
  return{state,calls,reads,provider,wallets,events,fetcher,make,data:make()};
 }
 
@@ -164,4 +166,87 @@ test('CR1-2: cancellation inside viem preparation is checked again at the wallet
  f.state.beforeRequest=async method=>{if(method==='eth_chainId'&&++chainReads===4)await f.data.disconnect();};
  await assert.rejects(f.data.topUp(session,1_000_000n),code('wallet_session_changed'));
  assert.equal(chainReads,4);assert.deepEqual(f.calls.map(c=>c.name),['approve']);assert.equal((await f.data.topUpPurchase(session))?.status,'reverted');
+});
+
+
+test('CR1-R2-1: a delayed H1 receipt cannot overwrite H2 after another instance reconciles and reviews',async()=>{
+ const f=fixture(),checking=gate(),resume=gate();f.state.wait=async()=>{if(f.calls.at(-1)?.name==='pay')throw Error('lost receipt');return{status:'success'};};
+ await assert.rejects(f.data.topUp(session,1_000_000n),code('purchase_pending'));
+ let receiptReads=0;f.state.beforeFetch=async(_url,body)=>{if(body.method==='eth_getTransactionReceipt'&&++receiptReads===1){checking.release();await resume.promise;}};
+ const delayed=f.data.topUpPurchase(session);await checking.promise;
+ const other=f.make(),h1=await other.topUpPurchase(session);assert.equal(h1?.status,'confirmed');await other.reviewTopUp(session,h1!.hash);
+ await assert.rejects(other.topUp(session,2_000_000n),code('purchase_pending'));
+ f.state.receiptMissing=true;const h2=await other.topUpPurchase(session);assert.equal(h2?.status,'pending');assert.notEqual(h2?.hash,h1?.hash);
+ resume.release();assert.deepEqual(await delayed,h2);assert.deepEqual(await f.data.topUpPurchase(session),h2);
+ assert.equal(f.calls.filter(c=>c.name==='pay').length,2);
+});
+test('CR1-R2-1: delayed original receipt polling also leaves a newer purchase intact',async()=>{
+ const f=fixture(),waiting=gate(),resume=gate();let pays=0;
+ f.state.wait=async()=>{if(f.calls.at(-1)?.name==='pay'&&++pays===1){waiting.release();await resume.promise;}return{status:'success'};};
+ const first=f.data.topUp(session,1_000_000n);await waiting.promise;
+ const other=f.make(),h1=await other.topUpPurchase(session);await other.reviewTopUp(session,h1!.hash);await other.topUp(session,2_000_000n);
+ const h2=await other.topUpPurchase(session);resume.release();assert.equal((await first).txHash,h1!.hash);assert.deepEqual(await f.data.topUpPurchase(session),h2);
+});
+test('CR1-R2-2/Flex2-R2-1: a second instance cannot set aside, review or pay while the first wallet response is open',async()=>{
+ const f=fixture(),sent=gate(),resume=gate();f.state.payReply=async()=>{sent.release();await resume.promise;};
+ const first=f.data.topUp(session,1_000_000n);await sent.promise;
+ const other=f.make();assert.equal((await other.topUpPurchase(session))?.status,'submitting');
+ await assert.rejects(other.setAsideUnsentTopUp(session),code('purchase_pending'));await assert.rejects(other.reviewTopUp(session),code('purchase_pending'));await assert.rejects(other.topUp(session,1_000_000n),code('purchase_pending'));
+ resume.release();const original=await first;assert.equal((await other.topUpPurchase(session))?.hash,original.txHash);assert.equal(f.calls.filter(c=>c.name==='pay').length,1);
+});
+test('Flex1-R2-1: set-aside refuses a hashless purchase if paid has risen or its baseline is unknown',async()=>{
+ const f=fixture();f.state.payFailure='rpc';await assert.rejects(f.data.topUp(session,1_000_000n));
+ assert.equal((await f.data.topUpPurchase(session))?.paid,'100000000');f.state.paid+=1_000_000n;
+ await assert.rejects(f.make().setAsideUnsentTopUp(session),code('purchase_pending'));assert.equal((await f.data.topUpPurchase(session))?.status,'submitting');
+ const journal=createPurchaseJournal(8453,topup);journal.write(owner,{amount:'1000000',status:'submitting'});
+ assert.throws(()=>journal.setAsideUnsent(owner,0n),code('purchase_pending'));
+});
+test('Flex2-R2-2: quota retry replaces the stale hashless record with the hash across reloads',()=>{
+ const hash=`0x${'e'.repeat(64)}` as const;let value:string|null=null;
+ const storage={getItem:()=>value,setItem:(_k:string,v:string)=>{if(value)throw Error('replace quota');value=v;},removeItem:()=>{value=null;}};
+ const journal=createPurchaseJournal(8453,topup,storage);journal.write(owner,{amount:'1000000',paid:'0',status:'submitting'});
+ journal.write(owner,{amount:'1000000',paid:'0',hash,status:'pending'});assert.equal(createPurchaseJournal(8453,topup,storage).read(owner)?.hash,hash);
+});
+test('Flex2-R2-2: if a hash still cannot fit, reload retains a blocked broadcast marker, not a recoverable unsent record',()=>{
+ const hash=`0x${'f'.repeat(64)}` as const;let value:string|null=null;
+ const storage={getItem:()=>value,setItem:(_k:string,v:string)=>{if(v.includes(hash))throw Error('quota');value=v;},removeItem:()=>{value=null;}};
+ const journal=createPurchaseJournal(8453,topup,storage);journal.write(owner,{amount:'1000000',paid:'0',status:'submitting'});
+ assert.throws(()=>journal.write(owner,{amount:'1000000',paid:'0',hash,status:'pending'}),code('purchase_storage'));
+ const reloaded=createPurchaseJournal(8453,topup,storage);assert.equal(reloaded.read(owner)?.status,'pending');assert.throws(()=>reloaded.setAsideUnsent(owner,0n),code('purchase_pending'));assert.equal(journal.read(owner)?.hash,hash);
+});
+
+test('CR1-R2-2: browser Web Locks uses the journal key, non-blocking admission, and releases after the lease',async()=>{
+ const original=Object.getOwnPropertyDescriptor(globalThis,'navigator'),held=new Set<string>(),names:string[]=[];
+ Object.defineProperty(globalThis,'navigator',{configurable:true,value:{locks:{async request(name:string,options:{ifAvailable:boolean},run:(lock:unknown)=>unknown){
+  names.push(name);assert.equal(options.ifAvailable,true);if(held.has(name))return run(null);
+  held.add(name);try{return await run({name});}finally{held.delete(name);}
+ }}}});
+ try{
+  const a=createPurchaseJournal(8453,topup),b=createPurchaseJournal(8453,topup),release=await a.lock(owner);
+  await assert.rejects(b.mutate(owner,()=>assert.fail('locked mutation ran')),code('purchase_pending'));
+  assert.equal(names[0],`infernear.purchase:8453:${topup}:${owner}`);assert.equal(names[1],names[0]);
+  release();release();await Promise.resolve();await Promise.resolve();await b.mutate(owner,()=>{});assert.equal(held.size,0);
+ }finally{if(original)Object.defineProperty(globalThis,'navigator',original);else Reflect.deleteProperty(globalThis,'navigator');}
+});
+test('CR1-R2-2: missing Web Locks falls back to a shared in-page exclusion, scoped to the payer',async()=>{
+ const original=Object.getOwnPropertyDescriptor(globalThis,'navigator');Object.defineProperty(globalThis,'navigator',{configurable:true,value:undefined});
+ try{
+  const a=createPurchaseJournal(8453,topup),b=createPurchaseJournal(8453,topup),release=await a.lock(owner);
+  try{
+   await assert.rejects(b.mutate(owner,()=>assert.fail('locked mutation ran')),code('purchase_pending'));
+   await b.mutate(`0x${'c'.repeat(40)}`,()=>{});
+  }finally{release();}
+  await b.mutate(owner,()=>{});
+ }finally{if(original)Object.defineProperty(globalThis,'navigator',original);else Reflect.deleteProperty(globalThis,'navigator');}
+});
+
+
+test('CR1-R2-1/2: a review cannot turn an in-flight retry into a new purchase',async()=>{
+ const f=fixture(),checking=gate(),resume=gate();f.state.wait=async()=>{if(f.calls.at(-1)?.name==='pay')throw Error('lost receipt');return{status:'success'};};
+ await assert.rejects(f.data.topUp(session,1_000_000n),code('purchase_pending'));
+ let first=true;f.state.beforeFetch=async(_url,body)=>{if(body.method==='eth_getTransactionReceipt'&&first){first=false;checking.release();await resume.promise;}};
+ const retry=f.data.topUp(session,1_000_000n);await checking.promise;const other=f.make(),h1=await other.topUpPurchase(session);
+ await assert.rejects(other.reviewTopUp(session,h1!.hash),code('purchase_pending'));
+ resume.release();assert.equal((await retry).txHash,h1!.hash);assert.equal(f.calls.filter(c=>c.name==='pay').length,1);
+ await other.reviewTopUp(session,h1!.hash);
 });
