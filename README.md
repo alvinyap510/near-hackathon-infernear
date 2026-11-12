@@ -19,13 +19,13 @@ Built at the NEAR HACKATHON (1–14 Nov 2026).
 |---|---|
 | API endpoint | `https://api.infernear.dev/v1` (OpenAI Chat Completions format; `GET /v1/models` lists the served TEE models) |
 | Console | `https://app.infernear.dev` |
+| Credit ledger (NEAR) | [`connector.infernear-ai.near`](https://nearblocks.io/address/connector.infernear-ai.near) |
+| Rhea USDC vault (NEAR) | [`rhea.infernear-ai.near`](https://nearblocks.io/address/rhea.infernear-ai.near), paused |
 | Aave USDC vault (Base) | [`0x19110449a361855d30090BC26112E9a5c3793198`](https://basescan.org/address/0x19110449a361855d30090BC26112E9a5c3793198) |
 | cbETH vault (Base) | [`0x20B3852c32FFCBfD6a713045e7eA411683446f40`](https://basescan.org/address/0x20B3852c32FFCBfD6a713045e7eA411683446f40) |
 | Pendle PT-deJAAA vault (Base) | [`0x5801707F6AF54f33Ab3E1910c09D79B81D4Be92c`](https://basescan.org/address/0x5801707F6AF54f33Ab3E1910c09D79B81D4Be92c) |
-| Credit ledger (NEAR) | [`connector.infernear-ai.near`](https://nearblocks.io/address/connector.infernear-ai.near) |
-| Rhea USDC vault (NEAR) | [`rhea.infernear-ai.near`](https://nearblocks.io/address/rhea.infernear-ai.near), paused |
 
-Each vault has a deposit cap of about $10,000 (10,000 USDC, 5 ETH of principal, 10,000 USD of PT principal, 10,000 USDC) and a small cushion donated at deployment that absorbs rounding.
+Each vault has a deposit cap of about $10,000 (Rhea 10,000 USDC, Aave 10,000 USDC, cbETH 5 ETH of principal, Pendle 10,000 USD of PT principal) and a small cushion donated at deployment that absorbs rounding.
 
 ## NEAR Intents: every chain's yield, routed to NEAR AI
 
@@ -119,10 +119,10 @@ flowchart LR
 
 | Vault | Chain | You deposit | Yield shape | Credit price source |
 |---|---|---|---|---|
+| Rhea USDC | NEAR | Base USDC, bridged by NEAR Intents | lending interest on Rhea Lend | 1 USDC = $1 |
 | Aave USDC | Base | USDC | growing balance | 1 USDC = $1 |
 | cbETH | Base | cbETH | uncapped appreciation (liquid staking) | Chainlink cbETH/USD |
 | Pendle PT-deJAAA | Base | PT-deJAAA (USD PT, expires 26 Nov 2026) | capped appreciation | Pendle 15-minute TWAP |
-| Rhea USDC | NEAR | Base USDC, bridged by NEAR Intents | lending interest on Rhea Lend | 1 USDC = $1 |
 
 A fourth shape, staking with claimable rewards, is built and tested (`StakingRewardsVault`) but not in the deployment set.
 
@@ -198,7 +198,7 @@ All installed through package managers at pinned versions; no templates or pre-e
 | Base vaults | OpenZeppelin Contracts 5.4, Aave v3 origin 3.6, Aave address book, forge-std (tests) |
 | NEAR contracts | near-sdk 5.30; near-contract-standards, near-workspaces, proptest and tokio (tests) |
 | Relay and NEAR scripts | viem, near-api-js; TypeScript (type checks) |
-| Dashboard | React 19, viem, @scure/base, Vite, Fontsource fonts (Hanken Grotesk, Martian Mono; the logo wordmark is outlined from Hanken Grotesk) |
+| Dashboard | React 19, viem, @scure/base, Vite, Fontsource fonts (Hanken Grotesk, Martian Mono; the logo wordmark is outlined from Hanken Grotesk), @web3icons/react (MIT) for the chain, asset and protocol logos |
 | Deployment | Docker images `node:24.22.1-bookworm-slim` and `cloudflare/cloudflared:2026.10.7` |
 | Live SDK probe (optional) | NEAR AI's official [inference SDK](https://github.com/nearai/inference-sdk), installed outside the repo |
 
