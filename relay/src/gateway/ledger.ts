@@ -166,7 +166,12 @@ export class Gateway {
       if (this.now() < job.next) return;
       // Twelve unconfirmed sends take about an hour. Stop paying gas and record the charge as the operator's loss.
       if (job.sends >= 12) {
-        this.jobs.delete(id);
+        // Give the user's credit back locally: an hour of confirmation reads never saw the debit.
+        // If it did land, the next account read lifts the floor to the on-chain spent amount again.
+        await this.user(reservation.user).lock.run(async () => {
+          if (this.broadcasted.has(id)) this.user(reservation.user).floor! -= amount;
+          this.jobs.delete(id);
+        });
         this.report('inference_loss', { inference_id: id, reason: 'debit_unconfirmed' });
         return;
       }

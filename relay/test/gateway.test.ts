@@ -339,6 +339,11 @@ test('a debit that stays unconfirmed is dropped as an operator loss after twelve
   assert.equal(h.connector.debitCalls, 12);
   assert.ok(h.events.some(e => e.event === 'inference_loss' && e.details.reason === 'debit_unconfirmed'));
   await h.gateway.retryDebits(); assert.equal(h.connector.debitCalls, 12);
+  // The user gets the credit back: nothing was charged on chain, so nothing stays held locally.
+  assert.equal(h.gateway.state(USER).spent_floor, 0n); assert.equal(h.gateway.state(USER).reserved, 0n);
+  h.connector.beforeFailures = 0;
+  const next = await fetch(h.base + '/v1/chat/completions', { method: 'POST', headers: h.headers, body: raw() });
+  assert.equal(next.status, 200); await next.arrayBuffer(); await settle(h.gateway);
 });
 
 test('chats are refused while the connector cannot store another debit, before any upstream cost', async t => {
