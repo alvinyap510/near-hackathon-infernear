@@ -69,6 +69,7 @@ export type Overview = {
   credits: CreditAccount;
 };
 
+export type PurchaseState = { amount: string; hash?: `0x${string}`; status: 'submitting' | 'pending' | 'confirmed' | 'reverted' };
 export type TopUpAccount = { minimum: bigint; paid: bigint; paidTotal: bigint; walletBalance: bigint; allowance: bigint; token: Address };
 export const PURCHASE_NOTICE = "This is a purchase, not a deposit. The USDC goes to InferNear and cannot be redeemed.";
 
@@ -180,6 +181,9 @@ export type RheaSwapStatus = { status: string; terminal: boolean; isMock: boolea
 export interface DashboardData {
   readonly isMock: boolean;
   readonly isRunMock: boolean;
+  subscribeWallet(listener: () => void): () => void;
+  topUpPurchase(session: SessionInput): Promise<PurchaseState | null>;
+  reviewTopUp(session: SessionInput, settledHash?: `0x${string}`): Promise<void>;
   topUpAccount(session: SessionInput): Promise<TopUpAccount | null>;
   topUp(session: SessionInput, assets: bigint): Promise<TxResult>;
   connect(): Promise<Address>;

@@ -29,7 +29,7 @@ const settings: LiveConfig = {
 const huge = 9_007_199_254_740_993n;
 
 type RpcCall = { method: string; params?: unknown[] };
-function fixture() {
+function fixture(coverage='900000000000000000') {
   const requests: { url: string; body: Record<string, unknown>; headers?: HeadersInit }[] = [];
   const walletCalls: RpcCall[] = [];
   const transactions: { to: Address; data: Hex }[] = [];
@@ -38,7 +38,7 @@ function fixture() {
     minimum: 1_000_000n, paid: 2_000_000n, paidTotal: 5_000_000n,
     chainId: 1, selected: ADDRESS, rejected: false, allowance: 0n,
     shares: huge, assets: huge - 3n, wallet: huge * 2n, spent: huge, credited: huge + 99n,
-    nonceNear: 8, coverage: '900000000000000000', busy: false, pendingIn: '2000000', pendingOut: '1000000' as string | null,
+    nonceNear: 8, coverage, busy: false, pendingIn: '2000000', pendingOut: '1000000' as string | null,
     quoteMismatch: false, missingFunding: false, wrongAmount: false, quoteStatus: 201, expiredQuote: false, minOut: '4900000',
     swapStatus: 'PROCESSING',
     reverted: false, failNear: false, malformedAmount: false, failNetwork: false,
@@ -351,7 +351,7 @@ test('Rhea quote previews are dry, bind the Base-to-vault route, and never sign/
 });
 
 test('confirmed Rhea deposit obtains a funded quote and sends exactly one Base USDC transfer', async () => {
-  const f = fixture(), funded = await f.data.rheaDeposit(ADDRESS, 5_000_000n);
+  const f = fixture('1000000000000000000'), funded = await f.data.rheaDeposit(ADDRESS, 5_000_000n);
   assert.equal(funded.quote.dry, false); assert.equal(funded.quote.depositAddress, '0x7777777777777777777777777777777777777777');
   assert.equal(f.transactions.length, 1); assert.equal(f.transactions[0].to.toLowerCase(), USDC);
   const transfer = decodeFunctionData({ abi: usdcAbi, data: f.transactions[0].data });
@@ -411,12 +411,12 @@ test('1Click status can be polled until terminal without wallet actions', async 
 
 test('Rhea maps quote, relay and wallet errors and never funds mismatched/expired/missing quotes', async () => {
   for (const key of ['quoteMismatch', 'missingFunding', 'wrongAmount', 'expiredQuote'] as const) {
-    const f = fixture(); f.state[key] = true;
+    const f = fixture('1000000000000000000'); f.state[key] = true;
     await assert.rejects(f.data.rheaDeposit(ADDRESS, 5_000_000n), rejectsCode('quote'));
     assert.equal(f.transactions.length, 0);
   }
   // A deposit that would arrive below the vault's 1 USDC minimum is refused before any transfer.
-  const small = fixture(); small.state.minOut = '999999';
+  const small = fixture('1000000000000000000'); small.state.minOut = '999999';
   await assert.rejects(small.data.rheaDeposit(ADDRESS, 1_000_000n), rejectsCode('amount'));
   assert.equal(small.transactions.length, 0);
   const f = fixture(); f.state.quoteStatus = 400;
@@ -426,9 +426,9 @@ test('Rhea maps quote, relay and wallet errors and never funds mismatched/expire
   await assert.rejects(f.data.rheaWithdraw(ADDRESS, 1n), rejectsCode('read_rate_limit'));
   f.state.nonceNear = Number.MAX_SAFE_INTEGER + 1;
   await assert.rejects(f.data.rheaWithdraw(ADDRESS, 1n), rejectsCode('near_rpc'));
-  const rejected = fixture(); rejected.state.rejected = true;
+  const rejected = fixture('1000000000000000000'); rejected.state.rejected = true;
   await assert.rejects(rejected.data.rheaDeposit(ADDRESS, 1n), rejectsCode('wallet_rejected'));
-  assert.equal(rejected.requests.length, 0);
+  assert.equal(rejected.requests.filter(r=>r.url.includes('/v0/quote')).length, 0);
   for (const action of [() => f.data.rheaQuote(ADDRESS, 0n, 'deposit'), () => f.data.rheaWithdraw(ADDRESS, -1n), () => f.data.rheaExit(ADDRESS, 0n)])
     await assert.rejects(action(), rejectsCode('amount'));
 });

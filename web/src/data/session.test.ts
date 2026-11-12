@@ -21,7 +21,7 @@ const code=(c:string)=>(e:unknown)=>e instanceof DataError&&e.code===c;
 function fixture(){
  const calls:{url:string;body:any}[]=[],signed:any[]=[],messages:any[]=[],evmCalls:string[]=[],nearWalletIds:string[]=[];
  const memory=new Map<string,string>(),store={getItem:(k:string)=>memory.get(k)??null,setItem:(k:string,v:string)=>{memory.set(k,v);},removeItem:(k:string)=>{memory.delete(k);}};
- const state={registered:true,selected:'meteor-wallet' as string|null,accounts:[{accountId:'alice.near',active:true}],redirect:false,rejected:false};
+ const state={coverage:'1000000000000000000',registered:true,selected:'meteor-wallet' as string|null,accounts:[{accountId:'alice.near',active:true}],redirect:false,rejected:false};
  const wallet={async signIn(){state.selected='meteor-wallet';return state.redirect?undefined:state.accounts;},async signOut(){state.selected=null;state.accounts=[];},async getAccounts(){return state.accounts;},
   async signMessage(p:unknown){messages.push(p);return{accountId:'alice.near',publicKey:'ed25519:fixture',signature:Buffer.alloc(64).toString('base64')};},
   async signAndSendTransaction(p:unknown){if(state.rejected)throw{code:4001};signed.push(p);return{status:{SuccessValue:''},receipts_outcome:[],transaction:{hash:'fixture-near-transaction'}};}};
@@ -31,7 +31,7 @@ function fixture(){
  const json=(v:unknown)=>new Response(JSON.stringify(v),{headers:{'content-type':'application/json'}});
  const fetcher:typeof fetch=async(input,init)=>{
   const url=String(input),body=init?.body?JSON.parse(String(init.body)):{};calls.push({url,body});
-  if(url===settings.nearRpcUrl){const v:Record<string,unknown>={account:{credited:'9007199254740999',spent:'1',available:'9007199254740998',key_epoch:2},position:{principal:'100000000',yield_credited:'3000000',pending_in:'2000000',pending_out:null},coverage:'900000000000000000',busy:false,ft_balance_of:'10000000',storage_balance_of:state.registered?{total:'1250000000000000000000'}:null,get_asset:{supply_apr:'0.04123456789'},mt_balance_of:'0'};return json({result:{result:[...new TextEncoder().encode(JSON.stringify(v[body.params.method_name]))]}});}
+  if(url===settings.nearRpcUrl){const v:Record<string,unknown>={account:{credited:'9007199254740999',spent:'1',available:'9007199254740998',key_epoch:2},position:{principal:'100000000',yield_credited:'3000000',pending_in:'2000000',pending_out:null},coverage:state.coverage,busy:false,ft_balance_of:'10000000',storage_balance_of:state.registered?{total:'1250000000000000000000'}:null,get_asset:{supply_apr:'0.04123456789'},mt_balance_of:'0'};return json({result:{result:[...new TextEncoder().encode(JSON.stringify(v[body.params.method_name]))]}});}
   if(url.startsWith(settings.baseRpcUrl)){
    let result:unknown='0x64';
    if(body.method==='eth_call'){
@@ -51,7 +51,7 @@ function fixture(){
 }
 
 test('NEAR overview uses native balances and registration, and marks Base vaults unusable without EVM calls',async()=>{
- const f=fixture(),o=await f.data.overview(near);assert.equal(o.user,near.user);assert.equal(o.credits.available,9007199254740998n);assert.equal(o.vaults.length,4);assert(o.vaults.slice(0,3).every(v=>v.usable===false));
+ const f=fixture();f.state.coverage='900000000000000000';const o=await f.data.overview(near);assert.equal(o.user,near.user);assert.equal(o.credits.available,9007199254740998n);assert.equal(o.vaults.length,4);assert(o.vaults.slice(0,3).every(v=>v.usable===false));
  assert.equal(o.vaults[3].position.walletBalance,10_000_000n);assert.equal(o.vaults[3].position.principal,90_000_000n);assert.equal(o.vaults[3].position.rhea?.usdcRegistered,true);
  assert(f.calls.every(c=>c.url===settings.nearRpcUrl));assert.equal(f.evmCalls.length,0);for(const c of f.calls)assert.equal(c.body.params.finality,'final');
  f.state.registered=false;assert.equal((await f.data.overview(near)).vaults[3].position.rhea?.usdcRegistered,false);
@@ -79,7 +79,7 @@ test('public catalogue uses on-chain variable rates, no wallet, no invented yiel
  const f=fixture(),v=await f.data.catalogue(),of=(l:typeof v,k:string)=>l.find(x=>x.kind===k)!;assert.equal(v.length,4);assert.equal(v[0].kind,'rhea');assert(v.every(x=>x.yourPrincipal===undefined));assert.equal(f.signed.length+f.messages.length+f.evmCalls.length,0);
  assert.equal(of(v,'aave').rateNow,'5.00% · Aave supply rate now, variable');assert.equal(of(v,'rate').rateNow,undefined);assert.equal(of(v,'pendle').rateNow,undefined);assert.equal(of(v,'rhea').rateNow,'4.12% · Rhea supply rate now, variable');assert.equal(of(v,'rhea').deposited,undefined);assert.equal(of(v,'rhea').cap,'1,000.00 USDC');assert.deepEqual(of(v,'rhea').wallets,['evm','near']);
  const paused=createLiveData({...settings,rheaStatusNote:'Redeploying'},{fetch:f.fetcher,wallets:f.wallets});assert.equal(of(await paused.catalogue(),'rhea').status,'paused');assert.equal(of(await paused.catalogue(),'rhea').statusNote,'Redeploying');
- const own=await f.data.catalogue(near);assert.equal(of(own,'aave').yourPrincipal,undefined);assert.equal(of(own,'rhea').yourPrincipal,'90.000000 USDC');
+ f.state.coverage='900000000000000000';const own=await f.data.catalogue(near);assert.equal(of(own,'aave').yourPrincipal,undefined);assert.equal(of(own,'rhea').yourPrincipal,'90.000000 USDC');
 });
 test('EIP-6963 provider selection stays pinned for all later signing and deposit calls',async()=>{
  const f=fixture(),target=new EventTarget();let otherCalls=0;target.addEventListener('eip6963:requestProvider',()=>target.dispatchEvent(new CustomEvent('eip6963:announceProvider',{detail:{info:{rdns:'wallet.fixture',name:'Chosen wallet'},provider:f.provider}})));
@@ -98,4 +98,23 @@ test('labelled mock supports NEAR credits and native operations independently of
  await data.rheaWithdrawNear(s,500_000n);assert.equal((await data.overview(s)).vaults[3].position.shares,active.vaults[3].position.shares-500_000n);await data.revokeAll(await data.walletProof(s));assert.equal((await data.overview(address)).credits.keyEpoch,base.credits.keyEpoch);assert.equal((await data.overview(s)).credits.keyEpoch,before.credits.keyEpoch+1);
  const issued=await data.createKey(await data.walletProof(s)),beforeRun=await data.overview(s);const run=await data.run({key:issued.key,model:(await data.models())[0],prompt:'fixture',maxTokens:2},()=>{});const afterRun=await data.overview(s);assert(afterRun.credits.spent>beforeRun.credits.spent);assert.equal(afterRun.vaults[3].position.principal,beforeRun.vaults[3].position.principal);assert.equal((await data.overview(address)).credits.spent,base.credits.spent);assert.equal(await data.debitedAmount(run.receipt.inferenceId),run.simulatedDebit);
  assert((await data.catalogue()).every(v=>v.statusNote?.includes('Mock')));assert.equal((await data.catalogue(s)).find(v=>v.kind==='aave')!.yourPrincipal,undefined);assert.equal((await data.catalogue(s))[0].kind,'rhea');await data.disconnect();assert.equal(await data.restoreSession(),null);
+});
+
+
+test('Flex1-1: native Rhea pause and deficit reject before signing; withdrawals stay available',async()=>{
+  const f=fixture();
+  const paused=createLiveData({...settings,rheaStatusNote:'Redeploying'},{fetch:f.fetcher,wallets:f.wallets});
+  await assert.rejects(paused.rheaDepositNear(near,1_000_000n),code('paused'));
+  assert.equal(f.signed.length,0);assert.equal(f.calls.length,0);
+  f.state.coverage='900000000000000000';
+  await assert.rejects(f.data.rheaDepositNear(near,1_000_000n),code('deficit'));assert.equal(f.signed.length,0);
+  await paused.rheaWithdrawNear(near,1_000_000n);assert.equal(f.signed.length,1,'neither gate may block principal withdrawals');
+});
+
+
+test('CR1-2: a disconnect during native Rhea views cancels both transaction builders',async()=>{
+ for(const method of ['rheaDepositNear','rheaWithdrawNear'] as const){
+  const f=fixture();const pending=f.data[method](near,1_000_000n),rejected=assert.rejects(pending,code('wallet_session_changed'));
+  await f.data.disconnect();await rejected;assert.equal(f.signed.length,0);
+ }
 });

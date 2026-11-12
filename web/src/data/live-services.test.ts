@@ -58,3 +58,28 @@ test('mock credit purchases change credits and wallet USDC, never vault principa
  const saved=config.topUpAddress;try{config.topUpAddress=owner;const data=createMockData(),before=await data.overview(owner);await data.topUp(owner,1_000_000n);const after=await data.overview(owner);assert.equal(after.credits.credited,before.credits.credited+1_000_000n);assert.equal(after.vaults[0].position.principal,before.vaults[0].position.principal);assert.equal(after.vaults[0].position.walletBalance,before.vaults[0].position.walletBalance-1_000_000n);assert.equal((await data.topUpAccount(owner))?.paid,1_000_000n);}finally{config.topUpAddress=saved;}
  assert.equal(PURCHASE_NOTICE,'This is a purchase, not a deposit. The USDC goes to InferNear and cannot be redeemed.');const params={baseUrl:'https://relay.fixture/v1',model:model.id,maxTokens:64};assert(quickstartJs(params).includes("import OpenAI from 'openai'"));assert(quickstartPython(params).includes('from openai import OpenAI'));assert(quickstartPrivateJs(params).includes('verifyResponse'));
 });
+
+
+test('CR1-3: reasoning-only and empty-text completions preserve billing metadata without visible text',async()=>{
+ for(const content of [null,'']) {
+  const chat=createChatData('https://relay.fixture',async()=>json({id:'reasoning-completion',choices:[{message:{content,reasoning_content:'hidden reasoning'}}],usage:{prompt_tokens:10,completion_tokens:4}},200,{'Inference-Id':'reasoning-inference'}));
+  const events:unknown[]=[];const result=await chat.run({key:'inf_fixture',model,prompt:'hi',maxTokens:8},e=>events.push(e));
+  assert.equal(result.text,'');assert.equal(result.receipt.inferenceId,'reasoning-inference');assert.equal(result.completionId,'reasoning-completion');assert.equal(result.receipt.promptTokens,10);assert.equal(result.receipt.completionTokens,4);assert.deepEqual(events,[]);
+ }
+});
+test('Flex2-2: plain reservation matches relay UTF8 body bytes plus its actual 1024-token template allowance',async()=>{
+ const prompt='hi 世界',maxTokens=8,body=JSON.stringify({model:model.id,messages:[{role:'user',content:prompt}],max_tokens:maxTokens});
+ const inputBound=new TextEncoder().encode(body).length+1024;
+ const chat=createChatData('https://relay.fixture',async()=>json({id:'no-usage',choices:[{message:{content:null}}]}));
+ const result=await chat.run({key:'inf_fixture',model,prompt,maxTokens},()=>{});
+ assert.equal(result.receipt.promptTokens,inputBound);assert.equal(result.reservation,(BigInt(inputBound)*model.inPriceNano+BigInt(maxTokens)*model.outPriceNano+999n)/1000n);
+});
+
+
+test('CR1-3: a charged header survives an absent completion id or malformed answer JSON',async()=>{
+ for(const response of [json({choices:[{message:{content:null}}],usage:{prompt_tokens:1,completion_tokens:2}},200,{'Inference-Id':'header-only'}),new Response('unparseable provider body',{headers:{'Inference-Id':'header-only'}})]) {
+  const chat=createChatData('https://relay.fixture',async()=>response);
+  const result=await chat.run({key:'inf_fixture',model,prompt:'hi',maxTokens:8},()=>{});
+  assert.equal(result.receipt.inferenceId,'header-only');assert.equal(result.completionId,'');assert.equal(result.text,'');
+ }
+});

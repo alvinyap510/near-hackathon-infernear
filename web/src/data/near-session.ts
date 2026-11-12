@@ -13,7 +13,7 @@ export function nearSessionData(settings: LiveConfig, ports: { wallets: Wallets;
     return `near:mainnet:${session.accountId}`;
   };
   const send = async (session: NearSession, receiverId: string, methodName: string, args: Record<string, unknown>): Promise<TxResult> => {
-    const wallet = await ports.wallets.nearWallet(session.accountId);
+    const check=ports.wallets.operation(),wallet = await ports.wallets.nearWallet(session.accountId);check();
     const result = await wallet.signAndSendTransaction({ signerId: session.accountId, receiverId,
       actions: [actionCreators.functionCall(methodName, args, 100_000_000_000_000n, 1n)] });
     if (!result) throw new DataError('wallet_redirect', 'Return from your wallet and refresh the vault position.');
@@ -23,30 +23,33 @@ export function nearSessionData(settings: LiveConfig, ports: { wallets: Wallets;
   };
   return {
     async walletProof(session: NearSession): Promise<NearWalletProof> {
-      const wallet = await ports.wallets.nearWallet(session.accountId);
+      const check=ports.wallets.operation(),wallet = await ports.wallets.nearWallet(session.accountId);check();
       if (!wallet.signMessage) throw new DataError('wallet_proof', 'This wallet does not support NEP-413 message signing.');
       const { nonce } = await ports.relay<{ nonce: string }>('/auth/nonce');
       const message = nearProofMessage(nonce, session.accountId, ports.now()), bytes = await nearProofNonce(nonce);
       const recipient = new URL(ports.origin()).host;
-      const signed = await wallet.signMessage({ message, nonce: Buffer.from(bytes), recipient });
-      if (!signed) throw new DataError('wallet_redirect', 'Return from your wallet and request a fresh proof.');
+      check();const signed = await wallet.signMessage({ message, nonce: Buffer.from(bytes), recipient });
+      check();if (!signed) throw new DataError('wallet_redirect', 'Return from your wallet and request a fresh proof.');
       if (signed.accountId !== session.accountId) throw new DataError('wallet_account', 'The wallet signed with a different NEAR account.');
       return { near: { account_id: signed.accountId, public_key: signed.publicKey, signature: signed.signature,
         message, nonce: Buffer.from(bytes).toString('base64'), recipient } };
     },
     async rheaDepositNear(session: NearSession, assets: bigint): Promise<TxResult> {
-      const user = owner(session);
+      const check=ports.wallets.operation(),user = owner(session);
       if (assets < 1_000_000n) throw new DataError('amount', 'The minimum Rhea deposit is 1 USDC.');
+      if(settings.rheaStatusNote)throw new DataError('paused',settings.rheaStatusNote);
+      const coverage=readAmount(await ports.view('coverage',{},settings.rheaVaultAccount));check();
+      if(coverage<10n**18n)throw new DataError('deficit','Rhea deposits are unavailable while coverage is below 100%.');
       const balance = readAmount(await ports.view('ft_balance_of', { account_id: session.accountId }, settings.nearUsdcAccount));
       if (assets > balance) throw new DataError('balance', 'That is more USDC than the wallet holds.');
-      return send(session, settings.nearUsdcAccount, 'ft_transfer_call', { receiver_id: settings.rheaVaultAccount, amount: String(assets), msg: JSON.stringify({ user }) });
+      check();return send(session, settings.nearUsdcAccount, 'ft_transfer_call', { receiver_id: settings.rheaVaultAccount, amount: String(assets), msg: JSON.stringify({ user }) });
     },
     async rheaWithdrawNear(session: NearSession, assets: bigint): Promise<TxResult> {
-      const user = owner(session);
+      const check=ports.wallets.operation(),user = owner(session);
       if (assets <= 0n) throw new DataError('amount', 'Enter an amount above zero.');
       const position = await ports.view<{ principal: string }>('position', { user }, settings.rheaVaultAccount);
       if (assets > readAmount(position.principal)) throw new DataError('balance', 'That is more than your principal claim.');
-      return send(session, settings.rheaVaultAccount, 'withdraw', { amount: String(assets) });
+      check();return send(session, settings.rheaVaultAccount, 'withdraw', { amount: String(assets) });
     },
   };
 }

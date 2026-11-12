@@ -107,6 +107,7 @@ export function createMockData(): DashboardData {
 
   const purchases=new Map<string,bigint>();
   let purchased=0n;
+  const walletListeners=new Set<()=>void>();
   let session: Session | null = null;
   const nearAccounts = new Map<string, {position:typeof rhea;credited:bigint;spent:bigint;keyEpoch:number;debited:Map<string,bigint>}>();
   const nearAccount = (id:string) => {
@@ -144,6 +145,9 @@ export function createMockData(): DashboardData {
   const result:DashboardData = {
     isMock: true,
     isRunMock: true,
+    subscribeWallet(listener){walletListeners.add(listener);return()=>{walletListeners.delete(listener);};},
+    async topUpPurchase(){return null;},
+    async reviewTopUp(){},
     async topUpAccount(input) {
       if(!config.topUpAddress || (typeof input!=='string' && input.kind!=='evm')) return null;
       return {minimum:1_000_000n,paid:purchases.get(evmAddress(input).toLowerCase())??0n,paidTotal:purchased,walletBalance:vaults[0].position.walletBalance,allowance:0n,token:tokens[0].address};
@@ -157,12 +161,13 @@ export function createMockData(): DashboardData {
 
     async walletOptions() { return [{id:'evm:mock',kind:'evm',name:'Mock EVM wallet',available:true},{id:'near:meteor-wallet',kind:'near',name:'Mock Meteor Wallet',available:true},{id:'near:my-near-wallet',kind:'near',name:'Mock MyNearWallet',available:true}]; },
     async connectWallet(id) {
+      for(const listener of walletListeners)listener();
       if(id==='evm:mock') return session={kind:'evm',address:MOCK_ADDRESS,user:caip10(MOCK_ADDRESS,chainId)};
       if(id==='near:meteor-wallet') return session={kind:'near',accountId:'demo.near',user:'near:mainnet:demo.near'};
       throw new DataError('wallet_missing','Unknown mock wallet.');
     },
     async restoreSession() { return session; },
-    async disconnect() {session=null;},
+    async disconnect() {session=null;for(const listener of walletListeners)listener();},
     async catalogue(owner) {
       const own=owner?(await result.overview(owner)).vaults:[];
       // The NEAR vault comes first, as in the live catalogue.
@@ -174,6 +179,8 @@ export function createMockData(): DashboardData {
     async rheaDepositNear(owner,assets) {
       if(owner.kind!=='near') throw new DataError('wallet_kind','Use a NEAR wallet.');
       if(assets<1_000_000n) throw new DataError('amount','The minimum Rhea deposit is 1 USDC.');
+      if(config.rheaStatusNote)throw new DataError('paused',config.rheaStatusNote);
+      if(nearAccount(owner.accountId).position.rhea!.coverage<10n**18n)throw new DataError('deficit','Rhea coverage is below 100%.');
       const position=nearAccount(owner.accountId).position;
       if(assets>position.walletBalance) throw new DataError('balance','That is more USDC than the wallet holds.');
       position.walletBalance-=assets; position.rhea!.pendingIn+=assets; return {txHash:`mock-near-${hex(16)}`};
@@ -220,6 +227,8 @@ export function createMockData(): DashboardData {
     async rheaQuote(input, assets, direction) { evmAddress(input); return quote(assets, direction); },
     async rheaDeposit(input, assets) {
       evmAddress(input);
+      if(config.rheaStatusNote)throw new DataError('paused',config.rheaStatusNote);
+      if(rhea.rhea!.coverage<10n**18n)throw new DataError('deficit','Rhea coverage is below 100%.');
       positive(assets);
       if (assets > vaults[0].position.walletBalance) throw new DataError('balance', 'That is more USDC than the wallet holds.');
       const funded = quote(assets, 'deposit', false);

@@ -5,6 +5,7 @@ import {
 import { caip10, type LiveConfig } from '../config.ts';
 import { vaultAbi, usdcAbi, aavePoolAbi, topUpAbi } from './abi.ts';
 import { DataError, readAmount as amount } from './errors.ts';
+import { createPurchaseJournal, type PurchaseStorage } from './purchases.ts';
 import { createChatData } from './chat.ts';
 import { createBridgeData } from './bridge.ts';
 import { createRheaData, type NearView } from './rhea.ts';
@@ -18,6 +19,8 @@ import { LOSS_NOTES, type Address, type DashboardData, type VaultAccount, type S
 
 type Dependencies = {
   wallets?: Wallets;
+  purchaseStorage?: PurchaseStorage;
+  waitForReceipt?: (hash: Hash) => Promise<{ status: 'success' | 'reverted' }>;
   ethereum?: Pick<EIP1193Provider, 'request'>;
   fetch?: typeof globalThis.fetch;
   now?: () => Date;
@@ -27,6 +30,7 @@ type Dependencies = {
 
 export function dataError(error: unknown): DataError {
   if (error instanceof DataError) return error;
+  if(error instanceof BaseError){const cause=error.walk(value=>value instanceof DataError);if(cause instanceof DataError)return cause;}
   if ((error instanceof BaseError && error.walk((e) => e instanceof UserRejectedRequestError) instanceof UserRejectedRequestError) ||
       (typeof error === 'object' && error !== null && 'code' in error && error.code === 4001))
     return new DataError('wallet_rejected', 'The request was declined in your wallet.');
@@ -50,21 +54,23 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
   const guarded = async <T>(run: () => Promise<T>): Promise<T> => {
     try { return await run(); } catch (error) { throw dataError(error); }
   };
-  const wallet = () => {
+  const wallet = (check:()=>void) => {
     const provider = wallets.evmProvider();
     if (!provider) throw new DataError('wallet_missing', 'Install or enable an injected Ethereum wallet.');
-    return createWalletClient({ chain, transport: custom(provider) });
+    return createWalletClient({ chain, transport: custom({request:args=>{check();return provider.request(args);}}) });
   };
-  const readyWallet = async (address: Address) => {
-    const client = wallet();
-    const [selected] = await client.getAddresses();
+  const readyWallet = async (address: Address, check=wallets.operation()) => {
+    check();
+    const client = wallet(check);
+    const [selected] = await client.getAddresses();check();
     if (selected?.toLowerCase() !== address.toLowerCase())
       throw new DataError('wallet_account', 'Switch back to the connected wallet account before signing or sending.');
-    if (await client.getChainId() !== chain.id) await client.switchChain({ id: chain.id });
+    const chainId=await client.getChainId();check();
+    if(chainId!==chain.id){await client.switchChain({id:chain.id});check();}
     return client;
   };
   const confirmed = async (hash: Hash) => {
-    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    const receipt = await (dependencies.waitForReceipt?.(hash) ?? publicClient.waitForTransactionReceipt({ hash }));
     if (receipt.status !== 'success') throw new DataError('transaction_reverted', 'The transaction reverted on-chain.');
     return { txHash: hash };
   };
@@ -105,14 +111,16 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
     if (!selected) throw new DataError('vault', 'Choose an EVM vault; Rhea uses its bridge and signed withdrawal methods.');
     return selected;
   };
-  const rhea = createRheaData(settings, { fetch: fetcher, now, nearView, relay,
-    ready: async address => { await readyWallet(address); },
-    sign: async (address, message) => (await readyWallet(address)).signMessage({ account: getAddress(address), message }),
-    transfer: async (address, to, assets) => {
-      const client = await readyWallet(address);
-      return confirmed(await client.writeContract({ address: await token(), abi: usdcAbi, functionName: 'transfer', args: [to, assets], account: address }));
-    },
-  });
+  const rheaOperation=()=>{
+    const check=wallets.operation();
+    return createRheaData(settings,{fetch:fetcher,now,nearView,check,
+      ready:async address=>{await readyWallet(address,check);},
+      sign:async(address,message)=>{const client=await readyWallet(address,check);check();const signed=await client.signMessage({account:getAddress(address),message});check();return signed;},
+      transfer:async(address,to,assets)=>{const usdc=await token(),client=await readyWallet(address,check);check();return confirmed(await client.writeContract({address:usdc,abi:usdcAbi,functionName:'transfer',args:[to,assets],account:address}));},
+      relay:async<T>(path:string,body?:unknown):Promise<T>=>{check();return relay<T>(path,body);},
+    });
+  };
+  const rheaReads=createRheaData(settings,{fetch:fetcher,now,nearView,check:()=>{},ready:async()=>{},sign:async()=>{throw new Error('read only');},transfer:async()=>{throw new Error('read only');},relay});
 
   const near = nearSessionData(settings, { wallets, view: nearView, relay, now,
     origin: () => dependencies.origin ?? globalThis.location?.origin ?? settings.relayUrl });
@@ -142,16 +150,32 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
   async function walletProof(input: SessionInput): Promise<WalletProof> {
     return guarded(async () => {
       if (typeof input !== 'string' && input.kind === 'near') return near.walletProof(input);
-      const address = evmAddress(input), client = await readyWallet(address);
+      const check=wallets.operation();
+      const address = evmAddress(input), client = await readyWallet(address,check);
       const {nonce} = await relay<{nonce:string}>('/auth/nonce');
       const message = walletProofMessage(address,nonce,dependencies.origin ?? globalThis.location?.origin ?? settings.relayUrl,chain.id,now());
-      return {message,signature:await client.signMessage({account:getAddress(address),message})};
+      check();const signature=await client.signMessage({account:getAddress(address),message});check();return {message,signature};
     });
   }
+
+  const purchases=createPurchaseJournal(chain.id,settings.topUpAddress,dependencies.purchaseStorage);
+  const purchasing=new Set<string>();
+  const reconcilePurchase=async(input:SessionInput)=>{
+    const address=evmAddress(input),state=purchases.read(address);
+    if(!state?.hash || state.status==='confirmed'||state.status==='reverted')return state;
+    let receipt;
+    try{receipt=await publicClient.getTransactionReceipt({hash:state.hash});}
+    catch{return state;} // Missing/unavailable receipt never means another pay is safe.
+    state.status=receipt.status==='success'?'confirmed':'reverted';purchases.write(address,state);
+    return state;
+  };
 
   const result: DashboardData = {
     isMock: false,
     isRunMock: false,
+    subscribeWallet: listener=>wallets.subscribe(listener),
+    topUpPurchase: input=>guarded(()=>reconcilePurchase(input)),
+    reviewTopUp: (input,hash)=>guarded(async()=>{purchases.review(evmAddress(input),hash);}),
     topUpAccount: input => guarded(async () => {
       if (!settings.topUpAddress || (typeof input!=='string' && input.kind!=='evm')) return null;
       const address=evmAddress(input), blockNumber=await publicClient.getBlockNumber({cacheTime:0});
@@ -161,16 +185,40 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
       return{minimum,paid,paidTotal,walletBalance,allowance,token:usdc};
     }),
     topUp: (input,assets) => guarded(async () => {
-      const address=evmAddress(input);
-      if(assets<=0n) throw new DataError('amount','Enter an amount above zero.');
-      const account=await result.topUpAccount(input);
-      if(!account || !settings.topUpAddress) throw new DataError('topup_unavailable','Credit purchases are not configured.');
-      if(assets<account.minimum) throw new DataError('amount','That is below the credit purchase minimum.');
-      if(assets>account.walletBalance) throw new DataError('balance','That is more USDC than your wallet holds.');
-      let client=await readyWallet(address);
-      if(account.allowance<assets) await confirmed(await client.writeContract({address:account.token,abi:usdcAbi,functionName:'approve',args:[settings.topUpAddress,assets],account:address}));
-      client=await readyWallet(address); // A wallet/account may change while approval confirms.
-      return confirmed(await client.writeContract({address:settings.topUpAddress,abi:topUpAbi,functionName:'pay',args:[assets,address],account:address}));
+      const check=wallets.operation(),address=evmAddress(input),owner=address.toLowerCase();
+      if(purchasing.has(owner))throw new DataError('purchase_pending','A purchase is already in progress.');
+      purchasing.add(owner);
+      try{
+        const previous=await reconcilePurchase(input);check();
+        if(previous){
+          if(previous.status==='confirmed'&&previous.amount===String(assets))return{txHash:previous.hash!};
+          if(previous.status==='reverted')throw new DataError('transaction_reverted','The previous purchase reverted. Review a fresh purchase.');
+          throw new DataError('purchase_pending','Reconcile the previous purchase and review a new one; it will not be submitted again.');
+        }
+        if(assets<=0n)throw new DataError('amount','Enter an amount above zero.');
+        const account=await result.topUpAccount(input);check();
+        if(!account||!settings.topUpAddress)throw new DataError('topup_unavailable','Credit purchases are not configured.');
+        if(assets<account.minimum)throw new DataError('amount','That is below the credit purchase minimum.');
+        if(assets>account.walletBalance)throw new DataError('balance','That is more USDC than your wallet holds.');
+        let client=await readyWallet(address,check);
+        if(account.allowance<assets){check();await confirmed(await client.writeContract({address:account.token,abi:usdcAbi,functionName:'approve',args:[settings.topUpAddress,assets],account:address}));}
+        client=await readyWallet(address,check);check();
+        if(purchases.read(address))throw new DataError('purchase_pending','Another purchase was recorded while approval was pending. Reconcile it first.');
+        purchases.write(address,{amount:String(assets),status:'submitting'});
+        let hash:Hash;
+        try{hash=await client.writeContract({address:settings.topUpAddress,abi:topUpAbi,functionName:'pay',args:[assets,address],account:address});}
+        catch(error){
+          if(['wallet_rejected','wallet_session_changed'].includes(dataError(error).code)){purchases.write(address,{amount:String(assets),status:'reverted'});}
+          // Other wallet/RPC failures may have broadcast without returning a hash.
+          throw error;
+        }
+        purchases.write(address,{amount:String(assets),hash,status:'pending'});
+        try{const result=await confirmed(hash);purchases.write(address,{amount:String(assets),hash,status:'confirmed'});return result;}
+        catch(error){
+          if(dataError(error).code==='transaction_reverted'){purchases.write(address,{amount:String(assets),hash,status:'reverted'});throw error;}
+          throw new DataError('purchase_pending',`Purchase ${hash} may have mined. Check its receipt; do not submit it again.`);
+        }
+      }finally{purchasing.delete(owner);}
     }),
     walletOptions: () => wallets.walletOptions(),
     connectWallet: id => guarded(async () => { const owner=await wallets.connectWallet(id); if(owner.kind==='evm') await readyWallet(owner.address); return owner; }),
@@ -259,33 +307,36 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
       } };
     }),
     deposit: (input, assets, vaultId) => guarded(async () => {
-      const address=evmAddress(input);
+      const check=wallets.operation(),address=evmAddress(input);
       if (assets <= 0n) throw new DataError('amount', 'Enter an amount above zero.');
-      const client = await readyWallet(address);
+      let client = await readyWallet(address,check);
       const selected = selectVault(vaultId);
       const usdc = await token(selected.address);
       const allowance = await publicClient.readContract({ address: usdc, abi: usdcAbi, functionName: 'allowance', args: [address, selected.address] });
+      client=await readyWallet(address,check);check();
       if (allowance < assets) await confirmed(await client.writeContract({
         address: usdc, abi: usdcAbi, functionName: 'approve', args: [selected.address, assets], account: address,
       }));
+      client=await readyWallet(address,check);check();
       return confirmed(await client.writeContract({
         address: selected.address, abi: vaultAbi, functionName: 'deposit', args: [assets, address], account: address,
       }));
     }),
     redeem: (input, shares, vaultId) => guarded(async () => {
-      const address=evmAddress(input);
+      const check=wallets.operation(),address=evmAddress(input);
       if (shares <= 0n) throw new DataError('amount', 'Enter an amount above zero.');
-      const client = await readyWallet(address);
+      let client = await readyWallet(address,check);
       const selected = selectVault(vaultId);
+      check();
       return confirmed(await client.writeContract({
         address: selected.address, abi: vaultAbi, functionName: 'redeem', args: [shares, address, address], account: address,
       }));
     }),
-    rheaQuote: (input, assets, direction) => guarded(() => rhea.rheaQuote(evmAddress(input),assets,direction)),
-    rheaDeposit: (input,assets) => guarded(() => rhea.rheaDeposit(evmAddress(input),assets)),
-    rheaWithdraw: (input,assets) => guarded(() => rhea.rheaWithdraw(evmAddress(input),assets)),
-    rheaExit: (input,assets) => guarded(() => rhea.rheaExit(evmAddress(input),assets)),
-    rheaStatus: (...args) => guarded(() => rhea.rheaStatus(...args)),
+    rheaQuote: (input, assets, direction) => guarded(() => rheaReads.rheaQuote(evmAddress(input),assets,direction)),
+    rheaDeposit: (input,assets) => guarded(() => rheaOperation().rheaDeposit(evmAddress(input),assets)),
+    rheaWithdraw: (input,assets) => guarded(() => rheaOperation().rheaWithdraw(evmAddress(input),assets)),
+    rheaExit: (input,assets) => guarded(() => rheaOperation().rheaExit(evmAddress(input),assets)),
+    rheaStatus: (...args) => guarded(() => rheaReads.rheaStatus(...args)),
     walletProof,
     createKey: (proof) => guarded(async () => {
       const result = await relay<{ key: string; key_epoch: number; expires_at: number }>('/keys', proof);

@@ -21,6 +21,7 @@ type Ports = {
   fetch: typeof fetch;
   now: () => Date;
   nearView: NearView;
+  check(): void;
   ready(address: Address): Promise<void>;
   sign(address: Address, message: string): Promise<Hex>;
   transfer(address: Address, to: Address, assets: bigint): Promise<TxResult>;
@@ -68,11 +69,16 @@ export function createRheaData(settings: LiveConfig, ports: Ports) {
   return {
     rheaQuote: (address: Address, assets: bigint, direction: RheaDirection) => quote(address, assets, direction, true),
     async rheaDeposit(address: Address, assets: bigint): Promise<RheaTransfer> {
-      positive(assets); await ports.ready(address);
+      positive(assets);ports.check();
+      if(settings.rheaStatusNote)throw new DataError('paused',settings.rheaStatusNote);
+      const coverage=readAmount(await ports.nearView('coverage',{},settings.rheaVaultAccount));ports.check();
+      if(coverage<10n**18n)throw new DataError('deficit','Rhea deposits are unavailable while coverage is below 100%.');
+      await ports.ready(address);
       // The vault returns anything below its 1 USDC minimum, after the bridge has taken its costs.
       const funded = await quote(address, assets, 'deposit', false);
       if (funded.minAmountOut < RHEA_MIN_DEPOSIT) throw new DataError('amount', 'After bridge costs this would arrive below the vault\'s 1 USDC minimum. Send a little more.');
       if (!/^0x[0-9a-fA-F]{40}$/.test(funded.depositAddress!)) throw new DataError('quote', 'Expected a Base deposit address.');
+      ports.check();
       const result = await ports.transfer(address, funded.depositAddress as Address, funded.amountIn);
       return { ...result, quote: funded };
     },
@@ -81,7 +87,7 @@ export function createRheaData(settings: LiveConfig, ports: Ports) {
       const nonce = await ports.nearView<number>('nonce', { user: user(address) }, settings.rheaVaultAccount);
       if (!Number.isSafeInteger(nonce) || nonce < 0) throw new DataError('near_rpc', 'NEAR returned an invalid nonce.');
       const message = withdrawalMessage(settings.rheaVaultAccount, user(address), claim, nonce, Math.floor(ports.now().getTime() / 1000) + 300);
-      const signature = await ports.sign(address, message);
+      const signature = await ports.sign(address, message);ports.check();
       const result = await ports.relay<{ tx_hash: string }>('/rhea/withdraw', { message, signature });
       return { txHash: result.tx_hash };
     },
@@ -93,7 +99,7 @@ export function createRheaData(settings: LiveConfig, ports: Ports) {
         deadline: funded.deadline, nonce: btoa(String.fromCharCode(...nonce)),
         intents: [{ intent: 'transfer', receiver_id: funded.depositAddress, tokens: { [nearAsset]: String(funded.amountIn) } }],
       });
-      const signature = intentSignature(await ports.sign(address, payload));
+      const signature = intentSignature(await ports.sign(address, payload));ports.check();
       const result = await ports.relay<{ tx_hash: string }>('/intents/execute', { signed: [{ standard: 'erc191', payload, signature }] });
       return { txHash: result.tx_hash, quote: funded };
     },
