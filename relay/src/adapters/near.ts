@@ -30,6 +30,11 @@ export async function nearConnector(config: { rpc: string; contract: string; gat
     }
   });
   return {
+    async withdrawable(user: string) {
+      const read = (method: string) => provider.callFunction<any>({ contractId: config.rheaVault, method, args: { user }, blockQuery: { finality: 'final' } });
+      const [position, nonce] = await Promise.all([read('position'), read('nonce')]);
+      return { principal: BigInt(position.principal), nonce: Number(nonce) };
+    },
     async withdraw(message: string, signature: string) {
       const result = await call(relay, 'request_withdraw', { message, signature }, config.rheaVault);
       return { tx_hash: result.tx_hash };

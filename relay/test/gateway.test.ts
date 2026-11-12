@@ -312,3 +312,31 @@ test('a failing debit is resent with a doubling delay, while the free confirmati
   await h.gateway.retryDebits();
   assert.equal(h.gateway.state(USER).pending, 0); assert.equal(h.connector.accounts.get(USER)!.spent, 13n);
 });
+
+test('key revocation is an operator-paid transaction: it uses the IP bucket and the shared daily count', async t => {
+  const now = Date.now();
+  const h = await harness({ now: () => now, sponsoredPerDay: 1 }); t.after(h.close);
+  const wallet = privateKeyToAccount(('0x' + '56'.repeat(32)) as `0x${string}`);
+  const proof = async () => {
+    const nonce = (await (await fetch(h.base + '/auth/nonce')).json()).nonce as string;
+    const message = createSiweMessage({ address: wallet.address, chainId: 8453, domain: 'relay.test', uri: 'http://relay.test', version: '1', nonce, issuedAt: new Date(now), expirationTime: new Date(now + 300_000) });
+    return { message, signature: await wallet.signMessage({ message }) };
+  };
+  const send = async (path: string) => fetch(h.base + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(await proof()) });
+  assert.equal((await send('/keys/revoke')).status, 200);
+  const refused = await send('/keys/revoke');
+  assert.equal(refused.status, 429); assert.equal((await refused.json()).error.code, 'sponsored_limit');
+  assert.equal((await send('/keys')).status, 200); // Issuing a key is a read and a signature; it sends no transaction.
+  for (let i = 0; i < 27; i++) await fetch(h.base + '/keys', { method: 'POST', body: '{}' });
+  assert.equal((await fetch(h.base + '/keys', { method: 'POST', body: '{}' })).status, 429);
+});
+
+test('a debit that stays unconfirmed is dropped as an operator loss after twelve sends', async t => {
+  const h = await harness(); t.after(h.close);
+  h.connector.beforeFailures = 1000;
+  await (await fetch(h.base + '/v1/chat/completions', { method: 'POST', headers: h.headers, body: raw() })).arrayBuffer();
+  await settle(h.gateway);
+  assert.equal(h.connector.debitCalls, 12);
+  assert.ok(h.events.some(e => e.event === 'inference_loss' && e.details.reason === 'debit_unconfirmed'));
+  await h.gateway.retryDebits(); assert.equal(h.connector.debitCalls, 12);
+});

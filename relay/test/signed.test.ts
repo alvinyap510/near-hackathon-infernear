@@ -71,6 +71,34 @@ test('intent rejects bad or missing signature/expiry, wrong verifier and non-ERC
   assert.deepEqual(ops.calls, []);
 });
 
+test('withdraw reads the vault for free and refuses a request it would reject, before spending gas', async t => {
+  const ops = { ...operations(), async withdrawable() { return { principal: 1_000_000n, nonce: 3 }; } };
+  const h = await harness({ now: () => now, signedOperations: ops }); t.after(h.close);
+  for (const overrides of [{ nonce: 2 }, { nonce: 4 }, { nonce: 3, amount: '1000001' }]) {
+    const response = await post(h.base, '/rhea/withdraw', await withdrawal(withdrawPayload(overrides)));
+    assert.equal(response.status, 409); assert.equal((await response.json()).error.code, 'withdrawal_not_possible');
+  }
+  assert.deepEqual(ops.calls, []);
+  assert.equal((await post(h.base, '/rhea/withdraw', await withdrawal(withdrawPayload({ nonce: 3 })))).status, 200);
+  assert.equal(ops.calls.length, 1);
+});
+
+test('operator-paid transactions share one daily count; rejected requests do not use it and it resets next day', async t => {
+  let clock = now;
+  const ops = operations(), h = await harness({ now: () => clock, signedOperations: ops, sponsoredPerDay: 2 }); t.after(h.close);
+  assert.equal((await post(h.base, '/rhea/withdraw', await withdrawal(withdrawPayload(), wrongWallet))).status, 400);
+  assert.equal((await post(h.base, '/intents/execute', await intent({}, wrongWallet))).status, 400);
+  assert.equal((await post(h.base, '/rhea/withdraw', await withdrawal())).status, 200);
+  assert.equal((await post(h.base, '/intents/execute', await intent())).status, 200);
+  const refused = await post(h.base, '/rhea/withdraw', await withdrawal());
+  assert.equal(refused.status, 429); assert.equal((await refused.json()).error.code, 'sponsored_limit');
+  assert.equal((await post(h.base, '/intents/execute', await intent())).status, 429);
+  assert.equal(ops.calls.length, 2);
+  clock += 86_400_000;
+  assert.equal((await post(h.base, '/rhea/withdraw', await withdrawal(withdrawPayload({ expires_at: clock / 1000 + 60 })))).status, 200);
+  assert.equal(ops.calls.length, 3);
+});
+
 for (const path of ['/rhea/withdraw', '/intents/execute']) {
   test(`${path} rejects oversized bodies before calling NEAR`, async t => {
     const ops = operations(), h = await harness({ now: () => now, signedOperations: ops }); t.after(h.close);

@@ -9,7 +9,7 @@ import { endToEndHeaders } from './upstream.ts';
 // Bound untrusted buffered envelopes in the process that also settles credits.
 export const MAX_BODY_BYTES = 1_048_576;
 
-export function createRelayServer(gateway: Gateway, options: { publicUrl: string; report: Report; now?: () => number; allowedOrigin?: string; signedRequests?: SignedRequests; clientIpHeader?: string }) {
+export function createRelayServer(gateway: Gateway, options: { publicUrl: string; report: Report; now?: () => number; allowedOrigin?: string; signedRequests?: SignedRequests; clientIpHeader?: string; sponsoredPerDay?: number }) {
   const now = options.now ?? Date.now;
   const ipLimits = new ExpiringMap<{ count: number }>(60_000, now);
   const origin = new URL(options.publicUrl).origin;
@@ -37,6 +37,15 @@ export function createRelayServer(gateway: Gateway, options: { publicUrl: string
     if (!window) { window = { count: 0 }; ipLimits.set(ip, window); }
     if (window.count >= 30) throw new HttpError(429, 'read_rate_limit', 'Limit: 30 requests per minute per IP');
     window.count += 1;
+  };
+  // Key revocation, Rhea withdrawals and intents are transactions the operator pays for on behalf
+  // of a caller who pays nothing. One shared daily count bounds that spend however many callers there are.
+  const sponsored = { day: -1, count: 0 };
+  const sponsor = () => {
+    const day = Math.floor(now() / 86_400_000);
+    if (sponsored.day !== day) { sponsored.day = day; sponsored.count = 0; }
+    if (sponsored.count >= (options.sponsoredPerDay ?? 50)) throw new HttpError(429, 'sponsored_limit', 'Daily limit for operator-paid transactions reached; retry tomorrow');
+    sponsored.count += 1;
   };
   const pipe = async (source: IncomingMessage, res: ServerResponse, onBytes: (chunk: Buffer) => void) => {
     for await (const bytes of source) {
@@ -67,11 +76,14 @@ export function createRelayServer(gateway: Gateway, options: { publicUrl: string
       if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
       if (req.method === 'GET' && path === '/auth/nonce') { json(res, 200, { nonce: gateway.auth.nonce() }); return; }
       if (req.method === 'POST' && (path === '/keys' || path === '/keys/revoke')) {
+        limitIp(req);
         let proof;
         const raw = await body(req);
         try { proof = JSON.parse(raw.toString()); } catch { throw new HttpError(400, 'invalid_json', 'Expected wallet proof JSON'); }
         const user = await gateway.auth.walletProof(proof);
-        json(res, 200, path === '/keys' ? await gateway.issue(user) : await gateway.revoke(user)); return;
+        if (path === '/keys') { json(res, 200, await gateway.issue(user)); return; }
+        sponsor();
+        json(res, 200, await gateway.revoke(user)); return;
       }
       if (req.method === 'GET' && path === '/v1/models') {
         json(res, 200, { object: 'list', data: (await gateway.upstream.models()).map(model => model.public) }); return;
@@ -90,7 +102,7 @@ export function createRelayServer(gateway: Gateway, options: { publicUrl: string
         let value: unknown;
         try { value = JSON.parse(raw.toString()); } catch { throw new HttpError(400, 'invalid_json', 'Expected signed request JSON'); }
         if (!options.signedRequests) throw new HttpError(503, 'service_unavailable', 'Signed routes unavailable');
-        json(res, 200, path === '/rhea/withdraw' ? await options.signedRequests.withdraw(value) : await options.signedRequests.execute(value)); return;
+        json(res, 200, path === '/rhea/withdraw' ? await options.signedRequests.withdraw(value, sponsor) : await options.signedRequests.execute(value, sponsor)); return;
       }
       if (req.method === 'POST' && path === '/v1/chat/completions') {
         gateway.auth.parse(req.headers.authorization);

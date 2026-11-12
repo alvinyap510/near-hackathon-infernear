@@ -152,6 +152,12 @@ export class Gateway {
       // The confirmation read above is free; a debit is a transaction that costs gas even when it fails.
       // Resend with a doubling delay (2 s, 4 s ... at most 10 minutes) instead of every second.
       if (this.now() < job.next) return;
+      // Twelve unconfirmed sends take about an hour. Stop paying gas and record the charge as the operator's loss.
+      if (job.sends >= 12) {
+        this.jobs.delete(id);
+        this.report('inference_loss', { inference_id: id, reason: 'debit_unconfirmed' });
+        return;
+      }
       job.next = this.now() + Math.min(this.retryMs * 2 ** job.sends++, 600_000);
       await this.user(reservation.user).lock.run(async () => {
         const state = this.user(reservation.user);

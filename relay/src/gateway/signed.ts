@@ -4,6 +4,8 @@ import { HttpError } from '../types.ts';
 
 export type SignedIntent = { standard: 'erc191'; payload: string; signature: string };
 export interface SignedOperations {
+  // Free view of what the vault will check: the user's principal and next nonce.
+  withdrawable(user: string): Promise<{ principal: bigint; nonce: number }>;
   withdraw(message: string, signature: string): Promise<{ tx_hash: string }>;
   executeIntents(signed: SignedIntent[]): Promise<{ tx_hash: string }>;
 }
@@ -18,8 +20,9 @@ export class SignedRequests {
   constructor(operations: SignedOperations, config: { vault: string; intents: string; chainId: number }, now = Date.now) {
     this.operations = operations; this.vault = config.vault; this.intents = config.intents; this.chainId = config.chainId; this.now = now;
   }
-  async withdraw(body: unknown): Promise<{ tx_hash: string }> {
-    let message: string, signature: Hex;
+  // `spend` is called once a request is valid, just before the operator pays for its transaction.
+  async withdraw(body: unknown, spend: () => void = () => {}): Promise<{ tx_hash: string }> {
+    let message: string, signature: Hex, user: string, amount: bigint, nonce: number;
     try {
       const value = body as { message: string; signature: Hex };
       if (typeof value.message !== 'string' || !/^0x[0-9a-fA-F]{130}$/.test(value.signature)) throw invalid();
@@ -31,11 +34,16 @@ export class SignedRequests {
           typeof request.amount !== 'string' || !/^[0-9]+$/.test(request.amount) || BigInt(request.amount) === 0n ||
           !Number.isSafeInteger(request.nonce) || request.nonce < 0 || !Number.isSafeInteger(request.expires_at) || request.expires_at * 1000 < this.now() ||
           !await verifyMessage({ address: request.user.slice(prefix.length) as Address, message, signature })) throw invalid();
+      user = request.user; amount = BigInt(request.amount); nonce = request.nonce;
     } catch { throw invalid(); }
-    // Preserve the exact signed bytes. Principal, nonce and busy checks belong to the vault.
+    // A transaction the vault would reject still costs gas. Read its two state checks first, for free.
+    const state = await this.operations.withdrawable(user);
+    if (nonce !== state.nonce || amount > state.principal) throw new HttpError(409, 'withdrawal_not_possible', 'Nonce is not current or amount exceeds principal');
+    spend();
+    // Preserve the exact signed bytes. The vault remains the authority on principal, nonce and busy.
     return this.operations.withdraw(message, signature);
   }
-  async execute(body: unknown): Promise<{ tx_hash: string }> {
+  async execute(body: unknown, spend: () => void = () => {}): Promise<{ tx_hash: string }> {
     let signed: SignedIntent[];
     try {
       const value = body as { signed: SignedIntent[] };
@@ -56,6 +64,7 @@ export class SignedRequests {
         signed.push({ standard: 'erc191', payload: intent.payload, signature: intent.signature });
       }
     } catch { throw invalid(); }
+    spend();
     // Verifier checks nonce/key authorization and executes the signed intent, never body-supplied transaction fields.
     return this.operations.executeIntents(signed);
   }

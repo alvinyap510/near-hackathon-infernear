@@ -32,7 +32,7 @@ async function main() {
   // Wait longer than normal inclusion before accepting fresh reservations after restart.
   report('startup_wait', { seconds: 30 });
   await sleep(30_000);
-  const server = createRelayServer(gateway, { publicUrl, report, allowedOrigin: required('RELAY_WEB_ORIGIN'), signedRequests: new SignedRequests(connector, { vault: rheaVault, intents, chainId }), clientIpHeader: process.env.RELAY_CLIENT_IP_HEADER || undefined });
+  const server = createRelayServer(gateway, { publicUrl, report, allowedOrigin: required('RELAY_WEB_ORIGIN'), signedRequests: new SignedRequests(connector, { vault: rheaVault, intents, chainId }), clientIpHeader: process.env.RELAY_CLIENT_IP_HEADER || undefined, sponsoredPerDay: integer('RELAY_SPONSORED_TX_PER_DAY') });
   server.listen(integer('RELAY_PORT'), () => report('listening', { port: process.env.RELAY_PORT }));
   const retries = setInterval(() => { void gateway.retryDebits(); }, 1000);
   let stopped = false;
