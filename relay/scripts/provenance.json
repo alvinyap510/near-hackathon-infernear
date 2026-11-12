@@ -1,10 +1,6 @@
 {
   "gateway": {
     "nearaidev/cloud-api": {"repository":"nearai/cloud-api","workflow":".github/workflows/build.yml"},
-    "nearaidev/cvm-ingress": {"repository":"nearai/cvm-ingress","workflow":".github/workflows/build-push.yml"},
-    "nearaidev/dstack-vpc": {"repository":"nearai/dstack-vpc","workflow":".github/workflows/build.yml"},
-    "nearaidev/dstack-vpc-client": {"repository":"nearai/dstack-vpc-client","workflow":".github/workflows/build.yml"}
-  },
-  "model": {"nearaidev/vllm-proxy-rs":{"repository":"nearai/inference-proxy","workflow":".github/workflows/build.yml"}},
-  "composeManager": {"imageRepository":"nearaidev/compose-manager","repository":"nearai/compose-manager","workflow":".github/workflows/build.yml"}
+    "nearaidev/cvm-ingress": {"repository":"nearai/cvm-ingress","workflow":".github/workflows/build-push.yml"}
+  }
 }

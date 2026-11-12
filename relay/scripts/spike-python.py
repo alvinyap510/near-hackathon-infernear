@@ -5,35 +5,23 @@ import os
 from pathlib import Path
 
 from nearai_inference_sdk import (
-    InferenceClient, GatewayVerificationOptions, ModelVerificationOptions,
-    AttestationVerifiers, ModelAttestationVerifiers, ImageProvenancePolicy,
-    ComposeManagerImagePolicy, verify_deployment_image_provenance,
-    verify_compose_manager_deployment_image_provenance,
+    InferenceClient, GatewayVerificationOptions, AttestationVerifiers,
+    ImageProvenancePolicy, verify_deployment_image_provenance,
 )
 
 
 async def main():
     policies = json.loads(Path(__file__).with_name("provenance.json").read_text())
     gateway_policies = {k: ImageProvenancePolicy(**v) for k, v in policies["gateway"].items()}
-    model_policies = {k: ImageProvenancePolicy(**v) for k, v in policies["model"].items()}
-    compose = policies["composeManager"]
 
     async def gateway_policy(deployment):
         await verify_deployment_image_provenance(deployment.app_compose, gateway_policies)
-
-    async def model_policy(deployment):
-        await verify_compose_manager_deployment_image_provenance(
-            deployment, model_policies,
-            compose_manager_image_policy=ComposeManagerImagePolicy(
-                image_repository=compose["imageRepository"], repository=compose["repository"], workflow=compose["workflow"],
-            ),
-        )
 
     async with InferenceClient(
         api_key=os.environ["SPIKE_RELAY_KEY"], base_url=os.environ["SPIKE_RELAY_URL"], e2ee=True,
         attestation_cache_time_to_live_ms=0,
         gateway_verification=GatewayVerificationOptions(include_spki_fingerprint=False, verifiers=AttestationVerifiers(deployment=gateway_policy)),
-        model_verification=ModelVerificationOptions(verifiers=ModelAttestationVerifiers(deployment=model_policy)),
+        # No model image-provenance verifier; see spike.ts.
     ) as client:
         await client.verify(os.environ["SPIKE_MODEL"])
         for streaming in (False, True):

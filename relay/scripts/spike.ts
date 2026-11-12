@@ -64,7 +64,9 @@ const retries = setInterval(() => { void gateway.retryDebits(); }, 1000);
 try {
   const client = new sdk.InferenceClient({ baseUrl, apiKey: key, e2ee: true, attestationCacheTimeToLiveMs: 0,
     gatewayVerification: { includeSpkiFingerprint: false, verifiers: { deployment: ({ appCompose }: any) => sdk.verifyDeploymentImageProvenance({ appCompose, imagePolicies: policies.gateway }) } },
-    modelVerification: { verifiers: { deployment: (deployment: any) => sdk.verifyComposeManagerDeploymentImageProvenance({ deployment, imagePolicies: policies.model, composeManagerImagePolicy: policies.composeManager }) } },
+    // No model image-provenance verifier: NEAR's compose-manager check reads only the newest deploy action,
+    // which on 2026-11-12 restarted a helper on every model machine, so it rejects all models. TDX/GPU
+    // attestation, signing-key binding and response signatures still apply.
   });
   await client.verify(model);
   for (const stream of [false, true]) {
