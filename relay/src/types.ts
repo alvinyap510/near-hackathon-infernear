@@ -11,6 +11,8 @@ export interface Connector {
   debit(user: string, amount: bigint, receipt: Receipt): Promise<void>;
   bumpKeyEpoch(user: string): Promise<{ key_epoch: number; tx_hash: string }>;
   postCredits(vault: string, paid: bigint, rate: bigint, sourceBlock: bigint, entries: [string, bigint][]): Promise<void>;
+  // What the connector already holds for a vault: its paid_cum and the sum of posted cumulative entries.
+  posted(vault: string): Promise<{ paid: bigint; total: bigint }>;
   storageBalance(): Promise<{ amount: string; storage_usage: number }>;
 }
 export type Report = (event: string, details: Record<string, unknown>) => void;

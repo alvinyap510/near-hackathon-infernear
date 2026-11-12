@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, defineChain, erc20Abi, http, isAddress, parseAbi, parseAbiItem, zeroAddress, type Address, type Hash, type Hex } from 'viem';
+import { createPublicClient, createWalletClient, defineChain, encodeFunctionData, erc20Abi, http, isAddress, parseAbi, parseAbiItem, zeroAddress, type Address, type Hash, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { Mutex } from '../types.ts';
 import { RateUnavailable, type BridgePort, type VaultPort } from '../keeper/keeper.ts';
@@ -9,9 +9,14 @@ const oracleAbi = parseAbi(['function getPtToAssetRate(address market, uint32 du
 export type EvmVaultConfig = { address: Address } & ({ kind: 'aave' } | { kind: 'rate'; feed: Address; heartbeat: number } | { kind: 'pendle'; market: Address; oracle: Address });
 export type BridgeToken = { token: Address; originAsset: string; minimumBaseUnits: string };
 
+// Canonical Multicall3. One eth_call runs paidTotal, skim, paidTotal in sequence, so the
+// difference is exactly what skim() would pay out now, without sending a transaction.
+const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11';
+const multicallAbi = parseAbi(['struct Call3 { address target; bool allowFailure; bytes callData; }', 'struct Result { bool success; bytes returnData; }', 'function aggregate3(Call3[] calls) payable returns (Result[] returnData)']);
+
 const transferEvent = parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 value)');
 
-export function evmPorts(config: { rpc: string; chainId: number; key: Hex; vaults: EvmVaultConfig[]; fromBlock: bigint; oneClickUrl: string; oneClickToken?: string; bridgeTokens: BridgeToken[]; destinationAsset: string; recipient: string; slippageBps: number }): { vaults: VaultPort[]; bridge: BridgePort } {
+export function evmPorts(config: { rpc: string; chainId: number; key: Hex; vaults: EvmVaultConfig[]; fromBlock: bigint; oneClickUrl: string; oneClickToken?: string; bridgeTokens: BridgeToken[]; destinationAsset: string; recipient: string; slippageBps: number; minYieldMicro: bigint }): { vaults: VaultPort[]; bridge: BridgePort } {
   const chain = defineChain({ id: config.chainId, name: 'vault chain', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [config.rpc] } } });
   const account = privateKeyToAccount(config.key);
   const publicClient = createPublicClient({ chain, transport: http(config.rpc) });
@@ -64,7 +69,13 @@ export function evmPorts(config: { rpc: string; chainId: number; key: Hex; vault
           const amount = await publicClient.readContract({ address, abi: vaultAbi, functionName: 'yieldCredited', args: [owner], blockNumber });
           entries.push([`eip155:${config.chainId}:${owner}`, amount]);
         }
-        return { block: blockNumber, unpaid: unpaid as bigint, paid: paid as bigint, rate, entries };
+        const paidTotal = encodeFunctionData({ abi: vaultAbi, functionName: 'paidTotal' });
+        const { result } = await publicClient.simulateContract({ address: MULTICALL3, abi: multicallAbi, functionName: 'aggregate3',
+          args: [[paidTotal, encodeFunctionData({ abi: vaultAbi, functionName: 'skim' }), paidTotal].map(callData => ({ target: address, allowFailure: false, callData }))] });
+        const payable = BigInt(result[2].returnData) - BigInt(result[0].returnData);
+        // skim() is worth its gas only once the yield it pays out reaches the configured USD value.
+        const work = payable * rate / 1_000_000_000_000_000_000n >= config.minYieldMicro ? 'yield' : null;
+        return { block: blockNumber, unpaid: unpaid as bigint, paid: paid as bigint, rate, entries, work };
       },
     };
   });

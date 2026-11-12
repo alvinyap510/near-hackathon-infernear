@@ -15,6 +15,11 @@ const holder = '0x1111111111111111111111111111111111111111';
 const hash = ('0x' + '11'.repeat(32)) as Hex;
 const vaultAbi = parseAbi(['function skim()', 'function unpaid() view returns (uint256)', 'function paidTotal() view returns (uint256)', 'function yieldCredited(address) view returns (uint256)', 'function yieldToken() view returns (address)']);
 
+const multicall = '0xca11bde05977b3631167028862be2a173976ca11';
+// aggregate3 result for [paidTotal, skim, paidTotal]: what a simulated skim would pay out.
+const simulated = (before: bigint, after: bigint) => encodeAbiParameters([{ type: 'tuple[]', components: [{ type: 'bool' }, { type: 'bytes' }] }],
+  [[[true, encodeAbiParameters([{ type: 'uint256' }], [before])], [true, '0x'], [true, encodeAbiParameters([{ type: 'uint256' }], [after])]]]);
+
 async function rpc(handler: (method: string, params: any) => unknown | Promise<unknown>) {
   const server = createServer(async (req, res) => {
     const parts: Buffer[] = []; for await (const part of req) parts.push(Buffer.from(part));
@@ -31,7 +36,7 @@ test('real NEAR adapter uses finalized views, distinct signers, numeric receipts
   const key = KeyPair.fromRandom('ed25519');
   const accountValue = { credited: '100', spent: '7', available: '93', key_epoch: 1 };
   const calls: any[] = [];
-  let busy = false, unpaid = '0';
+  let busy = false, unpaid = '0', pendingIn = '0', pendingOut: string | null = null, supplied = '0';
   const fake = await rpc((method, params) => {
     calls.push({ method, params });
     if (method === 'block') return { header: { hash: '11111111111111111111111111111111', height: 10 } };
@@ -42,11 +47,16 @@ test('real NEAR adapter uses finalized views, distinct signers, numeric receipts
           if (params.method_name === 'busy') assert.equal(params.finality, 'final');
           else assert.equal(params.block_id, 10);
           const values: Record<string, unknown> = { busy, unpaid, paid_total: '101',
-            holders: Array.from({ length: args.from === 0 ? 100 : 1 }, (_, i) => 'user-' + (i + (args.from ?? 0))), position: { yield_credited: '1' } };
+            holders: Array.from({ length: args.from === 0 ? 100 : 1 }, (_, i) => 'user-' + (i + (args.from ?? 0))), idle: '1000000',
+            position: { principal: '10', yield_credited: '1', pending_in: args.user === 'user-0' ? pendingIn : '0', pending_out: args.user === 'user-0' ? pendingOut : null } };
           return { result: [...Buffer.from(JSON.stringify(values[params.method_name]))], logs: [], block_height: 10, block_hash: '11111111111111111111111111111111' };
         }
+        if (params.account_id === 'lend.near') {
+          assert.equal(params.method_name, 'get_account'); assert.equal(params.block_id, 10);
+          return { result: [...Buffer.from(JSON.stringify({ supplied: [{ token_id: 'usdc.near', balance: supplied }] }))], logs: [], block_height: 10, block_hash: '11111111111111111111111111111111' };
+        }
         assert.equal(params.finality, 'final');
-        const value = params.method_name === 'account' ? accountValue : '7';
+        const value = params.method_name === 'account' ? accountValue : params.method_name === 'vault' ? { paid_cum: '100', posted_total: '90' } : '7';
         return { result: [...Buffer.from(JSON.stringify(value))], logs: [], block_height: 10, block_hash: '11111111111111111111111111111111' };
       }
       if (params.request_type === 'view_account') return { amount: '1000000000000000000000000', locked: '0', storage_usage: 1000, code_hash: '11111111111111111111111111111111', block_height: 10, block_hash: '11111111111111111111111111111111' };
@@ -61,7 +71,9 @@ test('real NEAR adapter uses finalized views, distinct signers, numeric receipts
     }
     throw new Error('Unhandled fake NEAR method ' + method);
   }); t.after(fake.close);
-  const connector = await nearConnector({ rpc: fake.url, contract: 'connector.near', gatewayAccount: 'gateway.near', gatewayKey: key.toString(), keeperAccount: 'keeper.near', keeperKey: key.toString(), relayAccount: 'relay.near', relayKey: key.toString(), rheaVault: 'vault.near', intents: 'intents.near' });
+  const connector = await nearConnector({ rpc: fake.url, contract: 'connector.near', gatewayAccount: 'gateway.near', gatewayKey: key.toString(), keeperAccount: 'keeper.near', keeperKey: key.toString(), relayAccount: 'relay.near', relayKey: key.toString(), rheaVault: 'vault.near', intents: 'intents.near',
+    rheaLend: 'lend.near', usdc: 'usdc.near', rheaCushion: 1_000_000n, minYieldMicro: 5n });
+  assert.deepEqual(await connector.posted('fixture-vault'), { paid: 100n, total: 90n });
   assert.deepEqual(await connector.account('fixture-user'), { credited: 100n, spent: 7n, available: 93n, key_epoch: 1 });
   assert.equal(await connector.debitedAmount('fixture-id'), 7n);
   assert.equal((await connector.storageBalance()).storage_usage, 1000);
@@ -77,8 +89,16 @@ test('real NEAR adapter uses finalized views, distinct signers, numeric receipts
   const snapshot = await connector.rhea.snapshot();
   assert.equal(snapshot.block, 10n); assert.equal(snapshot.rate, 10n ** 18n); assert.equal(snapshot.entries.length, 101);
   assert.deepEqual(snapshot.entries[100], ['user-100', 1n]);
-  busy = true; assert.equal((await connector.rhea.snapshot()).entries.length, 0);
-  busy = false; unpaid = '1'; assert.equal((await connector.rhea.snapshot()).entries.length, 0);
+  // 101 holders x 10 principal + 1.0 cushion are covered by 1.0 idle + supplied (12 extra decimals).
+  assert.equal(snapshot.work, null);
+  supplied = String(1014n * 10n ** 12n); assert.equal((await connector.rhea.snapshot()).work, null); // 4 micro-USD of yield < 5
+  supplied = String(1015n * 10n ** 12n); assert.equal((await connector.rhea.snapshot()).work, 'yield');
+  pendingIn = '2000000'; assert.equal((await connector.rhea.snapshot()).work, 'queue:2000000:0');
+  pendingIn = '0'; pendingOut = '5'; assert.equal((await connector.rhea.snapshot()).work, 'queue:0:1');
+  pendingOut = null; supplied = '0';
+  busy = true; let settling = await connector.rhea.snapshot(); assert.equal(settling.entries.length, 0); assert.equal(settling.work, null);
+  busy = false; unpaid = '1'; settling = await connector.rhea.snapshot(); assert.equal(settling.entries.length, 0); assert.equal(settling.work, 'unpaid:1');
+  assert.equal(signed.filter(tx => tx.method === 'run').length, 1); // Snapshots never send a transaction.
   await connector.withdraw('signed-json', '0xfixture-signature');
   await connector.executeIntents([{ standard: 'erc191', payload: 'signed-payload', signature: 'secp256k1:fixture' }]);
   assert.deepEqual(signed.slice(3).map(tx => [tx.signer, tx.receiver, tx.method, tx.deposit]), [
@@ -90,7 +110,7 @@ test('real NEAR adapter uses finalized views, distinct signers, numeric receipts
 });
 
 test('Flex2-3: real EVM adapter reads finalized holders and honors the configured bridge minimum', async t => {
-  let treasury = 100_000n;
+  let treasury = 100_000n, payable = 0n;
   const reads: any[] = [], scans: any[] = [], transactions: Hex[] = [];
   let nonce = 0;
   const block = { number: '0x64', hash, parentHash: hash, nonce: '0x0000000000000000', sha3Uncles: hash, logsBloom: '0x' + '00'.repeat(256), transactionsRoot: hash, stateRoot: hash, receiptsRoot: hash,
@@ -110,6 +130,7 @@ test('Flex2-3: real EVM adapter reads finalized holders and honors the configure
     }
     if (method === 'eth_call') {
       const target = params[0].to.toLowerCase();
+      if (target === multicall) { assert.equal(params[1], 'latest'); return simulated(100n, 100n + payable); }
       if (target === usdc) return encodeAbiParameters([{ type: 'uint256' }], [treasury]);
       const call = decodeFunctionData({ abi: vaultAbi, data: params[0].data });
       reads.push({ ...call, block: params[1] });
@@ -128,11 +149,16 @@ test('Flex2-3: real EVM adapter reads finalized holders and honors the configure
   await new Promise<void>(done => oneClick.listen(0, '127.0.0.1', done));
   t.after(async () => { oneClick.closeAllConnections(); await new Promise<void>(done => oneClick.close(() => done())); });
   const ports = evmPorts({ rpc: fake.url, chainId: 8453, key: ('0x' + '12'.repeat(32)) as Hex, vaults: [{ kind: 'aave', address }], fromBlock: 90n,
-    oneClickUrl: `http://127.0.0.1:${(oneClick.address() as import('node:net').AddressInfo).port}`, bridgeTokens: [{ token: usdc, originAsset: 'fixture-origin', minimumBaseUnits: '300000' }], destinationAsset: 'fixture-destination', recipient: 'treasury.near', slippageBps: 100 });
+    oneClickUrl: `http://127.0.0.1:${(oneClick.address() as import('node:net').AddressInfo).port}`, bridgeTokens: [{ token: usdc, originAsset: 'fixture-origin', minimumBaseUnits: '300000' }], destinationAsset: 'fixture-destination', recipient: 'treasury.near', slippageBps: 100, minYieldMicro: 10_000n });
   await ports.vaults[0].skim();
   const snapshot = await ports.vaults[0].snapshot();
   assert.deepEqual(snapshot.entries, [[`eip155:8453:${holder}`, 100n]]);
   assert.equal(snapshot.block, 100n); assert.equal(snapshot.unpaid, 0n); assert.equal(snapshot.paid, 100n);
+  // A simulated skim decides whether the real one is worth its gas: 9,999 micro-USD is not, 10,000 is.
+  assert.equal(snapshot.work, null);
+  payable = 9_999n; assert.equal((await ports.vaults[0].snapshot()).work, null);
+  payable = 10_000n; assert.equal((await ports.vaults[0].snapshot()).work, 'yield');
+  assert.equal(transactions.length, 1); // Snapshots never send a transaction.
   assert.ok(reads.every(read => read.block === '0x64'));
   assert.equal(scans[0].fromBlock, '0x5a'); assert.equal(scans[0].toBlock, '0x64');
   const bridgeTick = async () => ((await ports.bridge.tick()).tokens as Record<string, unknown>[])[0];
@@ -168,7 +194,9 @@ test('priced EVM snapshots use one finalized block, heartbeat boundaries and nat
     if (method === 'eth_getBlockByNumber') { assert.equal(params[0], 'finalized'); return { number: '0x64', timestamp: '0x1388' }; }
     if (method === 'eth_getLogs') return [{ address: params[0].address, topics: encodeEventTopics({ abi: erc20Abi, eventName: 'Transfer', args: { from: zeroAddress, to: holder } }), data: encodeAbiParameters([{ type: 'uint256' }], [100n]), blockNumber: '0x64', blockHash: hash, transactionHash: hash, transactionIndex: '0x0', logIndex: '0x0', removed: false }];
     if (method === 'eth_call') {
-      reads.push(params); const target = params[0].to.toLowerCase();
+      const target = params[0].to.toLowerCase();
+      if (target === multicall) return simulated(0n, 0n);
+      reads.push(params);
       if (target === feed) {
         assert.equal(decodeFunctionData({ abi: feedAbi, data: params[0].data }).functionName, 'latestRoundData');
         if (failed) throw new Error('fixture feed unavailable');
@@ -187,7 +215,7 @@ test('priced EVM snapshots use one finalized block, heartbeat boundaries and nat
   }); t.after(fake.close);
   const ports = evmPorts({ rpc: fake.url, chainId: 8453, key: ('0x' + '12'.repeat(32)) as Hex, fromBlock: 100n,
     vaults: [{ kind: 'aave', address }, { kind: 'rate', address: lst, feed, heartbeat: 1200 }, { kind: 'pendle', address: pt, oracle, market: address }],
-    bridgeTokens: [], oneClickUrl: 'http://unused.invalid', destinationAsset: 'near-usdc', recipient: 'treasury.near', slippageBps: 100 });
+    bridgeTokens: [], oneClickUrl: 'http://unused.invalid', destinationAsset: 'near-usdc', recipient: 'treasury.near', slippageBps: 100, minYieldMicro: 10_000n });
   const [aave, rate, pendle] = ports.vaults;
   assert.equal((await aave.snapshot()).rate, 10n ** 18n);
   const priced = await rate.snapshot();

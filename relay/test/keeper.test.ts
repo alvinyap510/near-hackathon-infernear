@@ -3,21 +3,44 @@ import assert from 'node:assert/strict';
 import { Keeper, type VaultPort } from '../src/keeper/keeper.ts';
 import { FakeConnector, USER, VAULT, harness, fixture, settle } from './harness.ts';
 
-test('keeper skips unpaid snapshots, reports skim reverts and retries without losing the loop', async () => {
+test('keeper sends a transaction only for reported work, backs off while it repeats, and never reposts unchanged credits', async () => {
   const connector = new FakeConnector();
   const reports: string[] = [];
-  let reverts = true, unpaid = 1n, skims = 0;
+  let reverts = true, unpaid = 1n, skims = 0, work: string | null = null, clock = 0;
   const vault: VaultPort = { id: VAULT, kind: 'aave', async skim() { skims++; if (reverts) throw new Error('fixture skim reverted'); },
-    async snapshot() { return { rate: 10n ** 18n, block: 10n, unpaid, paid: 100n, entries: [[USER, 100n]] }; } };
-  const keeper = new Keeper([vault], connector, { async tick() { return { dry: true, amount: '100000', status: 'below_minimum_quote_only' }; } }, event => reports.push(event));
-  await keeper.tick(); assert.equal(connector.postCalls, 0); assert.ok(reports.includes('keeper_retry'));
-  reverts = false;
-  await keeper.tick(); assert.equal(connector.postCalls, 0); assert.ok(reports.includes('posting_skipped'));
-  unpaid = 0n;
+    async snapshot() { return { rate: 10n ** 18n, block: 10n, unpaid, paid: 100n, entries: [[USER, 100n]], work }; } };
+  const keeper = new Keeper([vault], connector, { async tick() { return { dry: true, amount: '100000', status: 'below_minimum_quote_only' }; } }, event => reports.push(event), undefined, () => clock);
+  // No work reported: reads only, however often the keeper ticks.
   await keeper.tick(); await keeper.tick();
-  assert.equal(skims, 4);
+  assert.equal(skims, 0); assert.equal(connector.postCalls, 0); assert.ok(reports.includes('posting_skipped'));
+  // Work reported: one transaction. While the same work is still there, wait 1, then 2 minutes.
+  work = 'yield';
+  await keeper.tick(); assert.equal(skims, 1); assert.ok(reports.includes('keeper_retry'));
+  await keeper.tick(); clock = 59_999; await keeper.tick(); assert.equal(skims, 1);
+  clock = 60_000; await keeper.tick(); assert.equal(skims, 2);
+  clock = 179_999; await keeper.tick(); assert.equal(skims, 2);
+  reverts = false; clock = 180_000; await keeper.tick(); assert.equal(skims, 3);
+  assert.ok(reports.includes('vault_transaction'));
+  // Work done: the delay resets, so the next new work is sent at once.
+  work = null; await keeper.tick(); work = 'yield'; await keeper.tick(); assert.equal(skims, 4);
+  // Credits post once the vault has paid; an unchanged snapshot is never posted again.
+  work = null; unpaid = 0n;
+  await keeper.tick(); await keeper.tick(); await keeper.tick();
+  assert.equal(skims, 4); assert.equal(connector.postCalls, 1);
   assert.equal((await connector.account(USER)).credited, 100n);
   assert.equal(connector.vaults.get(VAULT)!.paid, 100n);
+});
+
+test('a failing post is retried with a growing delay, and a changed snapshot is posted at once', async () => {
+  const connector = new FakeConnector();
+  let paid = 10n, credited = 11n, clock = 0;
+  const vault: VaultPort = { id: VAULT, kind: 'aave', async skim() {}, async snapshot() { return { rate: 10n ** 18n, block: 1n, unpaid: 0n, paid, entries: [[USER, credited]] }; } };
+  const keeper = new Keeper([vault], connector, { async tick() { return {}; } }, () => {}, undefined, () => clock);
+  await keeper.tick(); await keeper.tick(); assert.equal(connector.postCalls, 1); // exceeds paid_cum: rejected
+  clock = 60_000; await keeper.tick(); assert.equal(connector.postCalls, 2);
+  clock = 120_000; await keeper.tick(); assert.equal(connector.postCalls, 2);
+  credited = 10n; await keeper.tick(); assert.equal(connector.postCalls, 3);
+  assert.equal((await connector.account(USER)).credited, 10n);
 });
 
 test('keeper cumulative batches respect independent connector budgets and replay safety', async () => {
@@ -65,19 +88,19 @@ test('priced posting sends native cumulative amounts and source block; remainder
   assert.equal(connector.vaults.get(VAULT)!.remainders.get(USER), 2n * 10n ** 17n);
 });
 
-test('Rhea posts only after run and a settled snapshot; low relay and vault NEAR balances alert', async () => {
+test('Rhea runs only for reported work and never while busy; low relay and vault NEAR balances alert', async () => {
   const connector = new FakeConnector();
   const events: { event: string; details: Record<string, unknown> }[] = [];
-  let busy = true, unpaid = 0n, ran = 0;
+  let busy = true, unpaid = 0n, ran = 0, work: string | null = 'queue:1000000:0';
   const vault: VaultPort = { id: 'near:mainnet:vault.near', kind: 'rhea', async skim() { ran++; }, async snapshot() {
-    assert.ok(ran > 0); return { busy, unpaid, paid: 10n, rate: 10n ** 18n, block: 223089644n, entries: [[USER, 10n]] };
+    return { busy, unpaid, paid: 10n, rate: 10n ** 18n, block: 223089644n, entries: [[USER, 10n]], work };
   } };
   const keeper = new Keeper([vault], connector, { async tick() { return {}; } }, (event, details) => events.push({ event, details }), {
     minimum: 100n, async balances() { return [{ account: 'relay.near', free: 1n }, { account: 'vault.near', free: 99n }]; },
   });
-  await keeper.tick(); assert.equal(connector.postCalls, 0);
-  busy = false; unpaid = 1n; await keeper.tick(); assert.equal(connector.postCalls, 0);
-  unpaid = 0n; await keeper.tick(); assert.equal(connector.postCalls, 1);
+  await keeper.tick(); assert.equal(connector.postCalls, 0); assert.equal(ran, 0);
+  busy = false; unpaid = 1n; await keeper.tick(); assert.equal(connector.postCalls, 0); assert.equal(ran, 1);
+  work = null; unpaid = 0n; await keeper.tick(); assert.equal(connector.postCalls, 1); assert.equal(ran, 1);
   assert.equal(connector.posts[0].vault, 'near:mainnet:vault.near');
   assert.equal(connector.posts[0].sourceBlock, 223089644n); assert.equal(connector.posts[0].rate, 10n ** 18n);
   assert.equal(events.filter(e => e.event === 'low_near_balance').length, 6);

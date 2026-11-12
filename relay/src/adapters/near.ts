@@ -4,7 +4,7 @@ import { InsufficientCredit, Mutex, type Connector, type Receipt } from '../type
 import type { VaultPort, NearBalance } from '../keeper/keeper.ts';
 import type { SignedOperations, SignedIntent } from '../gateway/signed.ts';
 
-export async function nearConnector(config: { rpc: string; contract: string; gatewayAccount: string; gatewayKey: string; keeperAccount: string; keeperKey: string; relayAccount: string; relayKey: string; rheaVault: string; intents: string }): Promise<Connector & SignedOperations & { rhea: VaultPort; balances(): Promise<NearBalance[]> }> {
+export async function nearConnector(config: { rpc: string; contract: string; gatewayAccount: string; gatewayKey: string; keeperAccount: string; keeperKey: string; relayAccount: string; relayKey: string; rheaVault: string; intents: string; rheaLend: string; usdc: string; rheaCushion: bigint; minYieldMicro: bigint }): Promise<Connector & SignedOperations & { rhea: VaultPort; balances(): Promise<NearBalance[]> }> {
   const provider = new JsonRpcProvider({ url: config.rpc });
   const gateway = new NearAccount(config.gatewayAccount, provider, config.gatewayKey as KeyPairString);
   const keeper = new NearAccount(config.keeperAccount, provider, config.keeperKey as KeyPairString);
@@ -44,21 +44,34 @@ export async function nearConnector(config: { rpc: string; contract: string; gat
       async snapshot() {
         const state = await provider.callFunctionRaw({ contractId: config.rheaVault, method: 'busy', args: {}, blockQuery: { finality: 'final' } });
         const block = state.block_height;
-        const read = (method: string, args: Record<string, unknown> = {}) => provider.callFunction<any>({ contractId: config.rheaVault, method, args, blockQuery: { blockId: block } });
+        const read = (method: string, args: Record<string, unknown> = {}, contractId = config.rheaVault) => provider.callFunction<any>({ contractId, method, args, blockQuery: { blockId: block } });
         const busy = JSON.parse(Buffer.from(state.result).toString()) as boolean;
-        const [unpaid, paid] = await Promise.all([read('unpaid'), read('paid_total')]);
+        const [unpaid, paid] = (await Promise.all([read('unpaid'), read('paid_total')])).map(BigInt);
         const entries: [string, bigint][] = [];
-        if (!busy && BigInt(unpaid) === 0n) {
+        let work: string | null = null;
+        if (!busy) {
+          let principal = 0n, incoming = 0n, exits = 0;
           for (let from = 0;; from += 100) {
             const holders = await read('holders', { from, limit: 100 }) as string[];
             for (const user of holders) {
               const position = await read('position', { user });
-              entries.push([user, BigInt(position.yield_credited)]);
+              if (unpaid === 0n) entries.push([user, BigInt(position.yield_credited)]);
+              principal += BigInt(position.principal); incoming += BigInt(position.pending_in);
+              if (position.pending_out !== null) exits += 1;
             }
             if (holders.length < 100) break;
           }
+          // run() is needed for queued deposits or exits, for yield awaiting payout, or once
+          // the yield it would realize (the vault's own surplus formula) is worth its gas.
+          if (incoming > 0n || exits > 0) work = `queue:${incoming}:${exits}`;
+          else if (unpaid > 0n) work = `unpaid:${unpaid}`;
+          else {
+            const [idle, lender] = await Promise.all([read('idle'), read('get_account', { account_id: config.rheaVault }, config.rheaLend)]);
+            const supplied = BigInt(lender?.supplied?.find((asset: { token_id: string }) => asset.token_id === config.usdc)?.balance ?? 0) / 10n ** 12n;
+            if (supplied + BigInt(idle) - principal - config.rheaCushion >= config.minYieldMicro) work = 'yield';
+          }
         }
-        return { block: BigInt(block), busy, unpaid: BigInt(unpaid), paid: BigInt(paid), rate: 10n ** 18n, entries };
+        return { block: BigInt(block), busy, unpaid, paid, rate: 10n ** 18n, entries, work };
       },
     },
     async balances() {
@@ -77,6 +90,7 @@ export async function nearConnector(config: { rpc: string; contract: string; gat
     async debit(user: string, amount: bigint, receipt: Receipt) { await call(gateway, 'debit', { user, amount_micro: String(amount), receipt }); },
     async bumpKeyEpoch(user) { const result = await call(gateway, 'bump_key_epoch', { user }); return { key_epoch: result.value, tx_hash: result.tx_hash }; },
     async postCredits(vault, paid, rate, sourceBlock, entries) { await call(keeper, 'post_credits', { vault, paid_cum: String(paid), rate: String(rate), source_block: Number(sourceBlock), entries: entries.map(([user, amount]) => [user, String(amount)]) }); },
+    async posted(vault) { const value = await view('vault', { vault }); return { paid: BigInt(value.paid_cum), total: BigInt(value.posted_total) }; },
     async storageBalance() {
       const state = await provider.viewAccount({ accountId: config.contract, blockQuery: { finality: 'final' } });
       return { amount: String(state.amount), storage_usage: state.storage_usage };
