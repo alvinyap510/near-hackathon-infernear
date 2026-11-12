@@ -31,7 +31,7 @@ RPCs must allow the page's origin. `RELAY_WEB_ORIGIN` must match it for CORS, SI
 
 ## Wallets and account
 
-The header opens the existing WalletDialog. EVM providers are discovered by EIP-6963 (`evm:<rdns>`), with an injected fallback. The selected provider is pinned for later calls; explicit EVM connection switches to Base. Meteor and MyNearWallet use Wallet Selector mainnet without a modal or generated function-call key. Sessions restore on load, including redirect intent; disconnect cannot revive an older wallet. Keys remain in tab memory and clear when the wallet changes.
+The header opens the existing WalletDialog. EVM providers are discovered by EIP-6963 (`evm:<rdns>`), with an injected fallback. The selected provider is pinned for later calls; explicit EVM connection switches to Base. Meteor Wallet, the one NEAR wallet offered, uses Wallet Selector mainnet without a modal or generated function-call key; if that code fails to load, the EVM wallets are still listed. Sessions restore on load, including redirect intent; disconnect cannot revive an older wallet. Keys remain in tab memory and clear when the wallet changes.
 
 User ids: `eip155:8453:<lower-case address>` or `near:mainnet:<account_id>`. EVM key actions use SIWE; NEAR actions use [NEP-413](../docs/interfaces.md#near-wallet-key-proofs-nep-413) with the canonical message, SHA256 relay-nonce binding and finalized full-access-key check.
 

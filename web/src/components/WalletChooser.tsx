@@ -6,7 +6,7 @@ import { ErrorNote, Spinner } from './ui.tsx';
 export type WalletOption = {
   id: string; // e.g. 'evm:io.metamask', 'near:meteor-wallet'
   kind: 'evm' | 'near';
-  name: string; // 'MetaMask', 'Rabby', 'Meteor Wallet', 'MyNearWallet', ...
+  name: string; // 'MetaMask', 'Rabby', 'Meteor Wallet', ...
   icon?: string; // data: or https URL supplied by the wallet; a neutral glyph is drawn when absent
   available: boolean; // false = not installed / cannot open here
   installUrl?: string; // shown as "Install" when not available

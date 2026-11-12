@@ -23,11 +23,10 @@ export function createWallets(settings: { vaultChainId: number; rheaVaultAccount
   let selectorPromise: Promise<WalletSelector> | undefined;
   const fallback = () => deps.ethereum ?? (globalThis as typeof globalThis & { ethereum?: InjectedProvider }).ethereum;
   const selector = () => selectorPromise ??= (deps.selector ? deps.selector() : (async () => {
-    const [{ setupWalletSelector }, { setupMeteorWallet }, { setupMyNearWallet }] = await Promise.all([
-      import('@near-wallet-selector/core'), import('@near-wallet-selector/meteor-wallet'), import('@near-wallet-selector/my-near-wallet'),
+    const [{ setupWalletSelector }, { setupMeteorWallet }] = await Promise.all([
+      import('@near-wallet-selector/core'), import('@near-wallet-selector/meteor-wallet'),
     ]);
-    return setupWalletSelector({ network: 'mainnet',
-      modules: [setupMeteorWallet(), setupMyNearWallet()], debug: false });
+    return setupWalletSelector({ network: 'mainnet', modules: [setupMeteorWallet()], debug: false });
   })());
   target?.addEventListener('eip6963:announceProvider', (event) => {
     const detail = (event as CustomEvent).detail;
@@ -45,7 +44,10 @@ export function createWallets(settings: { vaultChainId: number; rheaVaultAccount
       discover();
       const evm: WalletOption[] = [...providers].map(([id, { info }]) => ({ id, kind: 'evm', name: info.name, icon: info.icon, available: true }));
       if (!evm.length && fallback()) evm.push({ id: 'evm:injected', kind: 'evm', name: 'Injected EVM wallet', available: true });
-      const state = (await selector()).store.getState();
+      // The NEAR wallet code loads on demand; if that fails, the EVM wallets are still offered.
+      let state;
+      try { state = (await selector()).store.getState(); }
+      catch { selectorPromise = undefined; return evm; }
       return [...evm, ...state.modules.map(module => ({ id: `near:${module.id}`, kind: 'near' as const, name: module.metadata.name,
         icon: module.metadata.iconUrl, available: module.metadata.available,
         installUrl: 'downloadUrl' in module.metadata ? String(module.metadata.downloadUrl) : undefined }))];
