@@ -95,12 +95,20 @@ onScroll();
 
 /* ---------- Reveals: split headlines into words, then reveal on entry ---------- */
 
+// A headline written as .line spans keeps those line breaks; its words still count on across lines.
 for (const h of $$('[data-split]')) {
-  const words = h.textContent.trim().split(/\s+/);
-  h.setAttribute('aria-label', h.textContent.trim());
-  h.innerHTML = words
-    .map((w, i) => `<span class="w" aria-hidden="true"><span class="wi" style="--i:${i}">${w}</span></span>`)
-    .join(' ');
+  let i = 0;
+  const words = (text) =>
+    text
+      .trim()
+      .split(/\s+/)
+      .map((w) => `<span class="w" aria-hidden="true"><span class="wi" style="--i:${i++}">${w}</span></span>`)
+      .join(' ');
+  const lines = [...h.querySelectorAll('.line')];
+  h.setAttribute('aria-label', h.textContent.replace(/\s+/g, ' ').trim());
+  h.innerHTML = lines.length
+    ? lines.map((l) => `<span class="line">${words(l.textContent)}</span>`).join(' ')
+    : words(h.textContent);
 }
 for (const group of $$('.yt-list, .rules, .facts, .flow, .i-steps')) {
   [...group.children].forEach((el, i) => el.style.setProperty('--d', `${i * 90}ms`));

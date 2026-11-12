@@ -1699,6 +1699,21 @@ svg {
   align-items: start;
 }
 
+/* One sentence per line. A line keeps the headline size (1em = the h2's size) and steps down only as
+   far as the longer sentence needs to fit its column (it is about 9em wide). */
+.api > :first-child {
+  container-type: inline-size;
+}
+
+.h2-lines {
+  max-width: none;
+}
+
+.h2-lines .line {
+  display: block;
+  font-size: min(1em, 10.9cqi);
+}
+
 .specs {
   display: grid;
   margin-top: 44px;
@@ -3166,6 +3181,11 @@ html:not(.deck) .hud-bottom {
   font-size: 14px;
   line-height: 1.45;
   color: var(--snow-2);
+}
+
+/* A protocol's logo never wraps away from its name. */
+.yt-brand {
+  white-space: nowrap;
 }
 
 .yt-how .icon,
