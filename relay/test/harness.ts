@@ -65,10 +65,11 @@ export class FakeConnector implements Connector {
     }
     this.vaults.set(vault, next);
   }
+  async posted(vault: string) { const state = this.vaults.get(vault); return { paid: state?.paid ?? 0n, total: [...(state?.posted.values() ?? [])].reduce((sum, amount) => sum + amount, 0n) }; }
   async storageBalance() { return { amount: '1000000000000000000000000', storage_usage: 1000 }; }
 }
 
-export async function harness(options: { now?: () => number; seed?: boolean; deadlineMs?: number; signedOperations?: SignedOperations; clientIpHeader?: string } = {}) {
+export async function harness(options: { now?: () => number; seed?: boolean; deadlineMs?: number; signedOperations?: SignedOperations; clientIpHeader?: string; retryMs?: number } = {}) {
   const connector = new FakeConnector();
   if (options.seed !== false) connector.seed();
   const events: { event: string; details: Record<string, unknown> }[] = [];
@@ -104,7 +105,7 @@ export async function harness(options: { now?: () => number; seed?: boolean; dea
   const upstreamPort = (upstreamServer.address() as import('node:net').AddressInfo).port;
   const publicUrl = 'http://relay.test';
   const auth = new Auth('fixture-test-secret', publicUrl, 8453, options.now);
-  const gateway = new Gateway({ auth, connector, upstream: new Upstream(`http://127.0.0.1:${upstreamPort}/v1`, 'fixture-upstream-key', options.now, options.deadlineMs), maxTokens: 100, report: (event, details) => events.push({ event, details }) });
+  const gateway = new Gateway({ auth, connector, upstream: new Upstream(`http://127.0.0.1:${upstreamPort}/v1`, 'fixture-upstream-key', options.now, options.deadlineMs), maxTokens: 100, report: (event, details) => events.push({ event, details }), now: options.now, retryMs: options.retryMs ?? 0 });
   const server = createRelayServer(gateway, { publicUrl, now: options.now, report: (event, details) => events.push({ event, details }), allowedOrigin: 'https://dashboard.test', clientIpHeader: options.clientIpHeader, signedRequests: options.signedOperations ? new SignedRequests(options.signedOperations, { vault: 'vault.near', intents: 'intents.near', chainId: 8453 }, options.now) : undefined });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}`;

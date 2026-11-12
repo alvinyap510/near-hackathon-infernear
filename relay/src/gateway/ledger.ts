@@ -7,7 +7,7 @@ import { HttpError, InsufficientCredit, Mutex, costMicro, min, reportError, type
 
 type User = { lock: Mutex; floor?: bigint; epoch: number; pendingEpoch?: number; active: number; reservations: Map<string, bigint> };
 export type Reservation = { token: string; user: string; amount: bigint; model: Model; inputBound: number; maxTokens: number; streaming: boolean };
-type Job = { reservation: Reservation; amount: bigint; receipt: Receipt; stage: 'metered' | 'broadcast'; running: boolean };
+type Job = { reservation: Reservation; amount: bigint; receipt: Receipt; stage: 'metered' | 'broadcast'; running: boolean; sends: number; next: number };
 
 export class Gateway {
   readonly auth: Auth;
@@ -18,9 +18,11 @@ export class Gateway {
   private users = new Map<string, User>();
   private jobs = new Map<string, Job>();
   private broadcasted = new Set<string>();
-  constructor(options: { auth: Auth; upstream: Upstream; connector: Connector; maxTokens: number; report: Report }) {
+  private now: () => number;
+  private retryMs: number;
+  constructor(options: { auth: Auth; upstream: Upstream; connector: Connector; maxTokens: number; report: Report; now?: () => number; retryMs?: number }) {
     this.auth = options.auth; this.upstream = options.upstream; this.connector = options.connector;
-    this.cap = options.maxTokens; this.report = options.report;
+    this.cap = options.maxTokens; this.report = options.report; this.now = options.now ?? Date.now; this.retryMs = options.retryMs ?? 2000;
   }
   private user(id: string): User {
     if (!this.users.has(id)) this.users.set(id, { lock: new Mutex(), epoch: 0, active: 0, reservations: new Map() });
@@ -124,7 +126,7 @@ export class Gateway {
       const receipt: Receipt = { inference_id: id, chat_id: meter.chatId, model: reservation.model.id,
         prompt_tokens: usage?.prompt_tokens ?? reservation.inputBound, completion_tokens: usage?.completion_tokens ?? reservation.maxTokens,
         in_price_nano: String(reservation.model.inNano), out_price_nano: String(reservation.model.outNano), source: usage ? 'signed_usage' : 'reservation' };
-      this.jobs.set(id, { reservation, amount, receipt, stage: 'metered', running: false });
+      this.jobs.set(id, { reservation, amount, receipt, stage: 'metered', running: false, sends: 0, next: 0 });
     });
     // Confirmation is independent of delivery; raw responses do not wait on NEAR.
     void this.retryDebits();
@@ -147,6 +149,10 @@ export class Gateway {
         this.report('debit_confirmed', { inference_id: id, amount_micro: String(already) });
         return;
       }
+      // The confirmation read above is free; a debit is a transaction that costs gas even when it fails.
+      // Resend with a doubling delay (2 s, 4 s ... at most 10 minutes) instead of every second.
+      if (this.now() < job.next) return;
+      job.next = this.now() + Math.min(this.retryMs * 2 ** job.sends++, 600_000);
       await this.user(reservation.user).lock.run(async () => {
         const state = this.user(reservation.user);
         if (!this.broadcasted.has(id)) {

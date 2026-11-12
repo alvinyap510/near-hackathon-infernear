@@ -296,3 +296,19 @@ test('meter handles arbitrary byte boundaries and reservation fallback on malfor
   assert.equal(malformed.usage, undefined);
   assert.equal(costMicro(1, 0, 1n, 0n), 1n);
 });
+
+test('a failing debit is resent with a doubling delay, while the free confirmation read still runs every pass', async t => {
+  let clock = 1_000_000;
+  const h = await harness({ now: () => clock, retryMs: 2000 }); t.after(h.close);
+  h.connector.beforeFailures = 3;
+  await (await fetch(h.base + '/v1/chat/completions', { method: 'POST', headers: h.headers, body: raw() })).arrayBuffer();
+  await eventually(() => h.connector.debitCalls === 1);
+  for (let i = 0; i < 5; i++) await h.gateway.retryDebits();
+  assert.equal(h.connector.debitCalls, 1);
+  clock += 2000; await h.gateway.retryDebits(); await h.gateway.retryDebits(); assert.equal(h.connector.debitCalls, 2);
+  clock += 3999; await h.gateway.retryDebits(); assert.equal(h.connector.debitCalls, 2);
+  clock += 1; await h.gateway.retryDebits(); assert.equal(h.connector.debitCalls, 3);
+  clock += 8000; await h.gateway.retryDebits(); assert.equal(h.connector.debitCalls, 4);
+  await h.gateway.retryDebits();
+  assert.equal(h.gateway.state(USER).pending, 0); assert.equal(h.connector.accounts.get(USER)!.spent, 13n);
+});
