@@ -6,7 +6,7 @@
     <title>InferNear — private AI inference, paid by the yield on deposits you keep</title>
     <meta
       name="description"
-      content="Private inference on NEAR AI Cloud's attested TEE models, paid by the yield on deposits you keep. OpenAI-compatible API; USDC from other chains arrives through NEAR Intents."
+      content="An OpenAI-compatible API on NEAR AI's attested TEE models. Keep your principal in a vault on your own chain; its yield pays for your API calls."
     />
     <meta name="theme-color" content="#141519" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -15,52 +15,39 @@
     <meta property="og:site_name" content="InferNear" />
     <meta property="og:url" content="https://infernear.dev" />
     <meta property="og:title" content="InferNear — private AI inference, paid by the yield on deposits you keep" />
-    <meta property="og:description" content="Private inference on NEAR AI Cloud's TEE models, paid by the yield on deposits you keep. Built at NEAR HACKATHON." />
+    <meta
+      property="og:description"
+      content="An OpenAI-compatible API on NEAR AI's attested TEE models. Keep your principal; its yield pays for your calls. Built at NEAR HACKATHON."
+    />
     <meta property="og:image" content="https://infernear.dev/og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="InferNear: private AI inference, paid by the yield on deposits you keep." />
     <meta name="twitter:card" content="summary_large_image" />
     <script>
-      // Motion and pinned scenes are opt-in. Without JavaScript, with reduced motion, or on small
-      // screens, every scene is in normal flow with its end state shown.
-      (function () {
-        var c = document.documentElement.classList;
-        c.add('js');
-        if (!matchMedia('(prefers-reduced-motion: reduce)').matches) c.add('motion');
-        if (c.contains('motion') && matchMedia('(min-width: 900px) and (min-height: 620px)').matches) c.add('pin');
-        if (c.contains('motion') && matchMedia('(pointer: fine)').matches) c.add('fine');
-        try { if (c.contains('motion') && !sessionStorage.getItem('in-intro')) c.add('intro'); } catch (e) {}
-      })();
+      // Motion is opt-in: without JavaScript, or with reduced motion, the page is static and complete.
+      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('motion');
+      document.documentElement.classList.add('js');
     </script>
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
 
-    <div class="preloader" aria-hidden="true">
-      <div class="pre-grid"></div>
-      <p class="pre-top"><span>// infernear.dev</span><span>initialising enclave</span></p>
-      <p class="pre-count"><span id="pre-n">000</span></p>
-      <p class="pre-bottom"><span>NEAR AI Cloud · TEE</span><span>click to skip</span></p>
-    </div>
-
-    <div class="frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-    <div class="cursor" aria-hidden="true"><i></i><i></i><b></b></div>
-
-    <header class="hud-top">
+    <!-- HUD: fixed frame, nav, rail, clock and section index -->
+    <header class="hud-top" data-hud="top">
       <a class="brand" href="#top" aria-label="InferNear, back to top">
-        <img class="logo-dark" src="/logo-dark.svg" alt="" width="140" height="23" />
-        <img class="logo-light" src="/logo-light.svg" alt="" width="140" height="23" />
+        <img class="logo-dark" src="/logo-dark.svg" alt="" width="146" height="24" />
+        <img class="logo-light" src="/logo-light.svg" alt="" width="146" height="24" />
       </a>
       <nav class="hud-nav" aria-label="Sections">
-        <a href="#enclave" data-nav="enclave"><span>001</span><b data-scramble>Enclave</b></a>
-        <a href="#intents" data-nav="intents"><span>002</span><b data-scramble>Intents</b></a>
-        <a href="#yield" data-nav="yield"><span>003</span><b data-scramble>Yield</b></a>
-        <a href="#vaults" data-nav="vaults"><span>004</span><b data-scramble>Vaults</b></a>
-        <a href="#api" data-nav="api"><span>005</span><b data-scramble>API</b></a>
-        <a href="#proof" data-nav="proof"><span>006</span><b data-scramble>Proof</b></a>
+        <a href="#yield" data-nav="yield"><span>001</span>Yield</a>
+        <a href="#vaults" data-nav="vaults"><span>002</span>Vaults</a>
+        <a href="#privacy" data-nav="privacy"><span>003</span>Privacy</a>
+        <a href="#api" data-nav="api"><span>004</span>API</a>
+        <a href="#near" data-nav="near"><span>005</span>NEAR</a>
+        <a href="#proof" data-nav="proof"><span>006</span>Proof</a>
       </nav>
-      <a class="btn btn-mint btn-sm cut magnetic" href="https://app.infernear.dev"><span class="sq sq-ink" aria-hidden="true"></span><span>Launch app</span></a>
+      <a class="btn btn-mint btn-sm" href="https://app.infernear.dev"><span class="sq sq-ink" aria-hidden="true"></span>Launch app</a>
     </header>
 
     <div class="hud-rail" aria-hidden="true">
@@ -71,207 +58,198 @@
       </svg>
     </div>
 
-    <div class="hud-bottom" aria-hidden="true">
-      <p class="hud-clock"><span class="pulse"></span><span id="clock">--:--:--</span>&nbsp;UTC<span class="hud-net">&nbsp;·&nbsp;mainnet</span></p>
-      <p class="hud-prog"><span id="prog"></span></p>
-      <p class="hud-index"><b id="idx-n">000</b>&nbsp;/&nbsp;007&nbsp;<span id="idx-name">Intro</span></p>
+    <div class="hud-bottom" data-hud="bottom" aria-hidden="true">
+      <p class="hud-clock"><span class="pulse"></span><span id="clock">--:--:--</span> UTC <span class="hud-sep">·</span> <span class="hud-net">mainnet</span></p>
+      <p class="hud-index"><b id="idx-n">000</b> / 007 <span id="idx-name">Intro</span></p>
     </div>
 
-    <div class="gl" id="gl" aria-hidden="true"></div>
-
     <main id="main">
-      <!-- 000 Intro -->
-      <section class="scene dark" id="top" data-scene="intro" data-tone="dark" data-index="000" data-name="Intro" style="--len: 200" aria-labelledby="hero-h">
-        <div class="stage hero">
-          <div class="hero-static" aria-hidden="true">
-            <svg viewBox="4 4 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H12v4H8v16h4v4H5.5A1.5 1.5 0 0 1 4 26.5zM20 4h6.5A1.5 1.5 0 0 1 28 5.5v21a1.5 1.5 0 0 1-1.5 1.5H20v-4h4V8h-4z" /><rect x="12" y="12" width="8" height="8" rx="1" /></svg>
-          </div>
-          <div class="hero-copy">
-            <p class="eyebrow"><span class="sq" aria-hidden="true"></span>NEAR AI Cloud · TEE models · OpenAI format</p>
-            <h1 id="hero-h" class="display hero-h">
-              <span class="hl hl-1" data-chars>Private AI.</span>
-              <span class="hl hl-2" data-chars>Paid by</span>
-              <span class="hl hl-3" data-chars>yield.</span>
-            </h1>
-            <div class="hero-foot">
-              <p class="hero-sub">Keep your principal. Its yield pays for every call.</p>
-              <div class="ctas">
-                <a class="btn btn-mint cut magnetic" href="https://app.infernear.dev"><span class="sq sq-ink" aria-hidden="true"></span><span>Launch app</span></a>
-                <a class="btn btn-ghost cut magnetic" href="https://github.com/alvinyap510/near-hackathon-infernear"><span>Read the code</span></a>
-              </div>
-            </div>
-          </div>
-          <p class="scroll-cue" aria-hidden="true"><span></span>Scroll to enter</p>
-        </div>
-      </section>
-
-      <!-- 001 Enclave: private mode on NEAR AI Cloud -->
-      <section class="scene dark" id="enclave" data-scene="enclave" data-tone="dark" data-index="001" data-name="Enclave" style="--len: 400" aria-labelledby="enclave-h">
-        <div class="stage enclave">
-          <div class="enclave-head">
-            <p class="label"><b>001</b><span data-scramble>Private mode · NEAR AI Cloud</span></p>
-            <h2 id="enclave-h" class="display h2" data-chars>Sealed on your machine. Opened in the enclave.</h2>
-          </div>
-          <div class="mech" aria-hidden="true">
-            <svg class="mech-svg" viewBox="0 0 1000 240" preserveAspectRatio="none">
-              <path class="mech-att" d="M80 96 C 330 0, 640 0, 860 96" pathLength="1" />
-              <path class="mech-wire" d="M80 150 H860" pathLength="1" />
-              <path class="mech-back" d="M860 170 H80" pathLength="1" />
+      <!-- 000 Hero -->
+      <section class="hero" id="top" data-tone="dark" data-index="000" data-name="Intro" aria-labelledby="hero-h">
+        <div class="hero-stage" aria-hidden="true">
+          <div class="hero-fallback">
+            <span class="fb-stream fb-stream-in"></span>
+            <span class="fb-stream fb-stream-out"></span>
+            <svg class="fb-mark" viewBox="4 4 24 24">
+              <path class="fb-br" d="M4 5.5A1.5 1.5 0 0 1 5.5 4H12v4H8v16h4v4H5.5A1.5 1.5 0 0 1 4 26.5zM20 4h6.5A1.5 1.5 0 0 1 28 5.5v21a1.5 1.5 0 0 1-1.5 1.5H20v-4h4V8h-4z" />
+              <rect class="fb-core" x="12" y="12" width="8" height="8" rx="1" />
             </svg>
-            <div class="node node-me cut"><b>Your machine</b><span>NEAR AI SDK</span><em class="tick">✓ attested</em><em class="tick tick-2">✓ signature</em></div>
-            <div class="node node-relay"><i class="gate"></i><b>Relay</b><span>forwards ciphertext</span>
-              <svg class="padlock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10.5" rx="2.4" /><path class="shackle" d="M8.4 10.5V7.6a3.6 3.6 0 017.2 0v2.9" /></svg>
+          </div>
+          <div class="hero-canvas" id="hero-canvas"></div>
+          <p class="stream-k stream-in">Your chain <span>→ yield</span></p>
+          <p class="stream-k stream-out"><span>credits →</span> NEAR</p>
+        </div>
+
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="sq" aria-hidden="true"></span>OpenAI-format API · NEAR AI TEE models</p>
+          <h1 id="hero-h" class="mega"><span class="line">Private AI.</span> <span class="line">Paid by <em>yield</em>.</span></h1>
+          <p class="hero-sub">Keep your principal. Its yield pays for your API calls.</p>
+          <div class="ctas">
+            <a class="btn btn-mint" href="https://app.infernear.dev"><span class="sq sq-ink" aria-hidden="true"></span>Launch app</a>
+            <a class="btn btn-ghost" href="https://github.com/alvinyap510/near-hackathon-infernear">Read the code</a>
+          </div>
+        </div>
+        <p class="scroll-cue" aria-hidden="true"><span></span>Scroll to enter</p>
+      </section>
+
+      <!-- 001 Yield -->
+      <section class="sec light" id="yield" data-tone="light" data-index="001" data-name="Yield" aria-labelledby="yield-h">
+        <div class="wrap two">
+          <div>
+            <p class="label" data-reveal><b>001</b> Yield</p>
+            <h2 id="yield-h" class="h2" data-split>Your deposit stays. Its yield pays.</h2>
+            <ol class="flow" data-reveal>
+              <li>Deposit</li>
+              <li>Yield</li>
+              <li>Credits on NEAR</li>
+              <li>API calls</li>
+            </ol>
+          </div>
+
+          <figure class="ledger ticks" data-reveal aria-labelledby="ledger-cap">
+            <figcaption id="ledger-cap" class="ledger-head">
+              <span>Your position</span>
+              <span class="tag-sim">Illustrative</span>
+            </figcaption>
+            <div class="ledger-row">
+              <span class="k">Principal</span>
+              <span class="v"><svg class="lock" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" /><path d="M5.5 7V5a2.5 2.5 0 015 0v2" /></svg>1,000.00 USDC</span>
+              <span class="n">stays redeemable</span>
             </div>
-            <div class="node node-tee"><b>Enclave</b><span>Intel TDX + NVIDIA confidential GPU</span></div>
-            <p class="packet" id="packet"><span>prompt</span></p>
-          </div>
-          <ol class="mech-steps" id="mech-steps">
-            <li><b>01</b>Your machine checks the enclave's attestation.</li>
-            <li><b>02</b>The SDK encrypts the prompt to the enclave's key.</li>
-            <li><b>03</b>The relay carries ciphertext it cannot read.</li>
-            <li><b>04</b>The model decrypts inside and signs the reply.</li>
-            <li><b>05</b>Your machine verifies the signature, then decrypts.</li>
-          </ol>
-          <p class="disclosure">Or point any OpenAI client at it: simpler, and the relay then reads prompts in transit.</p>
-        </div>
-      </section>
-
-      <!-- 002 Intents -->
-      <section class="scene dark" id="intents" data-scene="intents" data-tone="dark" data-index="002" data-name="Intents" style="--len: 260" aria-labelledby="intents-h">
-        <div class="stage intents">
-          <div class="intents-head">
-            <p class="label"><b>002</b><span data-scramble>NEAR Intents</span></p>
-            <h2 id="intents-h" class="display h2" data-chars>Any chain in. NEAR AI out.</h2>
-            <p class="lede">You never touch NEAR. Intents carries the value to where the inference runs.</p>
-          </div>
-          <div class="rail" aria-hidden="true">
-            <svg class="rail-svg" viewBox="0 0 1000 400" preserveAspectRatio="none">
-              <path class="r-path" d="M150 50 C 360 50, 380 200, 520 200" pathLength="1" />
-              <path class="r-path" d="M150 150 C 360 150, 380 200, 520 200" pathLength="1" />
-              <path class="r-path" d="M150 250 C 360 250, 380 200, 520 200" pathLength="1" />
-              <path class="r-path" d="M150 350 C 360 350, 380 200, 520 200" pathLength="1" />
-              <path class="r-main" d="M600 200 H 850" pathLength="1" />
+            <svg class="ledger-flow" viewBox="0 0 400 40" aria-hidden="true">
+              <path id="flow-path" d="M10 4 C 10 30, 390 10, 390 36" pathLength="1" />
             </svg>
-            <ul class="chains">
-              <li><i data-icon="base"></i><span>Base</span></li>
-              <li><i data-icon="ethereum"></i><span>Ethereum</span></li>
-              <li><i data-icon="arbitrum"></i><span>Arbitrum</span></li>
-              <li><i data-icon="solana"></i><span>Solana</span></li>
-            </ul>
-            <div class="hub"><i data-icon="near"></i><b>NEAR Intents</b></div>
-            <div class="sink"><b>NEAR AI Cloud</b><span>TEE models</span></div>
-            <div class="tokens" id="tokens"></div>
-          </div>
-          <ol class="i-steps">
-            <li class="cut"><b>01</b><h3>From another chain</h3><p>USDC lands at your Base address, ready to deposit.</p></li>
-            <li class="cut"><b>02</b><h3>Into NEAR, no NEAR account</h3><p>Base USDC moves into the Rhea vault and back, signed by your EVM wallet.</p></li>
-            <li class="cut"><b>03</b><h3>Yield meets inference</h3><p>Vault yield becomes credits on NEAR, spent on NEAR AI Cloud.</p></li>
-          </ol>
-        </div>
-      </section>
-
-      <!-- 003 Yield -->
-      <section class="scene dark" id="yield" data-scene="yield" data-tone="dark" data-index="003" data-name="Yield" style="--len: 220" aria-labelledby="yield-h">
-        <div class="stage yield">
-          <div class="yield-head">
-            <p class="label"><b>003</b><span data-scramble>Yield</span></p>
-            <h2 id="yield-h" class="display h2" data-chars>Your deposit stays. Its yield pays.</h2>
-          </div>
-          <div class="principal cut" id="principal">
-            <p class="k">Principal</p>
-            <p class="v"><svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10.5" rx="2.4" /><path d="M8.4 10.5V7.6a3.6 3.6 0 017.2 0v2.9" /></svg>1,000.00 USDC</p>
-            <p class="n">stays yours, redeemable</p>
-          </div>
-          <div class="counter" id="counter">
-            <p class="k">Credits on NEAR <span class="tag-sim">Illustrative</span></p>
-            <p class="v" id="credits" aria-live="off">$0.004210</p>
+            <div class="ledger-row big">
+              <span class="k">Credits</span>
+              <span class="v mono" id="credits" aria-live="off">$0.004210</span>
+              <span class="n">from yield only</span>
+            </div>
             <ul class="ledger-log" id="ledger-log" aria-hidden="true"></ul>
-          </div>
-          <ol class="steps-line" id="steps-line" aria-label="How it works">
-            <li>Deposit</li>
-            <li>Yield</li>
-            <li>Credits</li>
-            <li>API calls</li>
-          </ol>
-          <ul class="rules" aria-label="Enforced in the contracts">
-            <li class="cut"><b>01</b>Principal is never spent as credits</li>
-            <li class="cut"><b>02</b>Spent ≤ realized yield, per user</li>
-            <li class="cut"><b>03</b>Withdraw principal any time, less exit costs and losses</li>
+          </figure>
+        </div>
+
+        <div class="wrap">
+          <ul class="rules" data-reveal aria-label="Enforced in the contracts and tested">
+            <li><b>01</b>Principal is never spent as credits</li>
+            <li><b>02</b>Spent ≤ realized yield, per user</li>
+            <li><b>03</b>Principal + unspent + unrealized yield = position</li>
+            <li><b>04</b>Withdraw principal any time, minus exit costs and pro-rata losses</li>
           </ul>
         </div>
       </section>
 
-      <!-- 004 Vaults -->
-      <section class="scene paper" id="vaults" data-scene="vaults" data-tone="light" data-index="004" data-name="Vaults" style="--len: 260" aria-labelledby="vaults-h">
-        <div class="stage vaults">
-          <div class="vaults-head">
-            <p class="label"><b>004</b><span data-scramble>Vaults</span></p>
-            <h2 id="vaults-h" class="display h2" data-chars>Four vaults. Four yield shapes.</h2>
-            <p class="loss">Depositors bear strategy losses, pro-rata.</p>
-          </div>
-          <ul class="curves">
-            <li class="curve cut">
-              <div class="c-top">
-                <span class="tok" title="USDC on NEAR"><i data-icon="usdc" class="tok-coin"></i><i data-icon="near" class="tok-chain"></i></span>
-                <span class="c-id"><h3>Rhea USDC vault</h3><span class="c-sub"><span class="chainb"><i data-icon="near"></i>NEAR</span>Rhea Lend</span></span>
-              </div>
-              <svg class="c-svg" viewBox="0 0 600 200" preserveAspectRatio="none" aria-hidden="true">
-                <path class="c-base" d="M0 186H600" /><path class="c-area" d="M0 186H86V166H172V146H258V126H344V106H430V86H516V66H600V200H0Z" /><path class="c-line" d="M0 186H86V166H172V146H258V126H344V106H430V86H516V66H600" pathLength="1" />
+      <!-- 002 Vaults -->
+      <section class="sec dark" id="vaults" data-tone="dark" data-index="002" data-name="Vaults" aria-labelledby="vaults-h">
+        <div class="wrap">
+          <p class="label" data-reveal><b>002</b> Vaults</p>
+          <h2 id="vaults-h" class="h2" data-split>Four vaults. Four yield shapes.</h2>
+
+          <ul class="vaults">
+            <li class="vault ticks" data-reveal>
+              <div class="v-top"><span class="chip chip-base">Base</span><span class="v-asset">USDC</span></div>
+              <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
+                <path class="base" d="M10 76H190" /><path class="area" d="M10 76L190 20V76Z" /><path class="line" d="M10 76L190 20" pathLength="1" />
+                <circle class="dot" r="4" cx="10" cy="76" />
               </svg>
-              <p class="c-foot"><span class="c-shape">Lending interest</span><span class="pill pill-amber">Operator key · hackathon</span></p>
+              <h3>Aave USDC</h3>
+              <p class="v-shape">Growing balance</p>
+              <p class="v-meta">1 USDC = $1</p>
             </li>
-            <li class="curve cut">
-              <div class="c-top">
-                <span class="tok" title="USDC on Base"><i data-icon="usdc" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span>
-                <span class="c-id"><h3>Aave USDC vault</h3><span class="c-sub"><span class="chainb"><i data-icon="base"></i>Base</span><span class="strat"><i data-icon="aave"></i>Aave v3</span></span></span>
-              </div>
-              <svg class="c-svg" viewBox="0 0 600 200" preserveAspectRatio="none" aria-hidden="true">
-                <path class="c-base" d="M0 186H600" /><path class="c-area" d="M0 186L600 36V200H0Z" /><path class="c-line" d="M0 186L600 36" pathLength="1" />
+            <li class="vault ticks" data-reveal>
+              <div class="v-top"><span class="chip chip-base">Base</span><span class="v-asset">cbETH</span></div>
+              <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
+                <path class="base" d="M10 76H190" /><path class="area" d="M10 76C90 74 140 56 190 12V76Z" /><path class="line" d="M10 76C90 74 140 56 190 12" pathLength="1" />
+                <circle class="dot" r="4" cx="10" cy="76" />
               </svg>
-              <p class="c-foot"><span class="c-shape">Growing balance</span><span class="c-meta">1 USDC = $1</span></p>
+              <h3>cbETH</h3>
+              <p class="v-shape">Uncapped appreciation</p>
+              <p class="v-meta">Chainlink cbETH/USD</p>
             </li>
-            <li class="curve cut">
-              <div class="c-top">
-                <span class="tok" title="cbETH on Base"><i data-icon="cbeth" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span>
-                <span class="c-id"><h3>cbETH vault</h3><span class="c-sub"><span class="chainb"><i data-icon="base"></i>Base</span>Liquid staking</span></span>
-              </div>
-              <svg class="c-svg" viewBox="0 0 600 200" preserveAspectRatio="none" aria-hidden="true">
-                <path class="c-base" d="M0 186H600" /><path class="c-area" d="M0 186C260 182 430 140 600 16V200H0Z" /><path class="c-line" d="M0 186C260 182 430 140 600 16" pathLength="1" />
+            <li class="vault ticks" data-reveal>
+              <div class="v-top"><span class="chip chip-base">Base</span><span class="v-asset">PT-deJAAA</span></div>
+              <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
+                <path class="base" d="M10 76H190" /><path class="base" d="M10 22H190" /><path class="area" d="M10 76L150 22H190V76Z" /><path class="line" d="M10 76L150 22H190" pathLength="1" />
+                <circle class="dot" r="4" cx="10" cy="76" />
               </svg>
-              <p class="c-foot"><span class="c-shape">Uncapped appreciation</span><span class="c-meta">Chainlink cbETH/USD</span></p>
+              <h3>Pendle PT</h3>
+              <p class="v-shape">Capped appreciation</p>
+              <p class="v-meta">Expires 26 Nov 2026</p>
             </li>
-            <li class="curve cut">
-              <div class="c-top">
-                <span class="tok" title="Pendle PT-deJAAA on Base"><i data-icon="pendle" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span>
-                <span class="c-id"><h3>Pendle PT-deJAAA vault</h3><span class="c-sub"><span class="chainb"><i data-icon="base"></i>Base</span>Pendle PT</span></span>
-              </div>
-              <svg class="c-svg" viewBox="0 0 600 200" preserveAspectRatio="none" aria-hidden="true">
-                <path class="c-base" d="M0 186H600" /><path class="c-base" d="M0 42H600" /><path class="c-area" d="M0 186L450 42H600V200H0Z" /><path class="c-line" d="M0 186L450 42H600" pathLength="1" />
+            <li class="vault ticks" data-reveal>
+              <div class="v-top"><span class="chip chip-near">NEAR</span><span class="v-asset">USDC</span></div>
+              <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
+                <path class="base" d="M10 76H190" /><path class="area" d="M10 76H40V68H70V60H100V52H130V44H160V36H190V76Z" /><path class="line" d="M10 76H40V68H70V60H100V52H130V44H160V36H190" pathLength="1" />
+                <circle class="dot" r="4" cx="10" cy="76" />
               </svg>
-              <p class="c-foot"><span class="c-shape">Capped appreciation</span><span class="c-meta">Matures 26 Nov 2026</span></p>
+              <h3>Rhea USDC</h3>
+              <p class="v-shape">Lending interest</p>
+              <p class="v-meta">Base USDC via NEAR Intents</p>
+              <p class="chip chip-amber">Operator key · hackathon</p>
             </li>
+          </ul>
+
+          <ul class="facts" data-reveal aria-label="Vault facts">
+            <li class="fact-warn">Losses fall on depositors, pro-rata</li>
+            <li>No reserve</li>
+            <li>Cap ≈ $10K per vault</li>
+            <li>Base vaults + ledger: no admin</li>
+            <li>Rhea: operator key during the hackathon</li>
+            <li>Staking shape built, not deployed</li>
           </ul>
         </div>
       </section>
 
-      <!-- 005 API -->
-      <section class="scene dark" id="api" data-scene="api" data-tone="dark" data-index="005" data-name="API" style="--len: 170" aria-labelledby="api-h">
-        <div class="stage api">
-          <div class="api-head">
-            <p class="label"><b>005</b><span data-scramble>API</span></p>
-            <h2 id="api-h" class="display h2" data-chars>One base URL. Any OpenAI client.</h2>
+      <!-- 003 Privacy -->
+      <section class="sec light" id="privacy" data-tone="light" data-index="003" data-name="Privacy" aria-labelledby="privacy-h">
+        <div class="wrap">
+          <p class="label" data-reveal><b>003</b> Privacy</p>
+          <h2 id="privacy-h" class="h2" data-split>Two modes. You choose who reads the prompt.</h2>
+
+          <div class="lanes" id="lanes">
+            <div class="lane-text">
+              <h3>Standard</h3>
+              <p>Any OpenAI client. The relay reads the prompt in transit, never stores it.</p>
+              <h3>Private</h3>
+              <p>NEAR AI's SDK encrypts on your machine. The relay forwards ciphertext.</p>
+            </div>
           </div>
-          <div class="terminal cut" id="console">
-            <div class="t-bar">
-              <span class="t-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-              <div class="t-tabs" role="tablist" aria-label="Example">
+
+          <ul class="facts on-light" data-reveal aria-label="Both modes">
+            <li class="fact-ok">Both: attested TEE models only</li>
+            <li class="fact-ok">Both: debited per call on NEAR</li>
+            <li>Private: the SDK verifies the model's signature</li>
+            <li>Private: hides content, not metadata</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- 004 API -->
+      <section class="sec dark" id="api" data-tone="dark" data-index="004" data-name="API" aria-labelledby="api-h">
+        <div class="wrap two api">
+          <div>
+            <p class="label" data-reveal><b>004</b> API</p>
+            <h2 id="api-h" class="h2" data-split>One base URL. Any OpenAI client.</h2>
+            <dl class="specs" data-reveal>
+              <div>
+                <dt>Base URL</dt>
+                <dd><code>https://api.infernear.dev/v1</code><button class="copy" type="button" data-copy="https://api.infernear.dev/v1" hidden>Copy</button></dd>
+              </div>
+              <div><dt>Models</dt><dd><code>GET /v1/models</code> · NEAR AI TEE models, with prices</dd></div>
+              <div><dt>Keys</dt><dd>Wallet-signed in the app · 30 days · revocable</dd></div>
+              <div><dt>Private mode</dt><dd>NEAR AI SDK <code>@a0bf5fd</code> (E2EE v3)</dd></div>
+            </dl>
+          </div>
+
+          <div class="console ticks" data-reveal id="console">
+            <div class="console-bar">
+              <div class="console-tabs" role="tablist" aria-label="Example">
                 <button role="tab" type="button" id="tab-curl" aria-controls="pane-curl" aria-selected="true">curl</button>
                 <button role="tab" type="button" id="tab-js" aria-controls="pane-js" aria-selected="false" tabindex="-1">openai</button>
-                <button role="tab" type="button" id="tab-sdk" aria-controls="pane-sdk" aria-selected="false" tabindex="-1">private · NEAR AI SDK</button>
+                <button role="tab" type="button" id="tab-sdk" aria-controls="pane-sdk" aria-selected="false" tabindex="-1">private · SDK</button>
               </div>
-              <button class="copy" type="button" data-copy-active hidden>Copy</button>
+              <button class="copy copy-dark" type="button" data-copy-active hidden>Copy</button>
             </div>
-            <div class="t-body">
+            <div class="console-body">
 <pre role="tabpanel" id="pane-curl" aria-labelledby="tab-curl" tabindex="0"><code>curl https://api.infernear.dev/v1/chat/completions \
   -H "Authorization: Bearer $INFERNEAR_API_KEY" \
   -H "Content-Type: application/json" \
@@ -290,7 +268,8 @@ const completion = await client.chat.completions.create({
   max_tokens: 256,
 });
 console.log(completion.choices[0].message.content);</code></pre>
-<pre role="tabpanel" id="pane-sdk" aria-labelledby="tab-sdk" tabindex="0" hidden><code>import { InferenceClient, verifyDeploymentImageProvenance } from '@nearai/inference-sdk';
+<pre role="tabpanel" id="pane-sdk" aria-labelledby="tab-sdk" tabindex="0" hidden><code>// NEAR AI's SDK, pinned at nearai/inference-sdk@a0bf5fd (E2EE v3, PR #127).
+import { InferenceClient, verifyDeploymentImageProvenance } from '@nearai/inference-sdk';
 
 // "Verified" must mean NEAR's own gateway images, not just genuine TEE hardware.
 const build = (repository, workflow = '.github/workflows/build.yml') => ({ repository, workflow });
@@ -320,87 +299,126 @@ const completion = await client.chat.completions.create({
 // Check the model's signature over the exact request and reply bytes.
 const receipt = await client.verifyResponse(completion.id);
 console.log(`Verified ${receipt.signatureKind} reply:`, completion.choices[0].message.content);</code></pre>
-              <div class="t-out" id="console-out" aria-hidden="true"></div>
+              <div class="console-out" id="console-out" aria-hidden="true"></div>
             </div>
-            <p class="t-foot"><span class="tag-sim">Simulated</span>Typed in your browser. Nothing is sent.</p>
+            <p class="console-foot"><span class="tag-sim">Simulated</span> Typed in your browser. Nothing is sent.</p>
           </div>
-          <ul class="specs" aria-label="Endpoint">
-            <li class="cut"><span>Base URL</span><code>api.infernear.dev/v1</code><button class="copy" type="button" data-copy="https://api.infernear.dev/v1" hidden>Copy</button></li>
-            <li class="cut"><span>Models</span><code>GET /v1/models</code></li>
-            <li class="cut"><span>Keys</span>Wallet-signed · 30 days · revocable</li>
+        </div>
+      </section>
+
+      <!-- 005 NEAR -->
+      <section class="sec light" id="near" data-tone="light" data-index="005" data-name="NEAR" aria-labelledby="near-h">
+        <div class="marquee" aria-hidden="true">
+          <div class="marquee-row" data-drift>
+            <span>NEAR AI Cloud</span><i></i><span>NEAR Intents</span><i></i><span>NEAR contracts</span><i></i><span>Rhea Lend</span><i></i>
+            <span>NEAR AI Cloud</span><i></i><span>NEAR Intents</span><i></i><span>NEAR contracts</span><i></i><span>Rhea Lend</span><i></i>
+          </div>
+        </div>
+        <div class="wrap">
+          <p class="label" data-reveal><b>005</b> NEAR</p>
+          <h2 id="near-h" class="h2" data-split>No NEAR account needed. We run that side.</h2>
+          <ul class="stack">
+            <li data-reveal><span class="k">01</span><h3>NEAR AI Cloud</h3><p>Attested TEE models</p></li>
+            <li data-reveal><span class="k">02</span><h3>NEAR Intents</h3><p>Base USDC in and out</p></li>
+            <li data-reveal><span class="k">03</span><h3>NEAR contracts</h3><p>Credit ledger · Rhea vault</p></li>
+            <li data-reveal><span class="k">04</span><h3>Rhea Lend</h3><p>Lending yield</p></li>
           </ul>
         </div>
       </section>
 
       <!-- 006 Proof -->
-      <section class="scene paper flow" id="proof" data-scene="proof" data-tone="light" data-index="006" data-name="Proof" aria-labelledby="proof-h">
-        <div class="stage proof">
-          <div class="proof-head">
-            <p class="label"><b>006</b><span data-scramble>Proof</span></p>
-            <h2 id="proof-h" class="display h2" data-chars>Check every contract.</h2>
-            <ul class="verify">
-              <li><b>Addresses</b>Every contract on a public explorer</li>
-              <li><b>Enclave</b>Attestation and signatures, checked by NEAR AI's SDK</li>
-              <li><b>Receipts</b>Every call debited on NEAR, by inference ID</li>
-            </ul>
-          </div>
-          <table class="addrs">
+      <section class="sec band" id="proof" data-tone="light" data-index="006" data-name="Proof" aria-labelledby="proof-h">
+        <div class="wrap">
+          <p class="label" data-reveal><b>006</b> Proof</p>
+          <h2 id="proof-h" class="h2" data-split>Check every contract.</h2>
+
+          <table class="addrs" data-reveal>
             <caption class="sr-only">Contracts on mainnet</caption>
             <thead>
-              <tr><th scope="col">Contract</th><th scope="col">Chain</th><th scope="col">Address</th><th scope="col">Admin</th></tr>
+              <tr><th scope="col">Contract</th><th scope="col">Address</th><th scope="col">Admin</th></tr>
             </thead>
             <tbody>
               <tr>
-                <th scope="row"><span class="row-id"><span class="tok" title="NEAR credit ledger"><i data-icon="near" class="tok-coin"></i></span><span>Credit ledger</span></span></th>
-                <td><span class="chainb"><i data-icon="near"></i>NEAR</span></td>
-                <td class="addr"><a href="https://nearblocks.io/address/connector.infernear-ai.near"><code>connector.infernear-ai.near</code></a><button class="copy" type="button" data-copy="connector.infernear-ai.near" aria-label="Copy the credit ledger account" hidden>Copy</button></td>
-                <td><span class="pill">None</span></td>
-              </tr>
-              <tr>
-                <th scope="row"><span class="row-id"><span class="tok" title="USDC on NEAR"><i data-icon="usdc" class="tok-coin"></i><i data-icon="near" class="tok-chain"></i></span><span>Rhea USDC vault</span></span></th>
-                <td><span class="chainb"><i data-icon="near"></i>NEAR</span></td>
-                <td class="addr"><a href="https://nearblocks.io/address/rhea.infernear-ai.near"><code>rhea.infernear-ai.near</code></a><button class="copy" type="button" data-copy="rhea.infernear-ai.near" aria-label="Copy the Rhea USDC vault account" hidden>Copy</button></td>
-                <td><span class="pill pill-amber">Operator key · hackathon</span></td>
-              </tr>
-              <tr>
-                <th scope="row"><span class="row-id"><span class="tok" title="USDC on Base"><i data-icon="usdc" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span><span>Aave USDC vault</span></span></th>
-                <td><span class="chainb"><i data-icon="base"></i>Base</span></td>
+                <th scope="row"><span class="chip chip-base">Base</span>Aave USDC</th>
                 <td class="addr"><a href="https://basescan.org/address/0x19110449a361855d30090BC26112E9a5c3793198"><code>0x19110449a361855d30090BC26112E9a5c3793198</code></a><button class="copy" type="button" data-copy="0x19110449a361855d30090BC26112E9a5c3793198" aria-label="Copy the Aave USDC vault address" hidden>Copy</button></td>
                 <td><span class="pill">None</span></td>
               </tr>
               <tr>
-                <th scope="row"><span class="row-id"><span class="tok" title="cbETH on Base"><i data-icon="cbeth" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span><span>cbETH vault</span></span></th>
-                <td><span class="chainb"><i data-icon="base"></i>Base</span></td>
+                <th scope="row"><span class="chip chip-base">Base</span>cbETH</th>
                 <td class="addr"><a href="https://basescan.org/address/0x20B3852c32FFCBfD6a713045e7eA411683446f40"><code>0x20B3852c32FFCBfD6a713045e7eA411683446f40</code></a><button class="copy" type="button" data-copy="0x20B3852c32FFCBfD6a713045e7eA411683446f40" aria-label="Copy the cbETH vault address" hidden>Copy</button></td>
                 <td><span class="pill">None</span></td>
               </tr>
               <tr>
-                <th scope="row"><span class="row-id"><span class="tok" title="Pendle PT-deJAAA on Base"><i data-icon="pendle" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span><span>Pendle PT-deJAAA vault</span></span></th>
-                <td><span class="chainb"><i data-icon="base"></i>Base</span></td>
+                <th scope="row"><span class="chip chip-base">Base</span>Pendle PT-deJAAA</th>
                 <td class="addr"><a href="https://basescan.org/address/0x5801707F6AF54f33Ab3E1910c09D79B81D4Be92c"><code>0x5801707F6AF54f33Ab3E1910c09D79B81D4Be92c</code></a><button class="copy" type="button" data-copy="0x5801707F6AF54f33Ab3E1910c09D79B81D4Be92c" aria-label="Copy the Pendle PT-deJAAA vault address" hidden>Copy</button></td>
                 <td><span class="pill">None</span></td>
               </tr>
+              <tr>
+                <th scope="row"><span class="chip chip-near">NEAR</span>Credit ledger</th>
+                <td class="addr"><a href="https://nearblocks.io/address/connector.infernear-ai.near"><code>connector.infernear-ai.near</code></a><button class="copy" type="button" data-copy="connector.infernear-ai.near" aria-label="Copy the credit ledger account" hidden>Copy</button></td>
+                <td><span class="pill">None</span></td>
+              </tr>
+              <tr>
+                <th scope="row"><span class="chip chip-near">NEAR</span>Rhea USDC</th>
+                <td class="addr"><a href="https://nearblocks.io/address/rhea.infernear-ai.near"><code>rhea.infernear-ai.near</code></a><button class="copy" type="button" data-copy="rhea.infernear-ai.near" aria-label="Copy the Rhea USDC vault account" hidden>Copy</button></td>
+                <td><span class="pill pill-amber">Operator key · hackathon</span></td>
+              </tr>
             </tbody>
           </table>
-          <p class="readme"><a href="https://github.com/alvinyap510/near-hackathon-infernear#readme">Full technical notes in the README <span aria-hidden="true">→</span></a></p>
+
+          <h3 class="limits-h" data-reveal>Known limits</h3>
+          <div class="limits" data-reveal>
+            <details>
+              <summary>Private mode verified live once</summary>
+              <p>
+                A 2026-11-12 probe: JS and Python, plain and streaming. Signatures verified; charges matched NEAR's bill.
+                <a href="https://github.com/alvinyap510/near-hackathon-infernear/blob/main/relay/README.md#live-sdk-probe--passed-on-2026-11-12">Details</a>
+              </p>
+            </details>
+            <details>
+              <summary>Standard mode: the relay reads content</summary>
+              <p>The relay and the Cloudflare Tunnel in front of it see standard-mode prompts and replies in transit.</p>
+            </details>
+            <details>
+              <summary>Encryption hides content, not metadata</summary>
+              <p>Request size, timing and token counts stay visible to the relay.</p>
+            </details>
+            <details>
+              <summary>Model build check is off</summary>
+              <p>TEE attestation and signatures are still verified. NEAR's proxy-build check rejects NEAR's own deploys.</p>
+            </details>
+            <details>
+              <summary>Relay trusted for prices and attribution</summary>
+              <p>It cannot spend principal. Both are recomputable from chain data.</p>
+            </details>
+            <details>
+              <summary>Deposits carry strategy risk</summary>
+              <p>Losses fall on depositors pro-rata, with no reserve. Each vault is capped at about $10K.</p>
+            </details>
+          </div>
         </div>
       </section>
 
       <!-- 007 Launch -->
-      <section class="scene dark" id="launch" data-scene="launch" data-tone="dark" data-index="007" data-name="Launch" style="--len: 150" aria-labelledby="launch-h">
-        <div class="stage launch">
-          <h2 id="launch-h" class="display launch-h" data-chars>Keep the principal. Let the yield pay.</h2>
-          <a class="btn btn-mint btn-lg cut magnetic" href="https://app.infernear.dev"><span class="sq sq-ink" aria-hidden="true"></span><span>Launch app</span></a>
-          <footer class="foot">
-            <img src="/logo-dark.svg" alt="InferNear" width="116" height="19" />
-            <p>Built at NEAR HACKATHON, 1–14 Nov 2026.</p>
-            <nav aria-label="Footer">
-              <a href="https://app.infernear.dev">App</a>
-              <a href="https://api.infernear.dev/v1/models">API</a>
-              <a href="https://github.com/alvinyap510/near-hackathon-infernear">Source</a>
-            </nav>
-          </footer>
+      <section class="outro" id="launch" data-tone="dark" data-index="007" data-name="Launch" aria-labelledby="launch-h">
+        <div class="wrap">
+          <svg class="outro-mark" viewBox="4 4 24 24" aria-hidden="true">
+            <path class="om-l" d="M4 5.5A1.5 1.5 0 0 1 5.5 4H12v4H8v16h4v4H5.5A1.5 1.5 0 0 1 4 26.5z" />
+            <path class="om-r" d="M20 4h6.5A1.5 1.5 0 0 1 28 5.5v21a1.5 1.5 0 0 1-1.5 1.5H20v-4h4V8h-4z" />
+            <rect class="om-c" x="12" y="12" width="8" height="8" rx="1" />
+          </svg>
+          <h2 id="launch-h" class="mega" data-split>Keep the principal. Let the yield pay.</h2>
+          <a class="btn btn-mint btn-lg" href="https://app.infernear.dev"><span class="sq sq-ink" aria-hidden="true"></span>Launch app</a>
         </div>
+        <footer class="foot">
+          <img src="/logo-dark.svg" alt="InferNear" width="122" height="20" />
+          <p>Built at NEAR HACKATHON, 1–14 Nov 2026.</p>
+          <nav aria-label="Footer">
+            <a href="https://app.infernear.dev">App</a>
+            <a href="https://api.infernear.dev/v1/models">API</a>
+            <a href="https://github.com/alvinyap510/near-hackathon-infernear">Source</a>
+          </nav>
+        </footer>
       </section>
     </main>
 
