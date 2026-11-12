@@ -795,37 +795,37 @@ svg {
   gap: 12px;
   font-family: var(--mono);
   font-stretch: 87.5%;
-  font-size: 10.5px;
+  font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--snow-2);
+  color: rgba(244, 244, 240, 0.85);
 }
 
-.scroll-cue span {
-  position: relative;
-  width: 1px;
-  height: 44px;
-  overflow: hidden;
-  background: rgba(244, 244, 240, 0.2);
+/* A mint arrow pointing down with a slow, small nudge; static under reduced motion. */
+.cue-arrow {
+  width: 14px;
+  height: 52px;
+  overflow: visible;
+  fill: none;
+  stroke: var(--mint);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-.scroll-cue span::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--mint);
-  transform: translateY(-100%);
-}
-
-.motion .scroll-cue span::after {
-  animation: cue 1.8s var(--ease) infinite;
+.motion .cue-arrow {
+  animation: cue 2.4s ease-in-out infinite;
 }
 
 @keyframes cue {
-  60%,
+  0%,
   100% {
-    transform: translateY(100%);
+    transform: translateY(-3px);
+  }
+
+  50% {
+    transform: translateY(3px);
   }
 }
 
