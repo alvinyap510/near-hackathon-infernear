@@ -19,7 +19,7 @@ async function deploy() {
   const wasm=await readFile(required('NEAR_RHEA_WASM'));
   if(BigInt(await view(provider,usdc,'ft_balance_of',{account_id:sponsor.accountId}))<cushion)throw new Error('cushion funding unavailable');
   stage('create_account',{account:id});
-  await sponsor.createAccount(id,publicKey,nearToYocto(required('NEAR_RHEA_INITIAL_NEAR')));
+  await sponsor.createAccount({newAccountId:id,publicKey,nearToTransfer:nearToYocto(required('NEAR_RHEA_INITIAL_NEAR'))});
   const vault=new Account(id,provider,key);
   // Register and donate before publishing code. Deploy+new are one atomic action
   // batch: no public uninitialized contract can be front-run to replace its config.
@@ -39,6 +39,8 @@ async function deploy() {
     actions.functionCall('new',{usdc,rhea,intents,treasury,cushion:String(cushion),min_deposit:required('NEAR_RHEA_MIN_DEPOSIT'),cap:required('NEAR_RHEA_CAP')},30_000_000_000_000n,0n)
   ]});
   if(await view(provider,id,'idle')!==String(cushion))throw new Error('initial idle mismatch');
+  // Opt-in for a recoverable demo deployment: the bootstrap key stays, so the account is NOT keyless.
+  if(process.env.NEAR_RHEA_KEEP_KEY==='true'){stage('bootstrap_key_kept',{account:id});return;}
   const keys=await provider.viewAccessKeyList({accountId:id});
   const full=keys.keys.filter(k=>k.access_key.permission==='FullAccess');
   // Remove the signing key last so all other full-access keys can be deleted.
@@ -48,4 +50,4 @@ async function deploy() {
   if(remaining.keys.some(k=>k.access_key.permission==='FullAccess'))throw new Error('full-access keys remain');
   stage('keyless_vault_ready',{account:id});
 }
-void deploy().catch(()=>{stage('deployment_failed',{reason:'inspect_last_stage_and_recover_manually_with_the_bootstrap_key'});process.exitCode=1;});
+void deploy().catch(error=>{stage('deployment_failed',{reason:'inspect_last_stage_and_recover_manually_with_the_bootstrap_key',error:String(error?.message??error).slice(0,200)});process.exitCode=1;});
