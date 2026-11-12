@@ -465,6 +465,8 @@ if (deckOn) {
   let animating = false;
   let lastWheel = 0;
   let gestureUsed = false;
+  let lastDir = 0;
+  const recent = []; // the last few |deltaY| values, to tell a decaying tail from a fresh swipe
   let tween = 0;
 
   const topOf = (el) => el.getBoundingClientRect().top + scrollY;
@@ -478,7 +480,7 @@ if (deckOn) {
   const settle = (i) => {
     const id = slides[i].id;
     history.replaceState(null, '', id === 'top' ? location.pathname + location.search : `#${id}`);
-    requestScroll();
+    onScroll();
   };
   const scrollToY = (y, i) => {
     cancelAnimationFrame(tween);
@@ -529,11 +531,26 @@ if (deckOn) {
       e.preventDefault();
       // Gesture gaps use the input's own timestamps, so a busy main thread cannot split one fling.
       const now = e.timeStamp;
-      if (now - lastWheel > QUIET) gestureUsed = false;
+      const d = Math.abs(e.deltaY);
+      const dir = Math.sign(e.deltaY);
+      if (now - lastWheel > QUIET) {
+        gestureUsed = false;
+        recent.length = 0;
+      }
       lastWheel = now;
-      if (animating || gestureUsed || Math.abs(e.deltaY) < 2) return;
+      // A fresh swipe during the last one's inertia tail: the delta jumps well above the decaying
+      // tail's recent average, or the direction reverses. Small jitter never qualifies.
+      const avg = recent.length >= 4 ? recent.reduce((a, b) => a + b, 0) / recent.length : Infinity;
+      const fresh = (d > avg * 2 + 8 && d > 16) || (lastDir !== 0 && dir !== 0 && dir !== lastDir && d > 8);
+      recent.push(d);
+      if (recent.length > 5) recent.shift();
+      if (dir) lastDir = dir;
+      if (animating || d < 2) return;
+      if (gestureUsed && !fresh) return;
       gestureUsed = true;
-      advance(Math.sign(e.deltaY));
+      recent.length = 0;
+      recent.push(d);
+      advance(dir);
     },
     { passive: false },
   );
