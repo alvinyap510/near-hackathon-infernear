@@ -126,11 +126,10 @@ const revealer = new IntersectionObserver(
 );
 for (const el of $$('[data-reveal], [data-split], .vault, .outro')) revealer.observe(el);
 
-/* ---------- 001: illustrative ledger ---------- */
+/* ---------- 001: the position card ---------- */
 
 const credits = $('#credits');
 const log = $('#ledger-log');
-const flowPath = $('#flow-path');
 const ledger = $('.ledger');
 let value = 0.00421;
 const fmt = (v) => `$${v.toFixed(6)}`;
@@ -144,36 +143,38 @@ const addLog = (text, sign) => {
 addLog('yield posted · keeper', 1);
 addLog('call debited · per inference ID', -1);
 if (motion) {
-  let acc = 0;
-  let n = 0;
-  const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-  dot.setAttribute('r', '4');
-  dot.setAttribute('class', 'flow-dot');
-  flowPath.parentNode.append(dot);
-  const len = flowPath.getTotalLength();
-  let ft = 0;
+  // Every 4.8 s a drop of yield forms under the principal and lands in credits at 1.45 s
+  // (the CSS drip timeline); a call is debited 2.4 s after that.
+  const CYCLE = 4.8;
+  const LAND = 1.45;
+  let t = CYCLE;
+  let landed = true;
+  let debited = true;
+  const restart = (cls) => {
+    ledger.classList.remove(cls);
+    void ledger.offsetWidth;
+    ledger.classList.add(cls);
+  };
   animate(ledger, (dt) => {
     value += dt * 0.0000137;
-    acc += dt;
-    if (acc > 2.4) {
-      acc = 0;
-      n++;
-      if (n % 2) {
-        value += 0.0004;
-        addLog('yield posted · keeper', 1);
-        ledger.classList.remove('bump');
-        void ledger.offsetWidth;
-        ledger.classList.add('bump');
-      } else {
-        value = Math.max(0, value - 0.00018);
-        addLog('call debited · per inference ID', -1);
-      }
+    t += dt;
+    if (t >= CYCLE) {
+      t = 0;
+      landed = debited = false;
+      restart('drip');
+    }
+    if (!landed && t >= LAND) {
+      landed = true;
+      value += 0.0004;
+      addLog('yield posted · keeper', 1);
+      restart('bump');
+    }
+    if (!debited && t >= LAND + 2.4) {
+      debited = true;
+      value = Math.max(0, value - 0.00018);
+      addLog('call debited · per inference ID', -1);
     }
     credits.textContent = fmt(value);
-    ft = (ft + dt / 1.6) % 1;
-    const pt = flowPath.getPointAtLength(ft * len);
-    dot.setAttribute('cx', pt.x.toFixed(1));
-    dot.setAttribute('cy', pt.y.toFixed(1));
   });
 }
 

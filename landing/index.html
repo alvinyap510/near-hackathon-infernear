@@ -109,16 +109,17 @@
           <figure class="ledger ticks" data-reveal aria-labelledby="ledger-cap">
             <figcaption id="ledger-cap" class="ledger-head">
               <span>Your position</span>
-              <span class="tag-sim">Illustrative</span>
+              <span class="tag-ok">Deposited</span>
             </figcaption>
             <div class="ledger-row">
               <span class="k">Principal</span>
               <span class="v"><svg class="lock" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" /><path d="M5.5 7V5a2.5 2.5 0 015 0v2" /></svg>1,000.00 USDC</span>
               <span class="n">stays redeemable</span>
             </div>
-            <svg class="ledger-flow" viewBox="0 0 400 40" aria-hidden="true">
-              <path id="flow-path" d="M10 4 C 10 30, 390 10, 390 36" pathLength="1" />
-            </svg>
+            <div class="ledger-drip" aria-hidden="true">
+              <svg class="drop" viewBox="0 0 12 16"><path d="M6 1C4.2 4.2 1.2 7.6 1.2 10.6a4.8 4.8 0 009.6 0C10.8 7.6 7.8 4.2 6 1z" /></svg>
+              <span class="ripple"></span>
+            </div>
             <div class="ledger-row big">
               <span class="k">Credits</span>
               <span class="v mono" id="credits" aria-live="off">$0.004210</span>
@@ -226,7 +227,6 @@
               </ul>
             </div>
           </div>
-          <p class="yt-loss" data-reveal>Depositors bear strategy losses, pro-rata.</p>
         </div>
       </section>
 
@@ -358,7 +358,7 @@ const receipt = await client.verifyResponse(completion.id);
 console.log(`Verified ${receipt.signatureKind} reply:`, completion.choices[0].message.content);</code></pre>
               <div class="console-out" id="console-out" aria-hidden="true"></div>
             </div>
-            <p class="console-foot"><span class="tag-sim">Simulated</span> Typed in your browser. Nothing is sent.</p>
+            <p class="console-foot">Example request and response.</p>
           </div>
         </div>
       </section>

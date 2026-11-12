@@ -325,15 +325,16 @@ svg {
   color: #f6c94a;
 }
 
-.tag-sim {
+/* A position's status, as a live product card shows it. */
+.tag-ok {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   height: 20px;
   padding: 1px calc(7px - 0.1em) 0 7px;
   border-radius: 5px;
-  background: rgba(242, 183, 5, 0.16);
-  color: #6f5100;
+  background: rgba(0, 236, 151, 0.16);
+  color: var(--mint-ink);
   font-family: var(--mono);
   font-stretch: 87.5%;
   font-size: 9.5px;
@@ -342,17 +343,12 @@ svg {
   text-transform: uppercase;
 }
 
-.dark .tag-sim,
-.console .tag-sim {
-  color: #f6c94a;
-}
-
-.tag-sim::before {
+.tag-ok::before {
   content: '';
   width: 5px;
   height: 5px;
   border-radius: 1px;
-  background: var(--amber);
+  background: var(--mint-ink);
 }
 
 .copy {
@@ -1123,25 +1119,97 @@ svg {
   stroke-width: 1.6;
 }
 
-.ledger-flow {
-  width: 100%;
+/* Yield drips off the principal into the credits figure below; main.js restarts the drip at
+   each posting. Without motion the drop just hangs under the principal. */
+.ledger-drip {
+  --x: calc(96px + 12px + 64px);
+  --fall: 78px;
+  position: relative;
+  height: 50px;
+  margin-bottom: -2px;
+}
+
+.drop {
+  position: absolute;
+  top: 0;
+  left: var(--x);
+  width: 14px;
   height: auto;
-  aspect-ratio: 10 / 1;
-  margin: 10px 0 -6px;
+  aspect-ratio: 3 / 4;
+  margin-left: -7px;
   overflow: visible;
+  transform-origin: 50% 0;
 }
 
-.ledger-flow path {
-  fill: none;
-  stroke: var(--line);
-  stroke-width: 1.5;
-  stroke-dasharray: 0.012 0.01;
-}
-
-.flow-dot {
+.drop path {
   fill: var(--mint);
   stroke: var(--mint-ink);
-  stroke-width: 1.5;
+  stroke-width: 1.2;
+}
+
+.ripple {
+  position: absolute;
+  top: var(--fall);
+  left: var(--x);
+  width: 36px;
+  height: 9px;
+  margin: -4.5px 0 0 -18px;
+  border: 1.5px solid var(--mint-ink);
+  border-radius: 50%;
+  opacity: 0;
+}
+
+.motion .ledger.drip .drop {
+  animation: drip 2.2s both;
+}
+
+.motion .ledger.drip .ripple {
+  animation: ripple 0.7s ease-out 1.45s;
+}
+
+/* Forms and swells (0-48%), lets go and falls faster and faster (48-66%), splashes. */
+@keyframes drip {
+  0% {
+    opacity: 0;
+    transform: scale(0.2, 0.12);
+    animation-timing-function: cubic-bezier(0.3, 0, 0.4, 1);
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  40% {
+    transform: scale(0.9);
+  }
+
+  48% {
+    transform: scale(0.95, 1.2);
+    animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45);
+  }
+
+  66% {
+    opacity: 1;
+    transform: translateY(calc(var(--fall) - 22px)) scale(0.85, 1.2);
+  }
+
+  70%,
+  100% {
+    opacity: 0;
+    transform: translateY(calc(var(--fall) - 9px)) scale(1.5, 0.3);
+  }
+}
+
+@keyframes ripple {
+  from {
+    opacity: 0.9;
+    transform: scale(0.3);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(1.6);
+  }
 }
 
 .motion .ledger.bump .v.mono {
@@ -2674,6 +2742,10 @@ svg {
     grid-template-columns: 78px minmax(0, 1fr);
   }
 
+  .ledger-drip {
+    --x: calc(78px + 12px + 64px);
+  }
+
   .ledger-row .n {
     grid-column: 2;
     margin-top: -8px;
@@ -3366,23 +3438,6 @@ html:not(.deck) .hud-bottom {
   height: 22px;
 }
 
-.yt-loss {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin-top: 14px;
-  font-size: 13px;
-  color: var(--snow-2);
-}
-
-.yt-loss::before {
-  content: '';
-  width: 7px;
-  height: 7px;
-  border-radius: 1.5px;
-  background: var(--amber);
-}
-
 .deck .ytypes {
   margin-top: 28px;
 }
@@ -3395,10 +3450,6 @@ html:not(.deck) .hud-bottom {
   .deck .yt-next {
     margin-top: 18px;
     padding-top: 12px;
-  }
-
-  .deck .yt-loss {
-    margin-top: 10px;
   }
 
   .deck .yt-top .shape {
