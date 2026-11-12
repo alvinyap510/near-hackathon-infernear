@@ -79,4 +79,4 @@ The script deploys one selected vault, then donates its cushion before any inten
 forge test --offline --match-contract DeployTest
 ```
 
-Root/Alvin perform any later broadcast. The script was not run with a broadcast flag in this dispatch. `StakingRewardsVault` retains its separate-token constructor check, principal backing and offline tests, with no branch in this Base deployment script.
+The operator performs any broadcast; the script has not been run with a broadcast flag. `StakingRewardsVault` retains its separate-token constructor check, principal backing and offline tests, with no branch in this Base deployment script.

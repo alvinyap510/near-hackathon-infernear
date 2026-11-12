@@ -45,7 +45,7 @@ All of them are in the root `.env.example`. Each EVM vault's deposit-token addre
 - **NEAR:** plain `fetch` JSON-RPC `query`/`call_function`, `finality: final`, for `account(user)` and `debited_amount(inference_id)`. CAIP-10 addresses are lower case. U128 JSON strings are parsed directly as `bigint`; numeric money responses are rejected because they may already have lost precision. No NEAR wallet/account is required from the user.
 - **Keys:** each action uses a new EIP-4361 wallet proof. `GET /auth/nonce` supplies the nonce; the message binds to the relay host/origin, configured chain, issued-at and five-minute expiration. `POST /keys` and `/keys/revoke` send only `{message, signature}`. There is no session token or sign-in endpoint. A proof selected in step 1 is consumed by one action; subsequent create/revoke actions request another signature. Relay epoch/transaction/expiry fields are mapped to the UI types; API keys remain only in tab memory.
 
-The relay must allow the dashboard origin through its `RELAY_WEB_ORIGIN` CORS setting. Browser RPC endpoints must also permit the dashboard origin. This dispatch was verified with offline providers, not a funded wallet or deployed InferNear contracts.
+The relay must allow the dashboard origin through its `RELAY_WEB_ORIGIN` CORS setting. Browser RPC endpoints must also permit the dashboard origin. The live mode was verified with offline providers, not a funded wallet or deployed InferNear contracts.
 
 ## Explicitly simulated features
 
