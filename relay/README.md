@@ -2,7 +2,7 @@
 
 One TypeScript/Node process. The gateway authenticates API clients, reserves credits in memory, forwards encrypted requests and raw responses, and settles receipts on the NEAR connector. The keeper handles Aave, cbETH RateVault, Pendle PT and the NEAR Rhea vault, posts finalized cumulative yield with a frozen USD rate, and bridges explicitly configured treasury tokens through 1Click. The connector remains the durable ledger.
 
-**Verified locally with synthetic fixtures and fake HTTP/RPC servers. No live inference, chain transaction or bridge was executed.** The fixture data is not real ciphertext or signed usage; [fixture provenance](test/fixtures/README.md) states its limits.
+**Verified locally with synthetic fixtures and fake HTTP/RPC servers, plus one live inference probe against NEAR AI (below). No chain transaction or bridge was executed.** The fixture data is not real ciphertext or signed usage; [fixture provenance](test/fixtures/README.md) states its limits.
 
 ## Install and verify
 
@@ -81,7 +81,7 @@ Unsigned transaction targets, deposits and other body fields are discarded. The 
 
 Review regressions are labelled by finding ID in `test/review.test.ts` (CR1-1–7, Flex1-1–3, Flex2-1–2), `test/adapters.test.ts` (Flex2-3 configured minimum), and `test/gateway.test.ts` (Flex1-4 DNS reference vector). These are offline tests, not evidence that the live SDK probe passed.
 
-## Live SDK spike — prepared, not run
+## Live SDK probe — passed on 2026-11-12
 
 The probe uses a fake connector and temporary local API key, plus **real paid NEAR AI inference**. It never connects to EVM or NEAR RPC. Requires Git, a native build toolchain and Python 3.12+. Install the official SDK outside this repository at the exact reviewed commit:
 
@@ -95,8 +95,12 @@ Set `SPIKE_SDK_DIR` to that directory and fill `NEAR_AI_BASE_URL`, `NEAR_AI_API_
 npm run spike
 ```
 
-Setup and live commands above remain **unrun**. Their shell/Python syntax and TypeScript types were checked. The SDK pin is `a0bf5fdfde5c9179d50f7459bc36db6db326332e`; both languages install from that checkout. The application-proxy client disables SPKI binding, keeps attestation verification on, applies the [configured build provenance policies](scripts/provenance.json) to the gateway and every model report, and verifies every complete SDK response. Policies identify NEAR's published source/workflow identities; they do not prove the full runtime configuration.
+**Result (2026-11-12, model `z-ai/glm-5.3-flash`):** the probe completed in both JS and Python, for JSON and streaming calls: v3 encryption through this relay, `provider_tee` response signatures, a debit for every completion, and all five relay charges equal to NEAR's own billed cost. Both reply-key tampering requests were rejected, and an attacker key could not decrypt the reply. Reproducing it needs your own NEAR AI key and spends a few cents at most. The SDK pin is `a0bf5fdfde5c9179d50f7459bc36db6db326332e`; both languages install from that checkout (Python 3.12 or newer).
+
+The application-proxy client disables SPKI binding, keeps TEE attestation verification on for the gateway and the model, applies the [gateway build provenance policy](scripts/provenance.json) (`cloud-api`, `cvm-ingress`), and verifies every complete SDK response. Policies identify NEAR's published source/workflow identities; they do not prove the full runtime configuration.
+
+**Model build provenance is not checked.** NEAR's compose-manager provenance verifier (the same at the SDK's latest main) checks only the services named in a model machine's newest deploy action. On 2026-11-12 the newest action on every attested chat model's machine restarted only a helper container, so the verifier rejected every model even though NEAR's published compose file still runs `nearaidev/vllm-proxy-rs`. Model TEE hardware attestation, signing-key binding and response signatures remain checked; we will re-enable the build check once NEAR's verifier or deployments pass it again.
 
 The script checks JS and Python JSON/streaming calls, v3 headers, anonymous bootstrap, model/gateway signature kinds, stream usage, headerless-stream body-ID settlement, reply-key replay rejection, and whether injected responses decrypt under an attacker key. It cross-checks visible billing costs against usage/prices; zero costs may need a later check for billing propagation. Whether anonymous reads are unbilled still requires checking the operator's account; the billing API does not enumerate those reads. Results contain metadata and byte hashes in ignored `spike-output/results.json`, not API keys or prompt/response bodies.
 
-Do not claim live v3 or streaming support until this probe passes. If encrypted streaming has no usable usage, the agreed v1 decision is to disable streaming and document it. V3 does not prevent an active relay from learning via length, timing and token-count oracles; complete confidentiality against an active relay is not claimed. A plaintext mode is not provided.
+Encrypted streaming returned usable usage, so streaming stays enabled. V3 does not prevent an active relay from learning via length, timing and token-count oracles; complete confidentiality against an active relay is not claimed. A plaintext mode is not provided.

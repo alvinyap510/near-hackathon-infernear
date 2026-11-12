@@ -6,7 +6,7 @@ InferNear is an OpenAI-format API endpoint on top of NEAR AI's private TEE model
 
 Built at the NEAR HACKATHON (1–14 Nov 2026).
 
-> **Status: built and tested locally; not yet deployed.** Every command in this README runs from a clean clone, offline after install, against mocks and fixtures. **No live inference, mainnet deployment, deposit or bridge has been run yet.** The dashboard runs on clearly labelled mock data until the contracts are deployed, and its "Try the API" panel is a labelled simulation. This section will list deployed addresses and the live endpoint once they exist.
+> **Status: built and tested locally; not yet deployed.** Every command in this README runs from a clean clone, offline after install, against mocks and fixtures. **Live private inference has been tested once through the relay (see below); no mainnet deployment, deposit or bridge has been run yet.** The dashboard runs on clearly labelled mock data until the contracts are deployed, and its "Try the API" panel is a labelled simulation. This section will list deployed addresses and the live endpoint once they exist.
 
 ## How it works
 
@@ -99,7 +99,8 @@ No contract has an owner, admin, pause or upgrade path. The Rhea vault's full-ac
 
 ## Not done yet, and known limits
 
-- **Live inference is unverified.** The SDK probe (`relay`, `npm run spike`) is written but has not run against NEAR AI. Until it passes, end-to-end encryption, streaming usage and signature checks are designed and unit-tested only.
+- **Live inference was verified once, by probe.** On 2026-11-12 `npm run spike` in `relay` sent encrypted JS and Python requests, plain and streaming, through the relay to a NEAR AI TEE model; TEE signatures verified and every charge matched NEAR's bill ([details](relay/README.md#live-sdk-probe--passed-on-2026-11-12)). It needs your own NEAR AI key to reproduce.
+- **The model build check is off.** The SDK still verifies the model's TEE hardware attestation and signatures, but NEAR's check that the model runs NEAR's published proxy build currently rejects NEAR's own deploys, so we leave it out until NEAR fixes it. The gateway build check stays on.
 - **Nothing is deployed.** No vault, connector or relay is live, so the dashboard uses mock data.
 - **The relay is trusted for prices and attribution.** It cannot spend principal, but it decides how yield is priced and who earned it; both are publicly recomputable from chain data.
 - **Encryption hides content, not metadata.** A relay can still observe request size, timing and token counts.

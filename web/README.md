@@ -49,7 +49,7 @@ The relay must allow the dashboard origin through its `RELAY_WEB_ORIGIN` CORS se
 
 ## Explicitly simulated features
 
-**Try the API remains a mock in both modes** (`isRunMock: true`) pending the relay/SDK spike. Its reply, encryption/attestation/signature display and debit are simulated and labelled. A mock run never spends live credits, sends a prompt to the relay, or presents its synthetic debit as a NEAR read. The live `debitedAmount` method is ready for future real receipts. The bridge panel also remains a labelled, simulated dry-run quote with no deposit address.
+**Try the API remains a mock in both modes** (`isRunMock: true`) until the relay is deployed and the panel is wired to it (the relay/SDK probe itself passed live on 2026-11-12). Its reply, encryption/attestation/signature display and debit are simulated and labelled. A mock run never spends live credits, sends a prompt to the relay, or presents its synthetic debit as a NEAR read. The live `debitedAmount` method is ready for future real receipts. The bridge panel also remains a labelled, simulated dry-run quote with no deposit address.
 
 Receipts use `source: 'signed_usage' | 'reservation'` and numeric token fields. Cost rounds the combined input/output nano-USD amount once to micro-USD, matching the relay. The bill check compares `min(signed cost, reservation)`; a reservation receipt is labelled **“charged at the reserved maximum: no usage returned”**. Reservation metadata belongs to the dashboard call result, not an extra field in the connector's receipt. Synthetic calls include their own simulated debit for the mock bill check.
 
