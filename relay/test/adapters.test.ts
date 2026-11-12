@@ -110,7 +110,7 @@ test('real NEAR adapter uses finalized views, distinct signers, numeric receipts
 });
 
 test('Flex2-3: real EVM adapter reads finalized holders and honors the configured bridge minimum', async t => {
-  let treasury = 100_000n, payable = 0n;
+  let treasury = 100_000n, payable = 0n, clock = 0;
   const reads: any[] = [], scans: any[] = [], transactions: Hex[] = [];
   let nonce = 0;
   const block = { number: '0x64', hash, parentHash: hash, nonce: '0x0000000000000000', sha3Uncles: hash, logsBloom: '0x' + '00'.repeat(256), transactionsRoot: hash, stateRoot: hash, receiptsRoot: hash,
@@ -149,7 +149,7 @@ test('Flex2-3: real EVM adapter reads finalized holders and honors the configure
   await new Promise<void>(done => oneClick.listen(0, '127.0.0.1', done));
   t.after(async () => { oneClick.closeAllConnections(); await new Promise<void>(done => oneClick.close(() => done())); });
   const ports = evmPorts({ rpc: fake.url, chainId: 8453, key: ('0x' + '12'.repeat(32)) as Hex, vaults: [{ kind: 'aave', address }], fromBlock: 90n,
-    oneClickUrl: `http://127.0.0.1:${(oneClick.address() as import('node:net').AddressInfo).port}`, bridgeTokens: [{ token: usdc, originAsset: 'fixture-origin', minimumBaseUnits: '300000' }], destinationAsset: 'fixture-destination', recipient: 'treasury.near', slippageBps: 100, minYieldMicro: 10_000n });
+    oneClickUrl: `http://127.0.0.1:${(oneClick.address() as import('node:net').AddressInfo).port}`, bridgeTokens: [{ token: usdc, originAsset: 'fixture-origin', minimumBaseUnits: '300000' }], destinationAsset: 'fixture-destination', recipient: 'treasury.near', slippageBps: 100, minYieldMicro: 10_000n, now: () => clock });
   await ports.vaults[0].skim();
   const snapshot = await ports.vaults[0].snapshot();
   assert.deepEqual(snapshot.entries, [[`eip155:8453:${holder}`, 100n]]);
@@ -179,6 +179,14 @@ test('Flex2-3: real EVM adapter reads finalized holders and honors the configure
   swapStatus = 'SUCCESS'; assert.equal((await bridgeTick()).status, 'SUCCESS');
   assert.equal((await bridgeTick()).status, 'empty_treasury');
   assert.equal(transactions.length, 2);
+  // A refunded swap is not retried at once: the next transfer waits an hour, then two after a second refund.
+  treasury = 300_000n; swapStatus = 'REFUNDED';
+  assert.equal((await bridgeTick()).status, 'deposit_broadcast'); assert.equal((await bridgeTick()).status, 'REFUNDED');
+  assert.equal((await bridgeTick()).status, 'waiting_after_failed_swap'); clock += 3_599_999;
+  assert.equal((await bridgeTick()).status, 'waiting_after_failed_swap'); assert.equal(transactions.length, 3);
+  clock += 1; assert.equal((await bridgeTick()).status, 'deposit_broadcast'); assert.equal((await bridgeTick()).status, 'REFUNDED');
+  clock += 3_600_000; assert.equal((await bridgeTick()).status, 'waiting_after_failed_swap');
+  clock += 3_600_000; assert.equal((await bridgeTick()).status, 'deposit_broadcast'); assert.equal(transactions.length, 5);
 });
 
 test('priced EVM snapshots use one finalized block, heartbeat boundaries and native-token cumulative units', async t => {

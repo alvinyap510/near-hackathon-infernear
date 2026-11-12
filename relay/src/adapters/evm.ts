@@ -16,13 +16,16 @@ const multicallAbi = parseAbi(['struct Call3 { address target; bool allowFailure
 
 const transferEvent = parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 value)');
 
-export function evmPorts(config: { rpc: string; chainId: number; key: Hex; vaults: EvmVaultConfig[]; fromBlock: bigint; oneClickUrl: string; oneClickToken?: string; bridgeTokens: BridgeToken[]; destinationAsset: string; recipient: string; slippageBps: number; minYieldMicro: bigint }): { vaults: VaultPort[]; bridge: BridgePort } {
+export function evmPorts(config: { rpc: string; chainId: number; key: Hex; vaults: EvmVaultConfig[]; fromBlock: bigint; oneClickUrl: string; oneClickToken?: string; bridgeTokens: BridgeToken[]; destinationAsset: string; recipient: string; slippageBps: number; minYieldMicro: bigint; now?: () => number }): { vaults: VaultPort[]; bridge: BridgePort } {
   const chain = defineChain({ id: config.chainId, name: 'vault chain', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [config.rpc] } } });
   const account = privateKeyToAccount(config.key);
   const publicClient = createPublicClient({ chain, transport: http(config.rpc) });
   const wallet = createWalletClient({ chain, account, transport: http(config.rpc) });
   const signingLock = new Mutex();
   const pendingBridges = new Map<string, { hash: Hash; amount: string; depositAddress: string }>();
+  // A refunded or failed swap already cost gas and fees. Wait 1, 2, 4... hours (at most a day) before the next one.
+  const failedBridges = new Map<string, { failures: number; until: number }>();
+  const now = config.now ?? Date.now;
   const yieldTokens = new Set<Address>();
   const vaults: VaultPort[] = config.vaults.map(entry => {
     if (!['aave', 'rate', 'pendle'].includes(entry.kind)) throw new Error('Invalid EVM vault kind');
@@ -91,10 +94,16 @@ export function evmPorts(config: { rpc: string; chainId: number; key: Hex; vault
       if (!response.ok) throw new Error(`1Click status HTTP ${response.status}`);
       const swap = await response.json() as { status: string };
       if (['SUCCESS', 'REFUNDED', 'FAILED'].includes(swap.status)) pendingBridges.delete(tokenKey);
+      if (swap.status === 'SUCCESS') failedBridges.delete(tokenKey);
+      else if (swap.status !== 'PROCESSING' && !pendingBridges.has(tokenKey)) {
+        const failures = (failedBridges.get(tokenKey)?.failures ?? 0) + 1;
+        failedBridges.set(tokenKey, { failures, until: now() + Math.min(3_600_000 * 2 ** (failures - 1), 86_400_000) });
+      }
       return { dry: false, amount: pending.amount, tx_hash: pending.hash, depositAddress: pending.depositAddress, status: swap.status };
     }
     const amount = await publicClient.readContract({ address: token.token, abi: erc20Abi, functionName: 'balanceOf', args: [account.address] });
     if (amount === 0n) return { dry: true, amount: '0', status: 'empty_treasury' };
+    if (now() < (failedBridges.get(tokenKey)?.until ?? 0)) return { dry: true, amount: String(amount), status: 'waiting_after_failed_swap' };
     const dry = amount < BigInt(token.minimumBaseUnits);
     const response = await fetch(config.oneClickUrl.replace(/\/$/, '') + '/v0/quote', {
       method: 'POST', headers: { 'content-type': 'application/json', ...(config.oneClickToken ? { authorization: `Bearer ${config.oneClickToken}` } : {}) },
