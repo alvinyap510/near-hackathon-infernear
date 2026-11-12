@@ -149,10 +149,10 @@ Success uses `near:mainnet:<account_id>` in the existing API-key payload and con
 | `GET /v1/model/{model}` | none | no | forwarded to NEAR AI unchanged |
 | `GET /v1/attestation/report` | none | no | forwarded unchanged |
 | `GET /v1/signature/{id}` | none | no | forwarded unchanged |
-| `POST /v1/chat/completions` | `Bearer inf_…` | yes | E2EE v3 only, forwarded byte for byte; streams need `stream_options.include_usage: true`; `Inference-Id` response header passed through |
+| `POST /v1/chat/completions` | `Bearer inf_…` | yes | Standard mode: plain OpenAI request, readable by the relay in transit; `max_tokens` and stream usage are filled in. Private mode: E2EE v3 headers, forwarded byte for byte; needs `max_tokens`, and `stream_options.include_usage: true` on streams. An incomplete E2EE header set is refused. `Inference-Id` response header passed through |
 
 The three forwarded read routes allow 30 requests per minute per IP; requests carrying a valid API key skip that limit.
 
-Status codes: 400 unencrypted or unsupported parameters, 401 bad, expired or revoked key, 402 insufficient credits, 404 model not served, 429 more than 4 requests in flight for one user, or the per-IP limit on read routes.
+Status codes: 400 incomplete encryption headers or unsupported parameters, 401 bad, expired or revoked key, 402 insufficient credits, 404 model not served, 429 more than 4 requests in flight for one user, or the per-IP limit on read routes.
 
 The dashboard reads balances directly: vault views over Base RPC, `account(user)` and `debited_amount(id)` over NEAR RPC.

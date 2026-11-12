@@ -6,8 +6,13 @@ import { Upstream, endToEndHeaders, type Model } from './upstream.ts';
 import { HttpError, InsufficientCredit, Mutex, costMicro, min, reportError, type Account, type Connector, type Receipt, type Report } from '../types.ts';
 
 type User = { lock: Mutex; floor?: bigint; epoch: number; pendingEpoch?: number; active: number; reservations: Map<string, bigint> };
-export type Reservation = { token: string; user: string; amount: bigint; model: Model; inputBound: number; maxTokens: number; streaming: boolean };
+// `body` is what goes upstream: the client's exact bytes when encrypted, the normalised JSON in standard mode.
+export type Reservation = { token: string; user: string; amount: bigint; model: Model; inputBound: number; maxTokens: number; streaming: boolean; body: Buffer; encrypted: boolean };
 type Job = { reservation: Reservation; amount: bigint; receipt: Receipt; stage: 'metered' | 'broadcast'; running: boolean; sends: number; next: number };
+
+// Tokens a chat template may add to a plain request beyond its own bytes (role markers, tool-use
+// instructions). Qwen3.8's template adds about 200 for a request with tools; this leaves room.
+const PLAIN_TEMPLATE_TOKENS = 1024;
 
 export class Gateway {
   readonly auth: Auth;
@@ -87,15 +92,29 @@ export class Gateway {
     try { body = JSON.parse(raw.toString()); } catch { throw new HttpError(400, 'invalid_json', 'Expected JSON chat request'); }
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'invalid_request', 'Expected chat object');
     const invalid = (message: string): never => { throw new HttpError(400, 'unsupported_parameters', message); };
+    // Two modes. Private: NEAR AI's SDK encrypted the request on the caller's machine (E2EE v3), and the
+    // relay only forwards those bytes. Standard: a plain OpenAI-format request, which the relay can read
+    // in transit. Any encryption header at all means private mode, and then the full set is required:
+    // a half-configured SDK must fail, never fall back to sending a prompt in the clear.
+    // The mode is read from the headers as they arrived; the set is then checked as it will be forwarded,
+    // so naming encryption headers in `Connection` cannot strip them and turn a private request into a plain one.
     const forwarded = endToEndHeaders(headers);
-    if (forwarded['x-encryption-version'] !== '3' || !forwarded['x-signing-algo'] ||
+    const encrypted = ['x-encryption-version', 'x-signing-algo', 'x-client-pub-key', 'x-model-pub-key', 'x-encrypt-all-fields', 'x-no-aliasing'].some(name => headers[name] !== undefined);
+    if (encrypted && (forwarded['x-encryption-version'] !== '3' || !forwarded['x-signing-algo'] ||
         !forwarded['x-client-pub-key'] || !forwarded['x-model-pub-key'] ||
-        forwarded['x-encrypt-all-fields'] !== 'true' || forwarded['x-no-aliasing'] !== 'true')
-      invalid('E2EE v3 headers required. See relay/README.md and the NEAR AI SDK application-proxy quickstart.');
+        forwarded['x-encrypt-all-fields'] !== 'true' || forwarded['x-no-aliasing'] !== 'true'))
+      invalid('Incomplete E2EE v3 headers. Send the full set (NEAR AI SDK application-proxy mode) or none of them (standard mode). See relay/README.md.');
+    if (!encrypted) {
+      // Standard mode accepts what ordinary OpenAI clients send, and rewrites only what billing needs:
+      // one explicit output limit, and usage in the final stream chunk.
+      const limit = body.max_tokens ?? body.max_completion_tokens ?? this.cap;
+      body.max_tokens = limit; delete body.max_completion_tokens;
+      if (body.stream === true) body.stream_options = { ...(body.stream_options && typeof body.stream_options === 'object' ? body.stream_options : {}), include_usage: true };
+    }
     if (!Number.isSafeInteger(body.max_tokens) || body.max_tokens < 1 || body.max_tokens > this.cap ||
         'max_completion_tokens' in body || (body.n !== undefined && body.n !== 1) ||
         (body.stream !== undefined && typeof body.stream !== 'boolean') ||
-        (body.stream === true && body.stream_options?.include_usage !== true)) invalid('Unsupported token limit, n, or streaming parameters');
+        (body.stream === true && body.stream_options?.include_usage !== true)) invalid(`Unsupported token limit (1 to ${this.cap}), n, or streaming parameters`);
     if (!Array.isArray(body.messages) || !body.messages.length || body.audio ||
         (body.modalities && (body.modalities.length !== 1 || body.modalities[0] !== 'text')) ||
         body.messages.some((m: any) => !m || (m.content !== null && m.content !== undefined &&
@@ -104,7 +123,11 @@ export class Gateway {
     if (await this.storageLow()) throw new HttpError(503, 'ledger_storage_low', 'The credit ledger is out of storage; the operator must top it up');
     const model = (await this.upstream.models()).find(m => m.id === body.model);
     if (!model) throw new HttpError(404, 'model_not_found', 'Model is not a canonical attested TEE text model');
-    const inputBound = Math.ceil(raw.length / 2);
+    const upstreamBody = encrypted ? raw : Buffer.from(JSON.stringify(body));
+    // Upper bound on input tokens. Encrypted content is hex, two body bytes per plaintext byte; a plain
+    // body can tokenize to one token per byte (digits, unmergeable bytes), and the model's chat template
+    // adds role markers and tool instructions on top, so it is bounded by its length plus an allowance.
+    const inputBound = encrypted ? Math.ceil(upstreamBody.length / 2) : upstreamBody.length + PLAIN_TEMPLATE_TOKENS;
     const amount = costMicro(inputBound, body.max_tokens, model.inNano, model.outNano);
     const state = this.user(key.user);
     return state.lock.run(async () => {
@@ -116,7 +139,7 @@ export class Gateway {
       if (amount > account.credited - committed - reserved) throw new HttpError(402, 'insufficient_credit', 'Insufficient available credits');
       const token = randomUUID();
       state.reservations.set(token, amount); state.active += 1;
-      return { token, user: key.user, amount, model, inputBound, maxTokens: body.max_tokens, streaming: body.stream === true };
+      return { token, user: key.user, amount, model, inputBound, maxTokens: body.max_tokens, streaming: body.stream === true, body: upstreamBody, encrypted };
     });
   }
   async complete(reservation: Reservation, status: number, headerId: string | undefined, meter: Meter): Promise<void> {
@@ -138,7 +161,8 @@ export class Gateway {
       const receipt: Receipt = { inference_id: id, chat_id: meter.chatId, model: reservation.model.id,
         prompt_tokens: usage?.prompt_tokens ?? reservation.inputBound, completion_tokens: usage?.completion_tokens ?? reservation.maxTokens,
         in_price_nano: String(reservation.model.inNano), out_price_nano: String(reservation.model.outNano), source: usage ? 'signed_usage' : 'reservation' };
-      this.jobs.set(id, { reservation, amount, receipt, stage: 'metered', running: false, sends: 0, next: 0 });
+      // Settlement needs the reservation's numbers, not the request: do not keep prompts while a debit is pending.
+      this.jobs.set(id, { reservation: { ...reservation, body: Buffer.alloc(0) }, amount, receipt, stage: 'metered', running: false, sends: 0, next: 0 });
     });
     // Confirmation is independent of delivery; raw responses do not wait on NEAR.
     void this.retryDebits();
