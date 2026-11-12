@@ -16,7 +16,12 @@ export function App(){
   const [issued,setIssued]=useState<IssuedKey|null>(null),[tab,setTab]=useState<Tab>(tabFromHash),[selectedId,setSelectedId]=useState<string>();
   const [vaults,setVaults]=useState<CatalogueVault[]>([]),[catalogueError,setCatalogueError]=useState<string|null>(null),[loading,setLoading]=useState(true);
   const [dialog,setDialog]=useState(false),[options,setOptions]=useState<WalletOption[]>([]),[walletError,setWalletError]=useState<string|null>(null),[busyId,setBusyId]=useState<string|null>(null);
-  const accept=useCallback((next:Session|null)=>{version.current++;current.current=next;setSession(next);setVaults([]);setLoading(true);setOverview(null);setReadError(null);setIssued(null);},[]);
+  const accept=useCallback((next:Session|null)=>{
+    const previous=current.current;version.current++;current.current=next;setSession(next);
+    // A slow anonymous wallet restore must not erase an already loaded public catalogue.
+    if(previous===null&&next===null)return;
+    setVaults([]);setLoading(true);setOverview(null);setReadError(null);setIssued(null);
+  },[]);
   const go=useCallback((next:Tab)=>{window.location.hash=next;window.scrollTo({top:0});},[]);
   useEffect(()=>{const onHash=()=>{if(window.location.hash!=='#main')setTab(tabFromHash());};window.addEventListener('hashchange',onHash);return()=>window.removeEventListener('hashchange',onHash);},[]);
   useEffect(()=>{let stopped=false;const started=version.current;void data.restoreSession().then(s=>{if(!stopped&&version.current===started)accept(s);}).catch(e=>{if(!stopped)setWalletError(errorText(e));});return()=>{stopped=true;};},[accept]);

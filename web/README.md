@@ -1,119 +1,72 @@
-# InferNear dashboard (`web/`)
+# InferNear console
 
-The account dashboard for the InferNear endpoint. **Account** shows one aggregated credit balance and a picker over four vaults: Aave USDC, cbETH and Pendle PT-deJAAA on Base, and Rhea USDC on NEAR. Each vault has its own deposit/redeem in its own token and decimals, plus a loss note. **API keys**, **Try the API** and **From another chain** follow. Everything sits behind `DashboardData` (`src/data/`).
+React/TypeScript console: public **Vaults**, **Account**, **API keys**, **Try the API**, and **From another chain**. Complete public configuration selects live wallets/RPC/relay calls; incomplete configuration selects the clearly labelled mock. Root deploys the build separately; this task performed no deployment or funded call.
 
-## Run and verify
+## Install and verify
 
-Node 22.18 or newer. From this folder:
+Node 24.22.1 was used. From `web/`:
 
 ```sh
 npm ci --ignore-scripts
-npm run dev
-npm run build
+npx tsc --noEmit -p .
 npm test
+npm run build
 ```
 
-Vite reads public `VITE_*` variables from the repository-root `.env` (`cp ../.env.example ../.env` to start). Never put a private key or relay secret in a `VITE_*` variable: Vite ships those values to the browser.
+Tests use offline providers and HTTP fixtures. They never broadcast a transaction or make a paid inference. The build emits `dist/`; `npm run dev` serves locally. No install script or browser download is needed.
 
-## Live mode
+## Configuration
 
-**Every** value below must be set (and the chain id and slippage valid) to select `createLiveData`; otherwise the dashboard keeps the labelled in-memory mock (`isMock: true`) and shows a "Mock data" ribbon on every screen. A missing injected wallet or failed live request produces an error, not a fallback to invented balances.
+Public Vite values are listed in the root `.env.example`. Required live settings remain the relay origin (without `/v1`), Base chain/RPC and three vault addresses, Pendle app URL, NEAR RPC/connector/Rhea/USDC/Intents accounts, and 1Click URL/Base-USDC asset/slippage settings. No operator secret belongs in the browser.
 
-| Variable | Meaning |
-|---|---|
-| `VITE_RELAY_URL` | Public relay base URL; its host/origin must match the relay's `RELAY_PUBLIC_URL` |
-| `VITE_BASE_CHAIN_ID` | Vault chain id, as a decimal integer |
-| `VITE_BASE_RPC_URL` | HTTP JSON-RPC endpoint for that chain |
-| `VITE_VAULT_ADDRESS` | Aave USDC `PrincipalVault` address |
-| `VITE_RATE_VAULT_ADDRESS` | cbETH `RateVault` address |
-| `VITE_PENDLE_VAULT_ADDRESS` | PT-deJAAA `PendlePtVault` address |
-| `VITE_PENDLE_APP_URL` | Pendle page the "Buy PT on Pendle" link opens (no zap) |
-| `VITE_NEAR_RPC_URL` | HTTP NEAR JSON-RPC endpoint |
-| `VITE_NEAR_CONNECTOR_ACCOUNT` | Connector (credit ledger) account id |
-| `VITE_RHEA_VAULT_ACCOUNT` | Rhea USDC vault account id |
-| `VITE_NEAR_USDC_ACCOUNT` | NEAR USDC fungible-token account |
-| `VITE_NEAR_INTENTS_ACCOUNT` | NEAR Intents verifier account |
-| `VITE_ONECLICK_API_URL` | Public 1Click API base URL |
-| `VITE_ONECLICK_BASE_USDC_ASSET` | 1Click asset id for Base USDC |
-| `VITE_ONECLICK_SLIPPAGE_BPS` | Quote slippage, basis points (0–10000) |
+Optional settings:
 
-All of them are in the root `.env.example`. Each EVM vault's deposit-token address comes from its own `asset()`.
+- `VITE_AAVE_POOL_ADDRESS`: variable supply rate from `getReserveData(USDC).currentLiquidityRate` (ray).
+- `VITE_RHEA_LEND_ACCOUNT`: variable supply rate from `get_asset(USDC).supply_apr`.
+- `VITE_RHEA_CAP`: USDC base-unit cap for display. Rhea has no total-principal view, so the catalogue total stays undefined.
+- `VITE_RHEA_STATUS_NOTE`: nonempty marks Rhea paused with that note and hides deposit actions in both EVM and native panels. Withdrawals remain available.
+- `VITE_TOPUP_ADDRESS`: optional Base credit-purchase contract; unset hides its box without a contract read.
 
-- **EVM wallet:** viem over the selected EIP-6963/EIP-1193 provider, with a switch to the configured chain when needed. Account changes are checked again before signing or sending.
-- **Vault:** `balanceOf`, `convertToAssets`, `yieldCredited`, and the deposit token's balance and allowance are read at one Base block, for each of the three Base vaults. Amounts stay `bigint`. Deposit approves exactly the requested amount only when allowance is insufficient, waits for approval confirmation, then deposits and waits for confirmation. Redeem uses the connected holder as owner/receiver and waits for confirmation. Reverted approvals never proceed to deposit.
-- **Rhea:** deposit shows a dry 1Click preview first. Confirming requests a funded quote and sends one Base USDC transfer to its deposit address; the dashboard then polls 1Click status and the vault's `position` until the deposit is activated on the vault's next cycle. Withdrawal takes two wallet signatures. The first is an EIP-191 withdrawal request the relay submits (`POST /rhea/withdraw`); the vault pays it out on its next cycle into the user's own NEAR Intents balance. The second is a transfer intent to a funded 1Click quote back to the user's Base address (`POST /intents/execute`).
-- **NEAR:** plain `fetch` JSON-RPC `query`/`call_function`, `finality: final`, for `account(user)` and `debited_amount(inference_id)`. CAIP-10 addresses are lower case. U128 JSON strings are parsed directly as `bigint`; numeric money responses are rejected because they may already have lost precision. EVM users do not need a NEAR account; NEAR-wallet data operations are described below.
-- **Keys:** each action uses a new EIP-4361 (EVM) or NEP-413 (NEAR) wallet proof. `GET /auth/nonce` supplies the nonce; the message binds to the dashboard host/origin, configured chain, issued-at and five-minute expiration. `POST /keys` and `/keys/revoke` send only `{message, signature}`. There is no session token or sign-in endpoint. A proof selected in step 1 is consumed by one action; subsequent create/revoke actions request another signature. Relay epoch/transaction/expiry fields are mapped to the UI types; API keys remain only in tab memory.
+RPCs must allow the page's origin. `RELAY_WEB_ORIGIN` must match it for CORS, SIWE and NEP-413. Rates are on-chain snapshots; no cbETH or Pendle APY is invented.
 
-The relay must allow the dashboard origin through its `RELAY_WEB_ORIGIN` CORS setting. Browser RPC endpoints must also permit the dashboard origin. The live mode was verified with offline providers, not a funded wallet or deployed InferNear contracts.
+## Wallets and account
 
-## Explicitly simulated features
+The header opens the existing WalletDialog. EVM providers are discovered by EIP-6963 (`evm:<rdns>`), with an injected fallback. The selected provider is pinned for later calls; explicit EVM connection switches to Base. Meteor and MyNearWallet use Wallet Selector mainnet without a modal or generated function-call key. Sessions restore on load, including redirect intent; disconnect cannot revive an older wallet. Keys remain in tab memory and clear when the wallet changes.
 
-**Try the API remains a mock in both modes** (`isRunMock: true`) until the relay is deployed and the panel is wired to it (the relay/SDK probe itself passed live on 2026-11-12). Its reply, encryption/attestation/signature display and debit are simulated and labelled. A mock run never spends live credits, sends a prompt to the relay, or presents its synthetic debit as a NEAR read. The live `debitedAmount` method is ready for future real receipts. The bridge panel also remains a labelled, simulated dry-run quote with no deposit address.
+User ids: `eip155:8453:<lower-case address>` or `near:mainnet:<account_id>`. EVM key actions use SIWE; NEAR actions use [NEP-413](../docs/interfaces.md#near-wallet-key-proofs-nep-413) with the canonical message, SHA256 relay-nonce binding and finalized full-access-key check.
 
-Receipts use `source: 'signed_usage' | 'reservation'` and numeric token fields. Cost rounds the combined input/output nano-USD amount once to micro-USD, matching the relay. The bill check compares `min(signed cost, reservation)`; a reservation receipt is labelled **“charged at the reserved maximum: no usage returned”**. Reservation metadata belongs to the dashboard call result, not an extra field in the connector's receipt. Synthetic calls include their own simulated debit for the mock bill check.
+Choosing a catalogue vault opens Account with it selected. NEAR-only sessions see Base strategies as requiring an EVM wallet. Native Rhea deposit signs USDC `ft_transfer_call` with `msg = JSON.stringify({user})`; withdrawal signs vault `withdraw({amount})`. Both attach 1 yoctoNEAR and 100 Tgas. Amounts are validated before signing; withdrawals use nominal principal (`shares`), while `principal` is the covered preview. Registration, pending amounts and busy state are read from NEAR. The keeper settles queues; an unfunded request requires a new request and leaves principal intact. Existing loss notes remain visible. Balances refresh on tab entry or **Refresh balances**; pending Rhea operations poll.
 
-## Tests and files
+## Direct credit purchase
 
-`npm test` uses fake EIP-1193, Base RPC, NEAR RPC and relay responses. It checks bigint precision, CAIP-10 casing, approval/deposit/redeem ABI arguments and confirmations, proof fields, session-free key requests, named errors, and bill-check arithmetic. It never sends a live transaction or contacts a network.
+EVM sessions with `VITE_TOPUP_ADDRESS` see **Add credits**. The client reads `usdc`, `minimum`, `paid(owner)`, `paidTotal`, wallet balance and allowance. It validates before signing, approves exactly the amount if needed, confirms approval, rechecks the selected wallet, then calls `pay(amount, self)` and confirms it. A reverted approval never proceeds to pay.
 
-| Path | Purpose |
-|---|---|
-| `src/data/types.ts` | Shared UI contract |
-| `src/data/live.ts` | Live wallet, vault, NEAR views and relay keys |
-| `src/data/index.ts` | Config-based live/mock selection |
-| `src/data/mock.ts` | Labelled demo data and deferred inference/bridge seams |
-| `src/data/proof.ts` | EIP-4361 message fields |
-| `src/data/money.ts` | Integer formatting and capped receipt arithmetic |
-| `src/quickstart.ts` | Existing SDK quickstart; runtime wiring remains deferred |
+The button area and confirmation both state:
 
+> This is a purchase, not a deposit. The USDC goes to InferNear and cannot be redeemed.
 
-## Phase 1: wallet/session and public catalogue logic
+The box shows the owner's total bought. Credits appear after Base finality (about 20 minutes) and the keeper's NEAR post; the live client does not synthesize an immediate credit. A labelled mock purchase changes synthetic credits and wallet USDC, never principal.
 
-This phase adds data-layer capabilities. The existing screens still use the legacy EVM `connect()` API; connecting the chooser, NEAR screens and Vaults tab is phase 2. No deployment was performed. `Keys.tsx` has one type-only edit, narrowing its existing EVM proof state to `EvmWalletProof`; its behavior is unchanged.
+## API calls
 
-Import the following from `src/data/index.ts` (or use the same methods on `data`). The wrappers select the configured live/mock source consistently:
+**Standard is the default.** Models/prices come from real `GET /v1/models`. Run posts plain OpenAI chat JSON with the user's key and a 64-token cap. **The relay can read the prompt and reply in transit.** The panel shows the actual reply, completion id, Inference-Id, reported usage and listed-price estimate, then polls `debited_amount(id)` until the real NEAR debit appears. The on-chain amount is authoritative; a price refresh may differ from the older catalogue snapshot. Headerless responses use UUIDv5/DNS of the completion id, as the relay does. A 402 points to depositing into a vault or adding credits. Calls are never automatically retried.
 
-```ts
-type Session =
-  | { kind: 'evm'; address: Address; user: string }
-  | { kind: 'near'; accountId: string; user: string };
-walletOptions(): Promise<WalletOption[]>;
-connectWallet(id: string): Promise<Session>;
-restoreSession(): Promise<Session | null>;
-disconnect(): Promise<void>;
-catalogue(session?: Session): Promise<CatalogueVault[]>;
-```
+Standard usage is reported, not signature-verified. The legacy receipt source `signed_usage` denotes the usage-metered path, not browser verification of plain responses. Missing usage is labelled as a reservation charge. The first quickstart uses the official `openai` package; private SDK examples are second.
 
-`data.overview(session)` and `data.walletProof(session)` accept either wallet kind; legacy address calls remain supported. `data.deposit(session, assets, vaultId?)` and `redeem(session, shares, vaultId?)` accept EVM sessions and reject NEAR sessions. The EVM Rhea bridge methods likewise accept an EVM session or legacy address. `data.rheaDepositNear(nearSession, assets)` and `rheaWithdrawNear(nearSession, assets)` return `Promise<TxResult>` for direct native USDC calls. All amounts remain bigint base units.
+**Private is code-only in live mode.** It offers the SDK quickstart with `verifyResponse`, gateway provenance policy and the explicit application-proxy TLS setting. There is no live browser Run button, fake ciphertext, fake attestation or substituted reply. npm SDK **0.3.0** was evaluated only in a temporary probe directory. Its browser entry passed a free `verify(model)` preflight under Node through the public relay. Actual browser validation was blocked: no in-app browser was available and computer use denied Chrome access. No paid completion was attempted, so a verified browser completion is not claimed. Mock private calls retain the existing Verified panel with simulation labels.
 
-Wallet discovery uses [EIP-6963](https://eips.ethereum.org/EIPS/eip-6963) announcements with ids `evm:<rdns>`, falling back to `evm:injected` only when no announced provider exists. The selected provider is pinned for subsequent EVM signing/sending; it is not replaced by `window.ethereum`. NEAR ids are `near:meteor-wallet` and `near:my-near-wallet`, using Wallet Selector mainnet without its modal. Connection requests no function-call access key. Call `restoreSession()` on load: it reconciles persisted selector accounts, including a redirect-style sign-in intent. A disconnect signs out the selected NEAR wallet or drops the local EVM selection. The selector and native call ports are injectable in tests.
+## From another chain
 
-NEAR user ids are `near:mainnet:<accountId>`. Their overview reads connector credits, the Rhea position/coverage/busy state, native USDC `ft_balance_of`, and `storage_balance_of`. Base entries remain present with `usable: false` and empty positions; there is no EVM account/balance lookup for a NEAR-only overview. For Rhea, `shares` is nominal principal and `principal` is its covered preview; withdrawals validate against the nominal on-chain principal. Registration is exposed as `position.rhea.usdcRegistered`.
+This panel reads 1Click `/v0/tokens`, selecting six-decimal USDC entries for Ethereum (1), Arbitrum (42161), Optimism (10) and Polygon (137). USDC contracts and asset ids come from that response, not hard-coded addresses. The destination is configured/listed Base USDC at the user's own address.
 
-Native deposit signs one USDC `ft_transfer_call` to the configured vault with `msg = JSON.stringify({ user })`. Native withdrawal signs the vault's `withdraw({ amount })`. Both attach exactly 1 yoctoNEAR and 100 Tgas, with an explicit signerId. Deposits below 1 USDC, above the wallet balance, and withdrawals above nominal principal or at/below zero fail before signing. Receipt failures are reported. The keeper performs the queued activation/payout; the user refreshes position to observe completion. This phase sends no storage-registration transaction automatically.
+Previews POST `/v0/quote` with `dry: true`. Asset/route fields, recipient/refund address, input amount and deadline are checked. A free live Ethereum→Base quote returned HTTP 201, matching route fields and no deposit address.
 
-`walletProof(nearSession)` uses the wallet's `signMessage` with callbackUrl omitted. The exact canonical JSON is `JSON.stringify({ statement: "Authorize one InferNear API key action.", account_id: session.accountId, nonce: relayNonce, expires_at })`; field order is significant and expiry is current Unix seconds + 300. Its NEP nonce is `SHA256(UTF8(relayNonce))`, passed as 32 bytes to the wallet and base64 to the relay. The recipient is the dashboard origin's host, including port. The returned `{ near: { account_id, public_key, signature, message, nonce, recipient } }` goes unchanged to existing `createKey` or `revokeAll`. See [the relay interface](../docs/interfaces.md#near-wallet-key-proofs-nep-413). The relay verifies the signature and current finalized full-access-key permission. An EVM address argument still returns `EvmWalletProof`, preserving the phase-1 screens.
+**Funding is disabled in this release**, clearly labelled in the panel. No non-dry quote, origin-chain switch, token transfer, funded-swap polling or Base switch-back is performed here. That multi-chain signing/confirmation/recovery path was not validated with real wallets in this pass. The existing EVM Rhea bridge flow is separate and remains implemented. Mock quotes remain labelled.
 
-### Public catalogue and configuration
+## UI and verification limits
 
-The catalogue requires no wallet or signature. It lists Aave USDC, cbETH RateVault, PT-deJAAA and Rhea USDC. Base deposited/cap values come from `totalSupply()` and `depositCap()` at one block; rate-vault totals/caps are labelled ETH principal and Pendle totals/caps USDC principal to distinguish them from deposit tokens. Connected principal/yield fields use the existing positions. Only Rhea advertises both wallet kinds.
+New screens reuse existing `card`, `vault-form`, `confirm`, `loss-note`, `seg-control`, `needs-key` and `fineprint` classes, with ChainBadge/AssetBadge. No stylesheet or design component changed except the permitted Shell extension for public tabs, NEAR labels and switch/disconnect controls. The old Connect screen was removed.
 
-Additional public `.env.example` settings:
+Tests cover purchase validation, hidden state, approve→pay ordering/reverts, model mapping, plain chat/id/usage/402 handling, private fallback, bridge discovery/quote binding, mock conservation, and existing wallet/session/vault/key behavior. Real wallet popups, redirects, signatures, purchases, deposits, withdrawals and paid inference still require manual verification. Visual browser verification was unavailable.
 
-| Setting | Purpose |
-|---|---|
-| `VITE_AAVE_POOL_ADDRESS` | Aave `getReserveData(USDC).currentLiquidityRate` (ray), shown as “Aave supply rate now, variable” |
-| `VITE_RHEA_LEND_ACCOUNT` | Rhea `get_asset(USDC).supply_apr`, shown as “Rhea supply rate now, variable” |
-| `VITE_RHEA_CAP` | USDC base-unit cap for display; the current vault exposes no total-principal/cap view, so `deposited` stays undefined |
-| `VITE_RHEA_STATUS_NOTE` | If nonempty, publish Rhea as `paused` with this operator note during redeployment |
-
-The Aave return layout follows its [backwards-compatible ReserveDataLegacy interface](https://github.com/aave-dao/aave-v3-origin/blob/main/src/contracts/protocol/libraries/types/DataTypes.sol). Protocol rates are omitted when the corresponding source is unconfigured; cbETH and Pendle never receive an invented APY. Rates use chain values and integer-only two-decimal percentage formatting. The status note describes catalogue availability and does not alter the contract or impose an on-chain withdrawal gate. Existing live configuration requirements remain unchanged. `VITE_NEAR_USDC_ACCOUNT` must name the native NEAR USDC configured on the vault.
-
-The mock implements discovery/session/restore/disconnect, both proof shapes, independent NEAR credits and positions, direct queued deposits/withdrawals and catalogue rows. Wallet names and catalogue amount labels explicitly identify the mock. It never calls an actual wallet or chain.
-
-### Dependencies and verification limits
-
-Pinned additions: `@near-wallet-selector/core`, `meteor-wallet`, `my-near-wallet` all **10.1.4**; `@near-js/transactions` **2.5.1** for the selector's actual Action type; `buffer` **6.0.3** for its message nonce API. No modal package or optional HERE/HOT adapter was added. A compatible Meteor SDK override pins `nanoid` **5.1.16** to remove its reported generator vulnerabilities.
-
-The pinned dependency tree still reports **17 npm audit findings (4 high, 13 low)**, including the old URL decoder in Meteor's `query-string` chain ([decoder advisory](https://github.com/advisories/GHSA-qr28-fpjm-wq7f)). These remain for dependency review; the requested selector versions were retained. The build also reports direct-eval warnings in the SDK's transitive `js-sha256`. No real-wallet signing, popup/redirect behavior, account restoration across actual wallets, or funded native transaction has been verified. Tests use fakes; those wallet checks remain phase-2/manual validation.
+No application dependency was added in phase 2; the design seat's `@web3icons/react@4.1.24` addition was retained. The private inference SDK is not bundled. Existing wallet dependency audit findings and transitive `js-sha256` direct-eval warnings remain documented, not suppressed.
