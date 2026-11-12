@@ -3470,26 +3470,150 @@ body:has(dialog.wd[open]) {
   flex: none;
 }
 
-/* A tile is the mark on its own brand-colour square; round it like the chips. */
+.brand-mark.is-coin {
+  border-radius: 50%;
+}
+
 .brand-mark.is-tile {
   border-radius: 25%;
 }
 
+/* Rhea's logo is mint on transparent: it sits on Rhea's near-black, clear of the edge. */
+.rhea-tile {
+  background: #171b2c;
+}
+
+.rhea-tile > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* An 18 px logo in a 22 px chip: the same 2 px inset on the top, bottom and left. */
 .badge.has-logo {
-  gap: 5px;
-  padding-left: 4px;
+  gap: 6px;
+  padding-left: 2px;
 }
 
-/* A full-bleed tile reads larger than a round mark of the same box. */
-.badge-logo.is-tile {
-  width: 14px;
-  height: 14px;
-  margin: 0 1px;
-  border-radius: 3.5px;
+/* Base's solid square reads heavier than a disc of the same size, so it is drawn at 16 px. */
+.badge.base .brand-mark.is-mark {
+  width: 16px;
+  height: 16px;
+  margin-left: 1px;
 }
 
-.vc-name.has-mark {
-  display: flex;
+/* Vault mark: the asset's logo with the chain's logo on its lower-right corner. */
+
+.vault-mark {
+  --vm: var(--vault-mark-size, var(--vm-size));
+  position: relative;
+  display: block;
+  flex: none;
+  width: var(--vm);
+  height: var(--vm);
+}
+
+.vault-mark-asset {
+  width: 100%;
+  height: 100%;
+}
+
+.vault-mark-text {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--sunken);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: calc(var(--vm) * 0.4);
+  font-weight: 600;
+}
+
+.vault-mark-chain {
+  --vb: calc(var(--vm) * 0.4);
+  position: absolute;
+  right: calc(var(--vm) * -0.1);
+  bottom: calc(var(--vm) * -0.1);
+  padding: 2px;
+  border-radius: calc(var(--vb) * 0.1 + 2px);
+  background: var(--surface);
+  line-height: 0;
+}
+
+.vault-mark-chain > .brand-mark {
+  width: var(--vb);
+  height: var(--vb);
+}
+
+/* Base's mark has corners of about a tenth of its size; NEAR's tile matches it. */
+.vault-mark-chain > .brand-mark.is-tile {
+  border-radius: calc(var(--vb) * 0.1);
+}
+
+/* Vault card header: the vault mark and the protocol tile hold the left column; the chips,
+   name and strategy share one text edge. The card's own width picks the layout. */
+
+.vc-card {
+  container-type: inline-size;
+}
+
+.vc-ident {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'mark chips shape'
+    'mark name name'
+    'protocol strategy strategy';
+  column-gap: 16px;
+  row-gap: 8px;
   align-items: center;
-  gap: 10px;
+}
+
+.vc-ident > .vault-mark {
+  grid-area: mark;
+}
+
+.vc-ident > .ticket-badges {
+  grid-area: chips;
+}
+
+.vc-ident > .vc-shape {
+  grid-area: shape;
+}
+
+.vc-ident > .vc-name {
+  grid-area: name;
+  margin-top: 0;
+}
+
+/* Centred under the vault mark, level with the strategy's first line. */
+.vc-ident > .vc-protocol {
+  grid-area: protocol;
+  align-self: start;
+  justify-self: center;
+  margin-top: 7px;
+}
+
+.vc-ident > .vc-strategy {
+  grid-area: strategy;
+  align-self: start;
+}
+
+@container (max-width: 499px) {
+  .vc-ident {
+    --vault-mark-size: 40px;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      'mark chips'
+      'mark name'
+      '. shape'
+      'protocol strategy';
+    column-gap: 12px;
+    row-gap: 6px;
+  }
+
+  .vc-ident > .vc-shape {
+    margin-top: 4px;
+  }
 }

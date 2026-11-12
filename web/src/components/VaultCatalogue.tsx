@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import { AssetBadge, BrandMark, ChainBadge, ErrorNote, LockIcon, type Brand } from './ui.tsx';
+import { AssetBadge, ChainBadge, ErrorNote, LockIcon, ProtocolMark, VaultMark, type Protocol } from './ui.tsx';
 
 // Presentation only: renders what the props carry and invents no figures.
 export type CatalogueVault = {
@@ -32,8 +32,8 @@ export type VaultCatalogueProps = {
 
 const WALLET_NAME = { evm: 'EVM', near: 'NEAR' } as const;
 
-// The protocol behind each strategy. Rhea has none: @web3icons carries only the pre-rebrand Ref Finance mark.
-const PROTOCOL: Partial<Record<CatalogueVault['kind'], Brand>> = { aave: 'aave', rate: 'coinbase', pendle: 'pendle' };
+// The protocol behind each strategy, shown small beside the strategy sentence.
+const PROTOCOL: Record<CatalogueVault['kind'], Protocol> = { aave: 'aave', rate: 'coinbase', pendle: 'pendle', rhea: 'rhea' };
 
 export function VaultCatalogue({ vaults, loading, error = null, connectedKind, onChoose, onConnect }: VaultCatalogueProps): JSX.Element {
   const skeleton = loading && vaults.length === 0;
@@ -126,11 +126,11 @@ function VaultCard({
   const fill = capFraction(vault.deposited, vault.cap);
   const nameId = `vc-${vault.id}`;
   const [rateValue, rateRest] = splitFirst(vault.rateNow);
-  const protocol = PROTOCOL[vault.kind];
 
   return (
     <article className={`vc-card rise d${Math.min(index + 2, 5)}${paused ? ' is-paused' : ''}`} aria-labelledby={nameId}>
-      <div className="vc-head">
+      <div className="vc-ident">
+        <VaultMark assetSymbol={vault.assetSymbol} chainName={vault.chainName} size={56} />
         <span className="ticket-badges">
           <ChainBadge name={vault.chainName} />
           <AssetBadge symbol={vault.assetSymbol} />
@@ -140,13 +140,12 @@ function VaultCard({
           <ShapeGlyph kind={vault.kind} />
           {vault.yieldShape}
         </span>
+        <h2 id={nameId} className="vc-name">
+          {vault.name}
+        </h2>
+        <ProtocolMark protocol={PROTOCOL[vault.kind]} className="vc-protocol" />
+        <p className="vc-strategy">{vault.strategy}</p>
       </div>
-
-      <h2 id={nameId} className={`vc-name${protocol ? ' has-mark' : ''}`}>
-        {protocol && <BrandMark brand={protocol} size={20} tile className="vc-name-mark" />}
-        {vault.name}
-      </h2>
-      <p className="vc-strategy">{vault.strategy}</p>
 
       <dl className="vc-facts">
         <div className="vc-fact vc-deposited">

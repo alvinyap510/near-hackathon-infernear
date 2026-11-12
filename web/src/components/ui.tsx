@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import ExchangeCoinbase from '@web3icons/react/icons/exchanges/ExchangeCoinbase';
 import NetworkBase from '@web3icons/react/icons/networks/NetworkBase';
 import NetworkNearProtocol from '@web3icons/react/icons/networks/NetworkNearProtocol';
@@ -6,6 +6,7 @@ import TokenAAVE from '@web3icons/react/icons/tokens/TokenAAVE';
 import TokenCBETH from '@web3icons/react/icons/tokens/TokenCBETH';
 import TokenPENDLE from '@web3icons/react/icons/tokens/TokenPENDLE';
 import TokenUSDC from '@web3icons/react/icons/tokens/TokenUSDC';
+import rheaLogo from '../assets/rhea-logo.svg';
 import type { Token } from '../data/index.ts';
 import { formatAmount } from '../data/money.ts';
 
@@ -78,34 +79,55 @@ export const plainAmount = (amount: bigint, token: Token) =>
   formatAmount(amount, token.decimals).replace(/,/g, '').replace(/\.?0+$/, '');
 
 /**
- * Brand marks from @web3icons/react, drawn as the package ships them: the plain mark, or
- * with `tile` the package's own mark-on-brand-colour square. Pendle's plain mark is white on
- * transparent and vanishes on a white card, so it is always a tile. PT-deJAAA has no token
- * mark of its own: it is Pendle's token.
+ * Brand logos from @web3icons/react, as the package draws them, in one of three forms:
+ * - mark: the plain logo. Every mark used here is drawn in the middle 18 units of a 24-unit
+ *   box, so the viewBox is cropped to that area and `size` is the logo's real size.
+ * - coin / tile: the package's logo-on-brand-colour variant, rounded to a disc or a square.
+ * cbETH's plain mark is a thin ring and Pendle's is white on transparent, so both are coins;
+ * USDC's plain mark is already the solid blue disc. PT-deJAAA has no logo of its own: it is
+ * Pendle's token. Aave and Coinbase appear only as protocol tiles.
  */
 const MARKS = {
-  base: NetworkBase,
-  near: NetworkNearProtocol,
-  usdc: TokenUSDC,
-  cbeth: TokenCBETH,
-  pendle: TokenPENDLE,
-  aave: TokenAAVE,
-  coinbase: ExchangeCoinbase,
+  base: [NetworkBase, 'mark'],
+  near: [NetworkNearProtocol, 'mark'],
+  usdc: [TokenUSDC, 'mark'],
+  cbeth: [TokenCBETH, 'coin'],
+  pendle: [TokenPENDLE, 'coin'],
+  aave: [TokenAAVE, 'tile'],
+  coinbase: [ExchangeCoinbase, 'tile'],
 } as const;
 
 export type Brand = keyof typeof MARKS;
+type Form = 'mark' | 'coin' | 'tile';
 
-export function BrandMark({ brand, size = 16, tile = false, className = '' }: { brand: Brand; size?: number; tile?: boolean; className?: string }) {
-  const Icon = MARKS[brand];
-  const asTile = tile || brand === 'pendle';
+export function BrandMark({ brand, size = 18, form, className = '' }: { brand: Brand; size?: number; form?: Form; className?: string }) {
+  const [Icon, preferred] = MARKS[brand];
+  const shown = form ?? preferred;
+  const crop = shown === 'mark' ? { viewBox: '3 3 18 18' } : {};
   return (
     <Icon
-      variant={asTile ? 'background' : 'branded'}
+      variant={shown === 'mark' ? 'branded' : 'background'}
       size={size}
-      className={`brand-mark${asTile ? ' is-tile' : ''} ${className}`.trim()}
+      {...crop}
+      className={`brand-mark is-${shown} ${className}`.trim()}
       aria-hidden="true"
       focusable="false"
     />
+  );
+}
+
+export type Protocol = 'aave' | 'coinbase' | 'pendle' | 'rhea';
+
+/**
+ * A strategy's protocol logo as a small tile. Rhea is not in @web3icons: its logo is the
+ * file from Rhea's own site, mint on transparent, so it sits on Rhea's near-black brand colour.
+ */
+export function ProtocolMark({ protocol, size = 20, className = '' }: { protocol: Protocol; size?: number; className?: string }) {
+  if (protocol !== 'rhea') return <BrandMark brand={protocol} size={size} form="tile" className={className} />;
+  return (
+    <span className={`brand-mark is-tile rhea-tile ${className}`.trim()} style={{ width: size, height: size, padding: size * 0.12 }} aria-hidden="true">
+      <img src={rheaLogo} alt="" />
+    </span>
   );
 }
 
@@ -128,6 +150,31 @@ export function AssetBadge({ symbol }: { symbol: string }) {
   return (
     <span className="badge asset has-logo">
       <BrandMark brand={brand} className="badge-logo" /> {symbol}
+    </span>
+  );
+}
+
+/**
+ * A vault's identity: its deposit asset's logo, with its chain's logo on the lower-right
+ * corner. Decorative, so pair it with the asset and chain in text. `size` is the asset logo
+ * in px; a layout can override it with --vault-mark-size on an ancestor.
+ */
+export function VaultMark({ assetSymbol, chainName, size = 40 }: { assetSymbol: string; chainName: string; size?: number }) {
+  const asset = ASSET_BRAND[assetSymbol];
+  const chain = CHAIN_BRAND[chainName];
+  return (
+    <span className="vault-mark" style={{ '--vm-size': `${size}px` } as CSSProperties} aria-hidden="true">
+      {asset ? (
+        <BrandMark brand={asset} size={size} className="vault-mark-asset" />
+      ) : (
+        <span className="vault-mark-asset vault-mark-text">{assetSymbol.slice(0, 1)}</span>
+      )}
+      {chain && (
+        <span className="vault-mark-chain">
+          {/* NEAR's plain mark is light green on transparent, so on the ring it takes its tile. */}
+          <BrandMark brand={chain} size={Math.round(size * 0.4)} form={chain === 'near' ? 'tile' : 'mark'} />
+        </span>
+      )}
     </span>
   );
 }
