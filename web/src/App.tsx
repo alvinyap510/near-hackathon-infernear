@@ -6,7 +6,7 @@ import { Bridge } from './screens/Bridge.tsx';
 import { Connect } from './screens/Connect.tsx';
 import { Keys } from './screens/Keys.tsx';
 import { TryApi } from './screens/TryApi.tsx';
-import { ErrorNote, errorText } from './components/ui.tsx';
+import { ErrorNote, Spinner, errorText } from './components/ui.tsx';
 
 const tabFromHash = (): Tab => {
   const id = window.location.hash.slice(1);
@@ -50,7 +50,7 @@ export function App() {
         {!address ? (
           <Connect onConnected={setAddress} />
         ) : !overview ? (
-          readError ? <ErrorNote error={readError} /> : <p className="loading">Reading your vault and credits…</p>
+          readError ? <ErrorNote error={readError} /> : <p className="loading" role="status"><Spinner /> Reading your vault and credits…</p>
         ) : tab === 'account' ? (
           <Account address={address} overview={overview} onChanged={refresh} onBridge={() => go('bridge')} />
         ) : tab === 'keys' ? (

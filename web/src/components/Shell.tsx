@@ -43,10 +43,8 @@ export function Header({ address, tab, onTab }: { address: Address | null; tab: 
       </a>
       <div className="header-inner">
         <a className="brand" href="#account" aria-label="InferNear home">
-          <SealGlyph size={26} />
-          <span className="brand-word">
-            Infer<em>Near</em>
-          </span>
+          <SealGlyph size={18} />
+          <span className="brand-word">InferNear</span>
         </a>
         {address && (
           <nav className="tabs" aria-label="Dashboard">

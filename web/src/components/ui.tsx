@@ -44,16 +44,18 @@ export function ErrorNote({ error }: { error: string | null }) {
   );
 }
 
-/** The InferNear mark: an "i" and an "N" sharing one stem, the dot and diagonal in signal green. */
-export function SealGlyph({ size = 22 }: { size?: number }) {
+/**
+ * The InferNear mark: a bracketed enclave holding the private core in signal green.
+ * Drawn on a 4-unit grid, so sizes in multiples of 6 px render with crisp edges.
+ */
+export function SealGlyph({ size = 18 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" className="seal-glyph">
-      <rect width="32" height="32" rx="8" fill="var(--seal)" />
-      <g transform="translate(0 0.9)">
-        <path d="M8.5 13h3.2v11H8.5zM20.3 8h3.2v16h-3.2z" fill="var(--seal-ink)" />
-        <path d="M8.5 13h3.9l11.1 11h-3.9z" fill="var(--signal)" />
-        <circle cx="10.1" cy="8.4" r="2.2" fill="var(--signal)" />
-      </g>
+    <svg width={size} height={size} viewBox="4 4 24 24" aria-hidden="true" className="seal-glyph">
+      <path
+        d="M4 5.5A1.5 1.5 0 0 1 5.5 4H12v4H8v16h4v4H5.5A1.5 1.5 0 0 1 4 26.5zM20 4h6.5A1.5 1.5 0 0 1 28 5.5v21a1.5 1.5 0 0 1-1.5 1.5H20v-4h4V8h-4z"
+        fill="currentColor"
+      />
+      <rect x="12" y="12" width="8" height="8" rx="1" fill="var(--signal)" />
     </svg>
   );
 }
