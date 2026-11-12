@@ -1457,6 +1457,10 @@ svg {
   max-width: 20ch;
 }
 
+.h2-wide .line {
+  display: block;
+}
+
 .tee {
   position: relative;
   display: grid;
