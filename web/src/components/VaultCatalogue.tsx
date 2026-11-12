@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import { AssetBadge, ChainBadge, ErrorNote, LockIcon, ProtocolMark, VaultMark, type Protocol } from './ui.tsx';
+import { ErrorNote, LockIcon, ProtocolMark, VaultMark, type Protocol } from './ui.tsx';
 
 // Presentation only: renders what the props carry and invents no figures.
 export type CatalogueVault = {
@@ -32,8 +32,13 @@ export type VaultCatalogueProps = {
 
 const WALLET_NAME = { evm: 'EVM', near: 'NEAR' } as const;
 
-// The protocol behind each strategy, shown small beside the strategy sentence.
-const PROTOCOL: Record<CatalogueVault['kind'], Protocol> = { aave: 'aave', rate: 'coinbase', pendle: 'pendle', rhea: 'rhea' };
+// The protocol behind each strategy, named under the vault name.
+const PROTOCOL: Record<CatalogueVault['kind'], { mark: Protocol; name: string }> = {
+  aave: { mark: 'aave', name: 'Aave v3' },
+  rate: { mark: 'coinbase', name: 'Coinbase staking' },
+  pendle: { mark: 'pendle', name: 'Pendle' },
+  rhea: { mark: 'rhea', name: 'Rhea Lend' },
+};
 
 export function VaultCatalogue({ vaults, loading, error = null, connectedKind, onChoose, onConnect }: VaultCatalogueProps): JSX.Element {
   const skeleton = loading && vaults.length === 0;
@@ -126,24 +131,28 @@ function VaultCard({
   const fill = capFraction(vault.deposited, vault.cap);
   const nameId = `vc-${vault.id}`;
   const [rateValue, rateRest] = splitFirst(vault.rateNow);
+  const protocol = PROTOCOL[vault.kind];
 
   return (
     <article className={`vc-card rise d${Math.min(index + 2, 5)}${paused ? ' is-paused' : ''}`} aria-labelledby={nameId}>
       <div className="vc-ident">
-        <VaultMark assetSymbol={vault.assetSymbol} chainName={vault.chainName} size={56} />
-        <span className="ticket-badges">
-          <ChainBadge name={vault.chainName} />
-          <AssetBadge symbol={vault.assetSymbol} />
-          {paused && <span className="badge vc-paused">Paused</span>}
-        </span>
-        <span className="vc-shape">
-          <ShapeGlyph kind={vault.kind} />
-          {vault.yieldShape}
-        </span>
+        <VaultMark assetSymbol={vault.assetSymbol} chainName={vault.chainName} size={52} />
         <h2 id={nameId} className="vc-name">
           {vault.name}
         </h2>
-        <ProtocolMark protocol={PROTOCOL[vault.kind]} className="vc-protocol" />
+        <p className="vc-meta">
+          <ProtocolMark protocol={protocol.mark} />
+          <span className="vc-meta-protocol">{protocol.name}</span>
+          <span aria-hidden="true">·</span>
+          <span>{vault.chainName}</span>
+        </p>
+        <div className="vc-aside">
+          {paused && <span className="badge vc-paused">Paused</span>}
+          <span className="vc-shape">
+            <ShapeGlyph kind={vault.kind} />
+            {vault.yieldShape}
+          </span>
+        </div>
         <p className="vc-strategy">{vault.strategy}</p>
       </div>
 

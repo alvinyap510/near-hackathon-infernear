@@ -79,36 +79,46 @@ export const plainAmount = (amount: bigint, token: Token) =>
   formatAmount(amount, token.decimals).replace(/,/g, '').replace(/\.?0+$/, '');
 
 /**
- * Brand logos from @web3icons/react, as the package draws them, in one of three forms:
- * - mark: the plain logo. Every mark used here is drawn in the middle 18 units of a 24-unit
- *   box, so the viewBox is cropped to that area and `size` is the logo's real size.
- * - coin / tile: the package's logo-on-brand-colour variant, rounded to a disc or a square.
- * cbETH's plain mark is a thin ring and Pendle's is white on transparent, so both are coins;
- * USDC's plain mark is already the solid blue disc. PT-deJAAA has no logo of its own: it is
- * Pendle's token. Aave and Coinbase appear only as protocol tiles.
+ * Brand logos from @web3icons/react, as the package draws them, in one of four forms:
+ * - mark: the full-colour logo. Every logo used here is drawn in the middle 18 units of a
+ *   24-unit box, so the viewBox is cropped to that area and `size` is the logo's real size.
+ * - glyph: the one-colour logo, cropped the same way, in the current text colour.
+ * - coin: the package's logo-on-brand-colour variant, cut to a disc.
+ * - disc: the one-colour logo, white, centred on a disc of the brand's colour.
+ * Every token reads as a solid disc of the same size: USDC's mark already is one; cbETH's mark
+ * is a thin ring, so it is a coin; Pendle's logo is a large white disc that would read as a
+ * ring, so it is a disc with a smaller glyph. PT-deJAAA has no logo of its own: it is Pendle's.
  */
 const MARKS = {
   base: [NetworkBase, 'mark'],
   near: [NetworkNearProtocol, 'mark'],
   usdc: [TokenUSDC, 'mark'],
   cbeth: [TokenCBETH, 'coin'],
-  pendle: [TokenPENDLE, 'coin'],
-  aave: [TokenAAVE, 'tile'],
-  coinbase: [ExchangeCoinbase, 'tile'],
+  pendle: [TokenPENDLE, 'disc'],
+  aave: [TokenAAVE, 'coin'],
+  coinbase: [ExchangeCoinbase, 'coin'],
 } as const;
 
 export type Brand = keyof typeof MARKS;
-type Form = 'mark' | 'coin' | 'tile';
+type Form = 'mark' | 'glyph' | 'coin' | 'disc';
+const VARIANT = { mark: 'branded', glyph: 'mono', coin: 'background' } as const;
+const CROP = { viewBox: '3 3 18 18' };
 
 export function BrandMark({ brand, size = 18, form, className = '' }: { brand: Brand; size?: number; form?: Form; className?: string }) {
   const [Icon, preferred] = MARKS[brand];
   const shown = form ?? preferred;
-  const crop = shown === 'mark' ? { viewBox: '3 3 18 18' } : {};
+  if (shown === 'disc') {
+    return (
+      <span className={`brand-mark is-disc ${brand} ${className}`.trim()} style={{ width: size, height: size }} aria-hidden="true">
+        <Icon variant="mono" size="52%" {...CROP} aria-hidden="true" focusable="false" />
+      </span>
+    );
+  }
   return (
     <Icon
-      variant={shown === 'mark' ? 'branded' : 'background'}
+      variant={VARIANT[shown]}
       size={size}
-      {...crop}
+      {...(shown === 'coin' ? {} : CROP)}
       className={`brand-mark is-${shown} ${className}`.trim()}
       aria-hidden="true"
       focusable="false"
@@ -119,13 +129,13 @@ export function BrandMark({ brand, size = 18, form, className = '' }: { brand: B
 export type Protocol = 'aave' | 'coinbase' | 'pendle' | 'rhea';
 
 /**
- * A strategy's protocol logo as a small tile. Rhea is not in @web3icons: its logo is the
- * file from Rhea's own site, mint on transparent, so it sits on Rhea's near-black brand colour.
+ * A strategy's protocol logo as a small disc. Rhea is not in @web3icons: its logo is the file
+ * from Rhea's own site, mint on transparent, so it sits on Rhea's near-black brand colour.
  */
-export function ProtocolMark({ protocol, size = 20, className = '' }: { protocol: Protocol; size?: number; className?: string }) {
-  if (protocol !== 'rhea') return <BrandMark brand={protocol} size={size} form="tile" className={className} />;
+export function ProtocolMark({ protocol, size = 16, className = '' }: { protocol: Protocol; size?: number; className?: string }) {
+  if (protocol !== 'rhea') return <BrandMark brand={protocol} size={size} className={className} />;
   return (
-    <span className={`brand-mark is-tile rhea-tile ${className}`.trim()} style={{ width: size, height: size, padding: size * 0.12 }} aria-hidden="true">
+    <span className={`brand-mark is-coin rhea-coin ${className}`.trim()} style={{ width: size, height: size, padding: size * 0.16 }} aria-hidden="true">
       <img src={rheaLogo} alt="" />
     </span>
   );
@@ -155,24 +165,26 @@ export function AssetBadge({ symbol }: { symbol: string }) {
 }
 
 /**
- * A vault's identity: its deposit asset's logo, with its chain's logo on the lower-right
- * corner. Decorative, so pair it with the asset and chain in text. `size` is the asset logo
- * in px; a layout can override it with --vault-mark-size on an ancestor.
+ * A vault's identity: its deposit asset as a disc, with its chain as a small round badge on
+ * the lower-right edge. `size` is the disc in px; a layout can override it with
+ * --vault-mark-size on an ancestor.
  */
-export function VaultMark({ assetSymbol, chainName, size = 40 }: { assetSymbol: string; chainName: string; size?: number }) {
+export function VaultMark({ assetSymbol, chainName, size = 48 }: { assetSymbol: string; chainName: string; size?: number }) {
   const asset = ASSET_BRAND[assetSymbol];
   const chain = CHAIN_BRAND[chainName];
   return (
-    <span className="vault-mark" style={{ '--vm-size': `${size}px` } as CSSProperties} aria-hidden="true">
+    <span className="vault-mark" role="img" aria-label={`${assetSymbol} on ${chainName}`} style={{ '--vm-size': `${size}px` } as CSSProperties}>
       {asset ? (
         <BrandMark brand={asset} size={size} className="vault-mark-asset" />
       ) : (
-        <span className="vault-mark-asset vault-mark-text">{assetSymbol.slice(0, 1)}</span>
+        <span className="vault-mark-asset vault-mark-text" aria-hidden="true">
+          {assetSymbol.slice(0, 1)}
+        </span>
       )}
       {chain && (
-        <span className="vault-mark-chain">
-          {/* NEAR's plain mark is light green on transparent, so on the ring it takes its tile. */}
-          <BrandMark brand={chain} size={Math.round(size * 0.4)} form={chain === 'near' ? 'tile' : 'mark'} />
+        <span className="vault-mark-chain" aria-hidden="true">
+          {/* NEAR's full-colour mark is light green, so on the white badge it is its black glyph. */}
+          <BrandMark brand={chain} form={chain === 'near' ? 'glyph' : 'mark'} size={Math.round(size * 0.16)} />
         </span>
       )}
     </span>

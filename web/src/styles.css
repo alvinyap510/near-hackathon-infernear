@@ -3474,23 +3474,31 @@ body:has(dialog.wd[open]) {
   border-radius: 50%;
 }
 
-.brand-mark.is-tile {
-  border-radius: 25%;
+.brand-mark.is-disc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #fff;
+}
+
+.brand-mark.is-disc.pendle {
+  background: #152e51;
 }
 
 /* Rhea's logo is mint on transparent: it sits on Rhea's near-black, clear of the edge. */
-.rhea-tile {
+.rhea-coin {
   background: #171b2c;
 }
 
-.rhea-tile > img {
+.rhea-coin > img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
 }
 
-/* An 18 px logo in a 22 px chip: the same 2 px inset on the top, bottom and left. */
+/* Chips: an 18 px logo in a 22 px chip, with the same 2 px inset on the top, bottom and left. */
 .badge.has-logo {
   gap: 6px;
   padding-left: 2px;
@@ -3503,7 +3511,7 @@ body:has(dialog.wd[open]) {
   margin-left: 1px;
 }
 
-/* Vault mark: the asset's logo with the chain's logo on its lower-right corner. */
+/* Vault mark: the asset's disc with the chain as a small round badge on its lower-right edge. */
 
 .vault-mark {
   --vm: var(--vault-mark-size, var(--vm-size));
@@ -3530,29 +3538,31 @@ body:has(dialog.wd[open]) {
   font-weight: 600;
 }
 
+/* A white disc holding the chain's mark, ringed in the card colour, with a hairline edge
+   so it holds its shape where it hangs over the card. */
 .vault-mark-chain {
-  --vb: calc(var(--vm) * 0.4);
   position: absolute;
-  right: calc(var(--vm) * -0.1);
-  bottom: calc(var(--vm) * -0.1);
-  padding: 2px;
-  border-radius: calc(var(--vb) * 0.1 + 2px);
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  width: calc(var(--vm) * 0.3);
+  height: calc(var(--vm) * 0.3);
+  border: 1px solid var(--line);
+  border-radius: 50%;
   background: var(--surface);
-  line-height: 0;
+  box-shadow: 0 0 0 1.5px var(--surface);
+  color: #000;
 }
 
 .vault-mark-chain > .brand-mark {
-  width: var(--vb);
-  height: var(--vb);
+  width: 58%;
+  height: 58%;
 }
 
-/* Base's mark has corners of about a tenth of its size; NEAR's tile matches it. */
-.vault-mark-chain > .brand-mark.is-tile {
-  border-radius: calc(var(--vb) * 0.1);
-}
-
-/* Vault card header: the vault mark and the protocol tile hold the left column; the chips,
-   name and strategy share one text edge. The card's own width picks the layout. */
+/* Vault card header: disc on the left; the name and its protocol line centred beside it;
+   status and yield shape top right on the name's baseline; the strategy below.
+   The card's own width picks the layout. */
 
 .vc-card {
   container-type: inline-size;
@@ -3562,11 +3572,10 @@ body:has(dialog.wd[open]) {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas:
-    'mark chips shape'
-    'mark name name'
-    'protocol strategy strategy';
+    'mark name aside'
+    'mark meta meta'
+    'strategy strategy strategy';
   column-gap: 16px;
-  row-gap: 8px;
   align-items: center;
 }
 
@@ -3574,46 +3583,85 @@ body:has(dialog.wd[open]) {
   grid-area: mark;
 }
 
-.vc-ident > .ticket-badges {
-  grid-area: chips;
-}
-
-.vc-ident > .vc-shape {
-  grid-area: shape;
-}
-
 .vc-ident > .vc-name {
   grid-area: name;
+  align-self: baseline;
   margin-top: 0;
 }
 
-/* Centred under the vault mark, level with the strategy's first line. */
-.vc-ident > .vc-protocol {
-  grid-area: protocol;
+.vc-ident > .vc-meta {
+  grid-area: meta;
   align-self: start;
-  justify-self: center;
-  margin-top: 7px;
+}
+
+.vc-ident > .vc-aside {
+  grid-area: aside;
+  align-self: baseline;
 }
 
 .vc-ident > .vc-strategy {
   grid-area: strategy;
-  align-self: start;
+  margin-top: 16px;
+}
+
+.vc-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 4px 0 0;
+  color: var(--ink-3);
+  font-size: 13.5px;
+  font-weight: 550;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.vc-meta > .brand-mark {
+  margin-right: 2px;
+}
+
+.vc-meta-protocol {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink-2);
+  font-weight: 650;
+}
+
+.vc-aside {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+/* Inline rather than flex, so the label has a text baseline; the glyph centres on it. */
+.vc-aside > .vc-shape {
+  display: block;
+}
+
+.vc-aside .vc-glyph {
+  display: inline-block;
+  margin-right: 8px;
+  vertical-align: middle;
 }
 
 @container (max-width: 499px) {
   .vc-ident {
-    --vault-mark-size: 40px;
+    --vault-mark-size: 48px;
     grid-template-columns: auto minmax(0, 1fr);
     grid-template-areas:
-      'mark chips'
       'mark name'
-      '. shape'
-      'protocol strategy';
-    column-gap: 12px;
-    row-gap: 6px;
+      'mark meta'
+      'aside aside'
+      'strategy strategy';
+    column-gap: 14px;
   }
 
-  .vc-ident > .vc-shape {
-    margin-top: 4px;
+  .vc-ident > .vc-aside {
+    margin-top: 16px;
+  }
+
+  .vc-ident > .vc-strategy {
+    margin-top: 6px;
   }
 }
