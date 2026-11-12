@@ -2884,6 +2884,8 @@ svg {
   flex-direction: column;
   justify-content: center;
   min-height: 100vh;
+  /* A slide fills the viewport from its very top, so an anchor jump leaves no room for the header. */
+  scroll-margin-top: 0;
   padding: calc(var(--hud) + 32px) 0 56px;
 }
 

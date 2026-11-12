@@ -609,9 +609,15 @@ if (deckOn) {
     }, 150);
   });
 
-  if (location.hash) {
+  // A slide link, or a reload on a slide, lands exactly on that slide. Repeated once the page has
+  // finished loading, because the browser's own anchor jump and late layout can both move it.
+  const landOnHash = () => {
     const i = slides.findIndex((el) => `#${el.id}` === location.hash);
-    if (i > 0) requestAnimationFrame(() => scrollTo(0, topOf(slides[i])));
+    if (i > 0 && !animating) scrollTo(0, topOf(slides[i]));
+  };
+  if (location.hash) {
+    requestAnimationFrame(landOnHash);
+    if (document.readyState !== 'complete') addEventListener('load', () => requestAnimationFrame(landOnHash), { once: true });
   }
 }
 
