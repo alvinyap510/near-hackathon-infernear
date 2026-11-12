@@ -1863,9 +1863,9 @@ svg {
 .rail {
   position: relative;
   display: grid;
-  grid-template-columns: 150px minmax(36px, 1fr) 132px minmax(36px, 1fr) minmax(250px, 300px) minmax(36px, 0.8fr) minmax(210px, 240px);
+  grid-template-columns: minmax(260px, 300px) minmax(48px, 1fr) 150px minmax(48px, 1fr) minmax(280px, 330px);
   align-items: center;
-  margin-top: 56px;
+  margin-top: 48px;
 }
 
 .r-col {
@@ -1874,7 +1874,10 @@ svg {
 }
 
 .r-k {
-  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
   font-family: var(--mono);
   font-stretch: 87.5%;
   font-size: 11px;
@@ -1884,73 +1887,14 @@ svg {
   color: var(--ink-3);
 }
 
-.r-chains {
+.r-k .icon {
+  width: 14px;
+  height: 14px;
+  color: var(--ink);
+}
+
+.r-src {
   grid-column: 1;
-}
-
-.r-chains ul {
-  display: grid;
-  gap: 14px;
-}
-
-.r-chains .r-k {
-  text-align: right;
-}
-
-/* Name first, logo last: the lines leave from the logo's outer edge, never across a name. */
-.r-chains li {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.r-chains .icon {
-  width: 30px;
-  height: 30px;
-}
-
-.r-hub {
-  grid-column: 3;
-  display: grid;
-  justify-items: center;
-  gap: 6px;
-  text-align: center;
-}
-
-.hub-mark {
-  display: grid;
-  place-items: center;
-  width: 84px;
-  height: 84px;
-  margin-bottom: 6px;
-  border-radius: 50%;
-  background: var(--ink);
-  color: var(--snow);
-  box-shadow: 0 0 0 8px var(--paper), 0 0 0 calc(8px + var(--pulse, 0) * 16px) rgba(0, 236, 151, calc(0.4 - var(--pulse, 0) * 0.4));
-}
-
-.hub-mark .icon {
-  width: 40px;
-  height: 40px;
-}
-
-.r-hub b {
-  font-size: 17px;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.r-s {
-  font-size: 13px;
-  color: var(--ink-2);
-}
-
-.r-vaults {
-  grid-column: 5;
-  display: grid;
 }
 
 .r-group {
@@ -1960,10 +1904,6 @@ svg {
   border-radius: 4px;
   background: var(--card);
   border: 1px solid var(--line);
-}
-
-.r-group + .r-group {
-  margin-top: 12px;
 }
 
 .r-group .chainb {
@@ -1984,11 +1924,63 @@ svg {
   font-weight: 700;
 }
 
-.r-ai {
-  grid-column: 7;
+.r-note {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.r-hub {
+  grid-column: 3;
   display: grid;
-  gap: 4px;
-  padding: 24px 22px;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.hub-mark {
+  display: grid;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  margin-bottom: 8px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--snow);
+  box-shadow: 0 0 0 8px var(--paper), 0 0 0 calc(8px + var(--pulse, 0) * 16px) rgba(0, 236, 151, calc(0.4 - var(--pulse, 0) * 0.4));
+}
+
+.hub-mark .icon {
+  width: 44px;
+  height: 44px;
+}
+
+.r-hub b {
+  font-size: 18px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.r-s {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.r-near {
+  grid-column: 5;
+  display: grid;
+  gap: 12px;
+}
+
+.r-k-near {
+  margin-bottom: 0;
+  color: var(--ink);
+}
+
+.r-ai {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+  padding: 22px 22px 20px;
   border-radius: 6px;
   background: var(--night);
   color: var(--snow);
@@ -1996,10 +1988,21 @@ svg {
   transition: box-shadow 0.4s var(--ease);
 }
 
+.r-ai-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.r-ai-head > div {
+  display: grid;
+  gap: 4px;
+}
+
 .r-mark {
-  width: 52px;
-  height: 52px;
-  margin-bottom: 10px;
+  flex: none;
+  width: 48px;
+  height: 48px;
 }
 
 .r-mark path {
@@ -2011,7 +2014,16 @@ svg {
 }
 
 .r-ai .tn-k {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   color: var(--snow-2);
+}
+
+.r-ai .tn-k .icon {
+  width: 14px;
+  height: 14px;
+  color: var(--snow);
 }
 
 .r-ai b {
@@ -2036,22 +2048,15 @@ svg {
 
 .rail-lines path {
   fill: none;
-  stroke: var(--ink);
-  stroke-width: 1.5;
-  stroke-opacity: 0.55;
+  stroke: var(--mint-ink);
+  stroke-width: 2.5;
   stroke-dasharray: 1;
   stroke-dashoffset: 0;
 }
 
-.rail-lines .l-yield {
-  stroke: var(--mint-ink);
-  stroke-width: 2.5;
-  stroke-opacity: 1;
-}
-
 .motion .rail-lines path {
   stroke-dashoffset: 1;
-  transition: stroke-dashoffset 1.2s var(--ease) calc(0.25s + var(--i, 0) * 0.12s);
+  transition: stroke-dashoffset 1.2s var(--ease) calc(0.25s + var(--i, 0) * 0.2s);
 }
 
 .motion .rail.in .rail-lines path {
@@ -2110,9 +2115,23 @@ svg {
 }
 
 .i-steps h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
   font-size: 18px;
   font-weight: 800;
   letter-spacing: -0.01em;
+}
+
+.i-chains {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.i-chains .icon {
+  width: 20px;
+  height: 20px;
 }
 
 .i-steps p {
@@ -2122,22 +2141,18 @@ svg {
 
 @media (max-width: 1240px) {
   .rail {
-    grid-template-columns: 130px minmax(24px, 1fr) 120px minmax(24px, 1fr) minmax(230px, 260px) minmax(24px, 0.6fr) minmax(180px, 200px);
+    grid-template-columns: minmax(240px, 270px) minmax(32px, 1fr) 140px minmax(32px, 1fr) minmax(250px, 290px);
   }
 }
 
 @media (max-width: 1000px) {
   .rail {
     grid-template-columns: minmax(0, 1fr);
-    gap: 40px;
+    gap: 44px;
   }
 
   .r-col {
     grid-column: 1 !important;
-  }
-
-  .r-chains ul {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .r-hub {
@@ -2145,17 +2160,14 @@ svg {
     text-align: left;
   }
 
-  .r-col:not(.r-ai)::after {
+  .r-src::after,
+  .r-hub::after {
     content: '↓';
     position: absolute;
-    left: 24px;
-    bottom: -34px;
+    left: 40px;
+    bottom: -36px;
     font-size: 20px;
     color: var(--ink-3);
-  }
-
-  .r-hub::after {
-    left: 34px !important;
   }
 
   .rail-lines,
@@ -2821,4 +2833,99 @@ svg {
   .hud-bottom {
     display: none;
   }
+}
+
+/* ---------- Slide deck (desktop) ----------
+   One gesture moves one slide (see main.js). Each slide fills the screen with its content
+   centred; a slide taller than the screen scrolls through before the next one comes. */
+
+.deck {
+  scroll-behavior: auto;
+}
+
+.deck .sec {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100vh;
+  padding: calc(var(--hud) + 32px) 0 56px;
+}
+
+.deck .sec > .stage {
+  width: 100%;
+}
+
+.deck .h2 {
+  margin-top: 20px;
+  font-size: clamp(40px, min(5.6vw, 8.2vh), 92px);
+}
+
+.deck .rules {
+  margin-top: 48px;
+}
+
+.deck .vaults {
+  margin-top: 40px;
+}
+
+.deck .facts {
+  margin-top: 28px;
+}
+
+.deck .tee {
+  margin-top: 44px;
+}
+
+.deck .disclosure {
+  margin-top: 28px;
+}
+
+.deck .lede {
+  max-width: 68ch;
+  margin-top: 16px;
+}
+
+.deck .rail {
+  margin-top: 32px;
+}
+
+.deck .i-steps {
+  margin-top: 32px;
+}
+
+.deck .addrs {
+  margin-top: 32px;
+}
+
+.deck .addrs tbody th,
+.deck .addrs td {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+
+.deck .outro {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100vh;
+  padding: calc(var(--hud) + 32px) 0 0;
+}
+
+.deck .outro .mega {
+  font-size: clamp(44px, min(6.6vw, 9vh), 112px);
+}
+
+.deck .outro-mark {
+  width: 72px;
+  height: 72px;
+  margin-bottom: 28px;
+}
+
+.deck .outro .btn {
+  margin-top: 36px;
+}
+
+.deck .foot {
+  margin-top: 72px;
+  padding-bottom: 56px;
 }

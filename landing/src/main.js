@@ -288,11 +288,20 @@ function railLines() {
   };
   const hub = $('.hub-mark', railBox);
   const ai = $('.r-ai', railBox);
-  const groups = $$('.r-group', railBox);
-  const lines = [];
-  for (const li of $$('.r-chains li', railBox)) lines.push({ d: curve(at($('.icon', li), 'r'), at(hub, 'l')), cls: 'l-in', coin: 'usdc' });
-  for (const g of groups) lines.push({ d: curve(at(hub, 'r'), at(g, 'l')), cls: 'l-in', coin: 'usdc' });
-  for (const g of groups) lines.push({ d: curve(at(g, 'r'), at(ai, 'l')), cls: 'l-yield', coin: 'yield' });
+  const base = $('.r-group-base', railBox);
+  const rhea = $('.r-group-near', railBox);
+  const down = (from, to) => {
+    const f = from.getBoundingClientRect();
+    const t = to.getBoundingClientRect();
+    const x = Math.min(f.left + f.width / 2, t.left + t.width / 2) - box.left;
+    return `M${x.toFixed(1)} ${(f.bottom - box.top).toFixed(1)}V${(t.top - box.top).toFixed(1)}`;
+  };
+  // Base vault yield goes through NEAR Intents to NEAR AI; the Rhea vault is already on NEAR.
+  const lines = [
+    { d: curve(at(base, 'r'), at(hub, 'l')), cls: 'l-yield', coin: 'yield' },
+    { d: curve(at(hub, 'r'), at(ai, 'l')), cls: 'l-yield', coin: 'yield' },
+    { d: down(rhea, ai), cls: 'l-yield', coin: 'yield' },
+  ];
   railSvg.innerHTML = lines.map((l, i) => `<path class="${l.cls}" d="${l.d}" pathLength="1" style="--i:${i}"/>`).join('');
   railPaths = [...railSvg.querySelectorAll('path')].map((p, i) => ({ p, len: p.getTotalLength(), coin: lines[i].coin }));
   if (!coinsBox.children.length) {
@@ -313,14 +322,13 @@ if (motion && railBox) {
     [...coinsBox.children].forEach((c, i) => {
       const r = railPaths[i];
       if (!r) return;
-      const stage = i < 4 ? 0 : i < 6 ? 1 : 2;
-      const u = (t * 0.28 - stage * 0.33 + (i % 4) * 0.07 + 10) % 1;
+      // 0: Base vaults to Intents, 1: Intents to NEAR AI, 2: Rhea vault to NEAR AI.
+      const u = (t * 0.32 + (i === 1 ? -0.5 : i === 2 ? -0.25 : 0) + 10) % 1;
       const pt = r.p.getPointAtLength(u * r.len);
-      const half = c.classList.contains('yd') ? 4.5 : 10;
-      c.style.transform = `translate(${(pt.x - half).toFixed(1)}px, ${(pt.y - half).toFixed(1)}px)`;
+      c.style.transform = `translate(${(pt.x - 4.5).toFixed(1)}px, ${(pt.y - 4.5).toFixed(1)}px)`;
       c.style.opacity = t < 1.6 ? '0' : u < 0.04 || u > 0.96 ? '0' : '1';
-      if (stage === 0 && u > 0.9) pulse = Math.max(pulse, (u - 0.9) / 0.1);
-      if (stage === 2 && u > 0.88) lit = 1;
+      if (i === 0 && u > 0.88) pulse = Math.max(pulse, (u - 0.88) / 0.12);
+      if (i !== 0 && u > 0.9) lit = 1;
     });
     $('.hub-mark', railBox).style.setProperty('--pulse', pulse.toFixed(3));
     $('.r-ai', railBox).style.setProperty('--lit', String(lit));
@@ -438,6 +446,145 @@ for (const button of $$('button[data-copy], button[data-copy-active]')) {
     if (status) status.textContent = ok ? 'Copied to the clipboard.' : 'Copying is blocked here; select the text instead.';
     setTimeout(() => (button.textContent = label), 1500);
   });
+}
+
+/* ---------- Slide deck: one gesture, one slide (desktop with a fine pointer) ---------- */
+
+const root = document.documentElement;
+const slides = $$('main > section');
+const deckOn =
+  matchMedia('(pointer: fine)').matches && matchMedia('(min-width: 900px) and (min-height: 700px)').matches;
+if (deckOn) {
+  root.classList.add('deck');
+  const reduce = !motion;
+  const DURATION = 750;
+  const QUIET = 160; // ms of wheel silence that ends a gesture; trackpad inertia keeps firing until then
+  let animating = false;
+  let lastWheel = 0;
+  let gestureUsed = false;
+  let tween = 0;
+
+  const topOf = (el) => el.getBoundingClientRect().top + scrollY;
+  const current = () => {
+    let idx = 0;
+    slides.forEach((el, i) => {
+      if (topOf(el) <= scrollY + 4) idx = i;
+    });
+    return idx;
+  };
+  const settle = (i) => {
+    const id = slides[i].id;
+    history.replaceState(null, '', id === 'top' ? location.pathname + location.search : `#${id}`);
+    requestScroll();
+  };
+  const scrollToY = (y, i) => {
+    cancelAnimationFrame(tween);
+    const max = root.scrollHeight - innerHeight;
+    const to = Math.max(0, Math.min(max, Math.round(y)));
+    const from = scrollY;
+    if (reduce || Math.abs(to - from) < 2) {
+      scrollTo(0, to);
+      animating = false;
+      settle(i);
+      return;
+    }
+    animating = true;
+    const t0 = performance.now();
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / DURATION);
+      const e = 1 - Math.pow(1 - k, 3);
+      scrollTo(0, from + (to - from) * e);
+      if (k < 1) tween = requestAnimationFrame(step);
+      else {
+        animating = false;
+        settle(i);
+      }
+    };
+    tween = requestAnimationFrame(step);
+  };
+  const goTo = (i, landAtEnd = false) => {
+    i = Math.max(0, Math.min(slides.length - 1, i));
+    const el = slides[i];
+    const h = el.offsetHeight;
+    scrollToY(landAtEnd && h > innerHeight + 4 ? topOf(el) + h - innerHeight : topOf(el), i);
+  };
+  // One step: through a tall slide first, then on to the next slide.
+  const advance = (dir) => {
+    const i = current();
+    const el = slides[i];
+    const t = topOf(el);
+    const bottom = t + el.offsetHeight;
+    if (dir > 0 && bottom > scrollY + innerHeight + 4) return scrollToY(Math.min(bottom - innerHeight, scrollY + innerHeight * 0.85), i);
+    if (dir < 0 && scrollY > t + 4) return scrollToY(Math.max(t, scrollY - innerHeight * 0.85), i);
+    goTo(i + dir, dir < 0);
+  };
+
+  addEventListener(
+    'wheel',
+    (e) => {
+      if (e.ctrlKey || e.target.closest?.('.console-body')) return;
+      e.preventDefault();
+      // Gesture gaps use the input's own timestamps, so a busy main thread cannot split one fling.
+      const now = e.timeStamp;
+      if (now - lastWheel > QUIET) gestureUsed = false;
+      lastWheel = now;
+      if (animating || gestureUsed || Math.abs(e.deltaY) < 2) return;
+      gestureUsed = true;
+      advance(Math.sign(e.deltaY));
+    },
+    { passive: false },
+  );
+
+  addEventListener('keydown', (e) => {
+    if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+    const t = e.target;
+    if (t.closest?.('input, textarea, select, [contenteditable], .console-body, [role="tablist"]')) return;
+    const next = e.key === 'PageDown' || e.key === 'ArrowDown' || (e.key === ' ' && !e.shiftKey);
+    const prev = e.key === 'PageUp' || e.key === 'ArrowUp' || (e.key === ' ' && e.shiftKey);
+    if (!next && !prev && e.key !== 'Home' && e.key !== 'End') return;
+    if (e.key === ' ' && t.closest?.('a, button, summary')) return;
+    e.preventDefault();
+    if (animating) return;
+    if (e.key === 'Home') goTo(0);
+    else if (e.key === 'End') goTo(slides.length - 1);
+    else advance(next ? 1 : -1);
+  });
+
+  // In-page links (nav, logo) animate to their slide.
+  addEventListener('click', (e) => {
+    const a = e.target.closest?.('a[href^="#"]');
+    if (!a) return;
+    const id = a.getAttribute('href').slice(1);
+    const i = slides.findIndex((el) => el.id === id);
+    if (i < 0) return;
+    e.preventDefault();
+    goTo(i);
+  });
+
+  // Keyboard focus moving out of view brings its slide into view.
+  addEventListener('focusin', (e) => {
+    const slide = e.target.closest?.('main > section');
+    if (!slide) return;
+    const r = e.target.getBoundingClientRect();
+    if (r.top >= 0 && r.bottom <= innerHeight) return;
+    const i = slides.indexOf(slide);
+    const h = slide.offsetHeight;
+    const t = topOf(slide);
+    scrollToY(h > innerHeight ? Math.min(t + h - innerHeight, Math.max(t, r.top + scrollY - innerHeight / 3)) : t, i);
+  });
+
+  let resizeT = 0;
+  addEventListener('resize', () => {
+    clearTimeout(resizeT);
+    resizeT = setTimeout(() => {
+      if (!animating) goTo(current());
+    }, 150);
+  });
+
+  if (location.hash) {
+    const i = slides.findIndex((el) => `#${el.id}` === location.hash);
+    if (i > 0) requestAnimationFrame(() => scrollTo(0, topOf(slides[i])));
+  }
 }
 
 /* ---------- Hero: three.js, loaded lazily, only with motion and WebGL ---------- */

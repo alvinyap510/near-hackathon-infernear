@@ -334,29 +334,11 @@ console.log(`Verified ${receipt.signatureKind} reply:`, completion.choices[0].me
           <div class="wrap">
             <p class="label" data-reveal><b>005</b> NEAR Intents</p>
             <h2 id="intents-h" class="h2 h2-wide" data-split>Any chain in. NEAR AI out.</h2>
-            <p class="lede" data-reveal>NEAR Intents is the rail between the chain you're on and NEAR, so you fund private inference without a NEAR account, key or tokens.</p>
+            <p class="lede" data-reveal>NEAR Intents carries each vault's yield to NEAR, where it pays for NEAR AI. You never need a NEAR account, key or tokens.</p>
 
             <div class="rail" id="rail" data-reveal>
-              <div class="r-col r-chains">
-                <p class="r-k">USDC on any chain</p>
-                <ul>
-                  <li><span>Base</span><i data-icon="base"></i></li>
-                  <li><span>Ethereum</span><i data-icon="ethereum"></i></li>
-                  <li><span>Arbitrum</span><i data-icon="arbitrum"></i></li>
-                  <li><span>Solana</span><i data-icon="solana"></i></li>
-                </ul>
-              </div>
-              <div class="r-col r-hub">
-                <span class="hub-mark"><i data-icon="near"></i></span>
-                <b>NEAR Intents</b>
-                <span class="r-s">1Click</span>
-              </div>
-              <div class="r-col r-vaults">
-                <p class="r-k">Vaults · principal stays yours</p>
-                <div class="r-group r-group-near">
-                  <span class="chainb"><i data-icon="near"></i>NEAR</span>
-                  <ul><li><span class="tok" title="USDC on NEAR"><i data-icon="usdc" class="tok-coin"></i><i data-icon="near" class="tok-chain"></i></span>Rhea USDC vault</li></ul>
-                </div>
+              <div class="r-col r-src">
+                <p class="r-k">Every chain's yield</p>
                 <div class="r-group r-group-base">
                   <span class="chainb"><i data-icon="base"></i>Base</span>
                   <ul>
@@ -364,25 +346,41 @@ console.log(`Verified ${receipt.signatureKind} reply:`, completion.choices[0].me
                     <li><span class="tok" title="cbETH on Base"><i data-icon="cbeth" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span>cbETH vault</li>
                     <li><span class="tok" title="Pendle PT-deJAAA on Base"><i data-icon="pendle" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span>Pendle PT-deJAAA vault</li>
                   </ul>
+                  <p class="r-note">principal stays yours</p>
                 </div>
               </div>
-              <div class="r-col r-ai">
-                <svg class="r-mark" viewBox="4 4 24 24" aria-hidden="true">
-                  <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H12v4H8v16h4v4H5.5A1.5 1.5 0 0 1 4 26.5zM20 4h6.5A1.5 1.5 0 0 1 28 5.5v21a1.5 1.5 0 0 1-1.5 1.5H20v-4h4V8h-4z" />
-                  <rect x="12" y="12" width="8" height="8" rx="1" />
-                </svg>
-                <span class="tn-k">On NEAR</span>
-                <b>NEAR AI Cloud</b>
-                <span class="r-s">one credit balance pays for private inference</span>
+              <div class="r-col r-hub">
+                <span class="hub-mark"><i data-icon="near"></i></span>
+                <b>NEAR Intents</b>
+                <span class="r-s">carries the yield to NEAR</span>
+              </div>
+              <div class="r-col r-near">
+                <p class="r-k r-k-near"><i data-icon="near"></i>On NEAR</p>
+                <div class="r-group r-group-near">
+                  <ul><li><span class="tok" title="USDC on NEAR"><i data-icon="usdc" class="tok-coin"></i><i data-icon="near" class="tok-chain"></i></span>Rhea USDC vault</li></ul>
+                </div>
+                <div class="r-ai">
+                  <div class="r-ai-head">
+                    <svg class="r-mark" viewBox="4 4 24 24" aria-hidden="true">
+                      <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H12v4H8v16h4v4H5.5A1.5 1.5 0 0 1 4 26.5zM20 4h6.5A1.5 1.5 0 0 1 28 5.5v21a1.5 1.5 0 0 1-1.5 1.5H20v-4h4V8h-4z" />
+                      <rect x="12" y="12" width="8" height="8" rx="1" />
+                    </svg>
+                    <div>
+                      <span class="tn-k"><i data-icon="near"></i>NEAR AI Cloud</span>
+                      <b>Private inference</b>
+                    </div>
+                  </div>
+                  <span class="r-s">yield becomes credits for NEAR AI's TEE models</span>
+                </div>
               </div>
               <svg class="rail-lines" id="rail-lines" aria-hidden="true"></svg>
               <div class="coins" id="coins" aria-hidden="true"></div>
             </div>
 
             <ol class="i-steps" data-reveal>
-              <li><b>01</b><h3>Any chain to your vault</h3><p>1Click brings USDC to your own Base address, or into the Rhea vault on NEAR.</p></li>
+              <li><b>01</b><h3>USDC from any chain <span class="i-chains"><i data-icon="ethereum"></i><i data-icon="arbitrum"></i><i data-icon="solana"></i></span></h3><p>Intents brings it to your own Base address, ready to deposit.</p></li>
               <li><b>02</b><h3>Signed with your EVM wallet</h3><p>Deposits, exits and API keys. No NEAR account anywhere.</p></li>
-              <li><b>03</b><h3>One credit balance</h3><p>Yield from every vault, on Base or NEAR, lands on one NEAR ledger and pays for NEAR AI Cloud.</p></li>
+              <li><b>03</b><h3>One credit balance</h3><p>Yield from every vault, on Base or NEAR, pays for NEAR AI Cloud.</p></li>
             </ol>
           </div>
         </div>
