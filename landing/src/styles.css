@@ -1358,30 +1358,30 @@ svg {
   background: var(--mint-ink);
 }
 
-/* ---------- 003 Privacy: the enclave mechanism ----------
-   Packets travel only on the wires between boxes, never over text. */
+/* ---------- 003 Privacy: the TEE ----------
+   One flow, the enclave as the hero. Packets travel only on the wires between boxes. */
+
+.h2-wide {
+  max-width: 20ch;
+}
 
 .tee {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(48px, 1fr) auto minmax(48px, 1fr) minmax(0, 1.15fr);
+  grid-template-columns: minmax(150px, 0.9fr) minmax(40px, 0.55fr) auto minmax(40px, 0.55fr) minmax(0, 1.9fr);
   align-items: center;
   margin-top: 56px;
-  padding-top: 44px;
 }
 
 .tee-node {
-  --tk: var(--ink);
   position: relative;
   z-index: 2;
   display: grid;
   gap: 4px;
-  align-content: center;
-  min-height: 150px;
-  padding: 20px 22px;
+  padding: 20px 20px 18px;
   border-radius: 4px;
-  background-color: var(--card);
-  box-shadow: 0 24px 50px -40px rgba(20, 21, 25, 0.5);
+  background: var(--card);
+  border: 1px solid var(--line);
 }
 
 .tn-k {
@@ -1395,67 +1395,25 @@ svg {
 }
 
 .tee-node b {
-  font-size: clamp(19px, 1.7vw, 24px);
+  font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.02em;
 }
 
 .tn-s {
-  font-size: 13px;
+  font-size: 13.5px;
   color: var(--ink-2);
 }
 
 .tn-ok {
+  margin-top: 6px;
   font-family: var(--mono);
   font-stretch: 87.5%;
   font-size: 12px;
   font-weight: 600;
   color: var(--mint-ink);
-  opacity: var(--ok1, 1);
+  opacity: var(--ok, 1);
   transition: opacity 0.3s;
-}
-
-.tn-ok-2 {
-  opacity: var(--ok2, 1);
-}
-
-.tee-enclave {
-  --tk: var(--mint-ink);
-  grid-template-columns: auto minmax(0, 1fr);
-  column-gap: 16px;
-}
-
-.tee-enclave > :not(.tee-mark) {
-  grid-column: 2;
-}
-
-.tee-mark {
-  grid-row: 1 / span 3;
-  width: 56px;
-  height: 56px;
-  overflow: visible;
-}
-
-.tm-l,
-.tm-r {
-  fill: var(--ink);
-  transition: transform 0.3s cubic-bezier(0.5, 0, 0.2, 1.4);
-}
-
-.tm-l {
-  transform: translateX(calc(var(--open, 0) * -3px));
-}
-
-.tm-r {
-  transform: translateX(calc(var(--open, 0) * 3px));
-}
-
-.tm-c {
-  fill: var(--mint);
-  transform-box: fill-box;
-  transform-origin: center;
-  transform: scale(calc(1 + var(--flash, 0) * 0.35));
-  transition: transform 0.25s var(--ease);
 }
 
 .tee-wire {
@@ -1474,7 +1432,6 @@ svg {
 .w-back {
   fill: none;
   stroke-width: 2;
-  vector-effect: non-scaling-stroke;
   stroke-dasharray: 1;
 }
 
@@ -1494,7 +1451,7 @@ svg {
   display: grid;
   justify-items: center;
   gap: 2px;
-  padding: 0 10px;
+  padding: 0 12px;
   text-align: center;
 }
 
@@ -1516,13 +1473,12 @@ svg {
   stroke: var(--snow);
   stroke-width: 1.8;
   stroke-linecap: round;
-  transform: translateY(calc((1 - var(--lock, 1)) * -3px));
-  transition: transform 0.25s var(--ease);
 }
 
 .tee-relay b {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .tee-relay span {
@@ -1530,24 +1486,122 @@ svg {
   font-stretch: 87.5%;
   font-size: 11.5px;
   color: var(--ink-2);
+  white-space: nowrap;
 }
 
-.tee-att {
-  position: absolute;
-  left: 10%;
-  top: 0;
-  width: 80%;
-  height: 44px;
+/* The enclave: a sealed dark box, mint-edged, with its proofs on it. */
+.tee-enclave {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: 22px;
+  padding: 28px 28px 26px;
+  border-radius: 6px;
+  background: var(--night);
+  color: var(--snow);
+  box-shadow: 0 0 0 2px var(--mint), 0 0 0 calc(2px + var(--glow, 0) * 10px) rgba(0, 236, 151, calc(0.18 * var(--glow, 0))), 0 40px 70px -40px rgba(20, 21, 25, 0.7);
+  transition: box-shadow 0.4s var(--ease);
+}
+
+.te-head {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.te-head > div {
+  display: grid;
+  gap: 4px;
+}
+
+.tee-enclave .tn-k {
+  color: var(--snow-2);
+}
+
+.tee-enclave b {
+  font-size: clamp(24px, 2.2vw, 32px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.te-s {
+  font-size: 14px;
+  color: var(--snow-2);
+}
+
+.tee-mark {
+  flex: none;
+  width: 72px;
+  height: 72px;
   overflow: visible;
 }
 
-.tee-att path {
-  fill: none;
-  stroke: var(--mint-ink);
-  stroke-width: 1.5;
-  stroke-dasharray: 0.008 0.008;
-  vector-effect: non-scaling-stroke;
-  opacity: var(--att, 1);
+.tm-l,
+.tm-r {
+  fill: var(--snow);
+  transition: transform 0.3s cubic-bezier(0.5, 0, 0.2, 1.4);
+}
+
+.tm-l {
+  transform: translateX(calc(var(--open, 0) * -3px));
+}
+
+.tm-r {
+  transform: translateX(calc(var(--open, 0) * 3px));
+}
+
+.tm-c {
+  fill: var(--mint);
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(calc(1 + var(--glow, 0) * 0.3));
+  transition: transform 0.3s var(--ease);
+}
+
+.te-proof {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.te-proof li {
+  display: grid;
+  gap: 3px;
+  padding: 12px 14px;
+  border-radius: 4px;
+  background: var(--night-2);
+  border: 1px solid var(--night-line);
+  font-size: 13px;
+  color: var(--snow-2);
+  transition: border-color 0.3s;
+}
+
+.te-proof li b {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--snow);
+}
+
+.te-proof li b::before {
+  content: '✓';
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--mint);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.te-proof li.lit {
+  border-color: var(--mint);
 }
 
 .packet {
@@ -1577,82 +1631,43 @@ svg {
   color: var(--ink);
 }
 
-.tee-steps {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 48px;
-}
-
-.tee-steps li {
-  display: grid;
-  gap: 8px;
-  align-content: start;
-  padding-top: 14px;
-  border-top: 2px solid var(--line);
-  font-size: 14px;
-  line-height: 1.4;
-  color: var(--ink-3);
-  transition: color 0.3s, border-color 0.3s;
-}
-
-.tee-steps b {
-  font-family: var(--mono);
-  font-stretch: 87.5%;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.tee-steps li.on,
-.tee-steps.all li {
-  color: var(--ink);
-  border-top-color: var(--ink);
-}
-
-.tee-steps li.on b {
-  color: var(--mint-ink);
-}
-
 .disclosure {
-  margin-top: 24px;
-  font-size: 13.5px;
+  margin-top: 36px;
+  font-size: 14px;
   color: var(--ink-2);
 }
 
 @media (max-width: 1100px) {
-  .tee-steps {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .tee {
+    grid-template-columns: minmax(130px, 0.9fr) minmax(28px, 0.4fr) auto minmax(28px, 0.4fr) minmax(0, 1.9fr);
+  }
+
+  .te-proof {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 900px) {
   .tee {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto 48px auto 48px auto;
-    padding-top: 0;
+    grid-template-rows: auto 44px auto 44px auto;
   }
 
   .tee-wire {
-    height: 48px;
+    height: 44px;
   }
 
   .tee-wire svg {
     position: absolute;
     left: 50%;
     top: 0;
-    width: 48px;
-    height: 48px;
+    width: 44px;
+    height: 44px;
     transform: translateX(-50%) rotate(90deg);
   }
 
-  .tee-att,
   .packet {
     display: none;
-  }
-
-  .tee-steps {
-    grid-template-columns: minmax(0, 1fr);
-    margin-top: 36px;
   }
 }
 

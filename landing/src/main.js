@@ -194,197 +194,82 @@ $$('.vault').forEach((card, i) => {
   });
 });
 
-/* ---------- 003: the two request paths, drawn in SVG ---------- */
+/* ---------- 003: the TEE flow ---------- */
 
-const SVGNS = 'http://www.w3.org/2000/svg';
-const el = (name, attrs = {}, parent) => {
-  const n = document.createElementNS(SVGNS, name);
-  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
-  parent?.append(n);
-  return n;
-};
-const text = (parent, x, y, str, cls) => {
-  const t = el('text', { x, y, class: cls }, parent);
-  t.textContent = str;
-  return t;
-};
 const HEX = '0123456789abcdef';
 const hex = (n = 8) => Array.from({ length: n }, () => HEX[(Math.random() * 16) | 0]).join('');
-const MARK_FRAME = 'M4 5.5A1.5 1.5 0 0 1 5.5 4H12v4H8v16h4v4H5.5A1.5 1.5 0 0 1 4 26.5zM20 4h6.5A1.5 1.5 0 0 1 28 5.5v21a1.5 1.5 0 0 1-1.5 1.5H20v-4h4V8h-4z';
+const ease = (x) => 1 - Math.pow(1 - clamp(x), 3);
+const seg = (p, a, b) => clamp((p - a) / (b - a));
+const tee = $('#tee');
+const packet = $('#packet');
+const packetLabel = $('span', packet);
+const wires = $$('.tee-wire', tee);
+const proofAtt = $('.te-att', tee);
+const proofSig = $('.te-sig', tee);
+let lastHex = 0;
 
-const LANES = [
-  {
-    id: 'standard',
-    title: 'Standard',
-    sub: 'any OpenAI client',
-    nodes: [
-      { k: 'Your machine', t: 'Your app', note: 'reads', reads: true },
-      { k: 'InferNear', t: 'Relay', note: 'reads in transit', reads: true, icon: 'eye' },
-      { k: 'NEAR AI Cloud', t: 'TEE model', note: 'attested', reads: true },
-    ],
-  },
-  {
-    id: 'private',
-    title: 'Private',
-    sub: "NEAR AI's SDK",
-    nodes: [
-      { k: 'Your machine', t: 'App + SDK', note: 'encrypts', reads: true },
-      { k: 'InferNear', t: 'Relay', note: 'ciphertext only', reads: false, icon: 'lock' },
-      { k: 'NEAR AI Cloud', t: 'TEE model', note: 'decrypts inside', reads: true },
-    ],
-  },
-];
-
-function icon(kind, g, x, y) {
-  const i = el('g', { class: `ico ico-${kind}`, transform: `translate(${x} ${y})` }, g);
-  if (kind === 'eye') {
-    el('path', { d: 'M1 8C3.5 3.5 12.5 3.5 15 8 12.5 12.5 3.5 12.5 1 8Z' }, i);
-    el('circle', { cx: 8, cy: 8, r: 2.4 }, i);
-  } else {
-    el('rect', { x: 3, y: 7, width: 10, height: 7.5, rx: 1.6 }, i);
-    el('path', { class: 'shackle', d: 'M5.5 7V5a2.5 2.5 0 015 0v2' }, i);
+/**
+ * The flow at phase c (0..1): attestation lights, the prompt is encrypted at your app, crosses
+ * as ciphertext (hidden behind the relay), opens in the enclave, and the signed reply returns.
+ */
+function teeAt(c, now) {
+  const st = tee.style;
+  const box = tee.getBoundingClientRect();
+  const [w1, w2] = wires.map((w) => w.getBoundingClientRect());
+  const yF = w1.top - box.top + w1.height * 0.35;
+  const yB = w1.top - box.top + w1.height * 0.65;
+  const x1a = w1.left - box.left + 26;
+  const x1b = w1.right - box.left - 26;
+  const x2a = w2.left - box.left + 26;
+  const x2b = w2.right - box.left - 26;
+  const lerp = (a, b, k) => a + (b - a) * ease(k);
+  let x = x1a;
+  let y = yF;
+  let vis = 0;
+  let cipher = true;
+  let label = 'prompt';
+  if (c < 0.12) {
+    vis = seg(c, 0.04, 0.08);
+    cipher = c > 0.09;
+  } else if (c < 0.27) x = lerp(x1a, x1b, seg(c, 0.12, 0.27)), (vis = 1);
+  else if (c < 0.31) x = x1b;
+  else if (c < 0.46) x = lerp(x2a, x2b, seg(c, 0.31, 0.46)), (vis = 1);
+  else if (c < 0.5) (x = x2b), (vis = 1 - seg(c, 0.46, 0.5));
+  else if (c < 0.62) x = x2b;
+  else if (c < 0.77) (y = yB), (x = lerp(x2b, x2a, seg(c, 0.62, 0.77))), (vis = 1);
+  else if (c < 0.81) (y = yB), (x = x1b);
+  else if (c < 0.96) {
+    y = yB;
+    x = lerp(x1b, x1a, seg(c, 0.81, 0.96));
+    vis = 1;
+    cipher = c < 0.93;
+    if (!cipher) label = 'ok';
+  } else (y = yB), (x = x1a), (vis = 1 - seg(c, 0.96, 1)), (cipher = false), (label = 'ok');
+  if (cipher) {
+    if (now - lastHex > 90 || !/^[0-9a-f]{8}$/.test(packetLabel.textContent)) {
+      label = hex(8);
+      lastHex = now;
+    } else label = packetLabel.textContent;
   }
-  return i;
+  if (packetLabel.textContent !== label) packetLabel.textContent = label;
+  packet.classList.toggle('cipher', cipher);
+  st.setProperty('--px', `${x.toFixed(1)}px`);
+  st.setProperty('--py', `${y.toFixed(1)}px`);
+  st.setProperty('--pk', vis.toFixed(3));
+  const inside = c >= 0.5 && c < 0.62;
+  st.setProperty('--glow', inside ? '1' : '0');
+  st.setProperty('--open', c >= 0.46 && c < 0.5 ? '1' : '0');
+  st.setProperty('--ok', c > 0.95 || c < 0.04 ? '1' : '0');
+  proofAtt.classList.toggle('lit', c < 0.12);
+  proofSig.classList.toggle('lit', c >= 0.56 && c < 0.8);
 }
 
-function marker(g, x, y, reads) {
-  const m = el('g', { class: `mk${reads ? ' on' : ''}`, transform: `translate(${x} ${y}) scale(0.62) translate(-4 -4)` }, g);
-  el('path', { d: MARK_FRAME }, m);
-  el('rect', { x: 12, y: 12, width: 8, height: 8, rx: 1 }, m);
-}
-
-/** Builds one orientation: 'h' stacks the lanes, nodes left to right; 'v' sets lanes side by side. */
-function buildDiagram(orient) {
-  const H = orient === 'h';
-  const W = H ? 1200 : 360;
-  const nodeW = H ? 236 : 168;
-  const nodeH = H ? 108 : 96;
-  const laneH = H ? 168 : 0;
-  const svg = el('svg', { class: `paths paths-${orient}`, viewBox: H ? `0 0 ${W} ${2 * laneH + 30}` : `0 0 ${W} 560`, 'aria-hidden': 'true' });
-  const lanes = LANES.map((lane, li) => {
-    const g = el('g', { class: `lane lane-${lane.id}` }, svg);
-    const ox = H ? 0 : li * 192;
-    const oy = H ? li * (laneH + 30) : 0;
-    // Lane title
-    if (H) {
-      text(g, ox, oy + 50, lane.title, 'lane-t');
-      text(g, ox, oy + 74, lane.sub, 'lane-s');
-    } else {
-      text(g, ox, oy + 22, lane.title, 'lane-t');
-      text(g, ox, oy + 42, lane.sub, 'lane-s');
-    }
-    const pos = lane.nodes.map((_, ni) =>
-      H ? { x: 196 + ni * 362, y: oy + 6 } : { x: ox, y: 62 + ni * 172 },
-    );
-    // Wires first, so nodes and packets sit on top.
-    let fwd, back;
-    if (H) {
-      const y1 = oy + 6 + nodeH * 0.38;
-      const y2 = oy + 6 + nodeH * 0.66;
-      const xa = pos[0].x + nodeW;
-      const xb = pos[2].x;
-      fwd = el('path', { class: 'wire', d: `M${xa} ${y1}H${xb}`, pathLength: 1 }, g);
-      back = el('path', { class: 'wire wire-back', d: `M${xb} ${y2}H${xa}`, pathLength: 1 }, g);
-    } else {
-      const x1 = ox + nodeW * 0.36;
-      const x2 = ox + nodeW * 0.64;
-      const ya = pos[0].y + nodeH;
-      const yb = pos[2].y;
-      fwd = el('path', { class: 'wire', d: `M${x1} ${ya}V${yb}`, pathLength: 1 }, g);
-      back = el('path', { class: 'wire wire-back', d: `M${x2} ${yb}V${ya}`, pathLength: 1 }, g);
-    }
-    const nodes = lane.nodes.map((n, ni) => {
-      const { x, y } = pos[ni];
-      const ng = el('g', { class: `node${ni === 2 ? ' tee' : ''}${n.reads ? ' reads' : ''}`, style: `--n:${ni}` }, g);
-      el('rect', { x, y, width: nodeW, height: nodeH, rx: 12 }, ng);
-      marker(ng, x + 22, y + 24, n.reads);
-      text(ng, x + 40, y + 28, n.k.toUpperCase(), 'node-k');
-      text(ng, x + 18, y + (H ? 64 : 58), n.t, 'node-t');
-      text(ng, x + 18, y + (H ? 88 : 80), n.note, 'node-n');
-      if (n.icon) icon(n.icon, ng, x + nodeW - 32, y + 14);
-      return ng;
-    });
-    // Packets
-    const packets = [0, 0.5].map((phase) => {
-      const pg = el('g', { class: 'packet' }, g);
-      el('rect', { x: H ? -40 : -34, y: -12, width: H ? 80 : 68, height: 24, rx: 6 }, pg);
-      const label = text(pg, 0, 4, '', 'packet-t');
-      return { g: pg, label, phase, mode: '' };
-    });
-    return { lane, g, fwd, back, nodes, packets, relay: nodes[1], tee: nodes[2], H };
-  });
-  return { svg, lanes };
-}
-
-const lanesBox = $('#lanes');
-if (lanesBox) {
-  const dh = buildDiagram('h');
-  const dv = buildDiagram('v');
-  lanesBox.append(dh.svg, dv.svg);
-  lanesBox.classList.add('built');
-  $('.lane-text', lanesBox).classList.add('sr-only');
-  const legend = document.createElement('p');
-  legend.className = 'lane-legend';
-  legend.setAttribute('aria-hidden', 'true');
-  legend.innerHTML = '<span class="lg on"></span>reads the prompt <span class="lg"></span>cannot';
-  lanesBox.append(legend);
-  revealer.observe(lanesBox);
-
-  const place = (p, path, f) => {
-    const pt = path.getPointAtLength(f * path.getTotalLength());
-    p.g.setAttribute('transform', `translate(${pt.x.toFixed(1)} ${pt.y.toFixed(1)})`);
-  };
-  const setLabel = (p, s) => {
-    if (p.label.textContent !== s) p.label.textContent = s;
-  };
-  const staticPose = (d) => {
-    for (const L of d.lanes) {
-      const priv = L.lane.id === 'private';
-      place(L.packets[0], L.fwd, 0.5);
-      setLabel(L.packets[0], priv ? 'x9f1c4e0' : 'prompt');
-      L.packets[0].g.classList.toggle('cipher', priv);
-      place(L.packets[1], L.back, 0.8);
-      setLabel(L.packets[1], priv ? '7ab2d18e' : 'reply');
-      L.packets[1].g.classList.toggle('cipher', priv);
-    }
-  };
-  staticPose(dh);
-  staticPose(dv);
-
-  let t = 0;
-  let scramble = 0;
-  const D = 4.2;
-  animate(lanesBox, (dt) => {
-    if (!lanesBox.classList.contains('in')) return;
-    t += dt;
-    scramble += dt;
-    const flip = scramble > 0.09;
-    if (flip) scramble = 0;
-    const d = getComputedStyle(dh.svg).display !== 'none' ? dh : dv;
-    for (const L of d.lanes) {
-      const priv = L.lane.id === 'private';
-      let overRelay = false;
-      let hit = false;
-      for (const p of L.packets) {
-        const c = ((t / D + p.phase) % 1 + 1) % 1;
-        const forward = c < 0.5;
-        const f = forward ? c / 0.5 : (c - 0.5) / 0.5;
-        place(p, forward ? L.fwd : L.back, f);
-        // The relay node spans the middle half of each path.
-        if (f > 0.27 && f < 0.73) overRelay = true;
-        let label;
-        if (!priv) label = forward ? 'prompt' : 'reply';
-        else if (forward && f < 0.1) label = 'prompt';
-        else if (!forward && f > 0.92) label = 'reply';
-        else label = flip || p.mode !== 'hex' ? hex(8) : p.label.textContent;
-        p.mode = /^[0-9a-f]{8}$/.test(label) ? 'hex' : 'text';
-        p.g.classList.toggle('cipher', p.mode === 'hex');
-        setLabel(p, label);
-        if (forward && f > 0.9) hit = true;
-      }
-      L.relay.classList.toggle('active', overRelay);
-      L.tee.classList.toggle('hit', hit);
-    }
+if (motion) {
+  let c = 0;
+  animate(tee, (dt, t) => {
+    if (!tee.classList.contains('in')) return;
+    c = (c + dt / 7) % 1;
+    teeAt(c, t * 1000);
   });
 }
 
