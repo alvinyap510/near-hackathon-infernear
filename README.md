@@ -74,7 +74,7 @@ cd web && npm ci --ignore-scripts && npm test && npm run build && cd ..
 # Base vaults (77 offline tests, including invariant fuzzing)
 cd contracts/evm && npm ci --ignore-scripts && forge build && forge test --offline && cd ../..
 
-# NEAR credit ledger and Rhea vault (45 tests)
+# NEAR credit ledger and Rhea vault (51 tests)
 cd contracts/near && cargo fetch --locked && cargo test --locked --workspace && cd ../..
 ```
 
