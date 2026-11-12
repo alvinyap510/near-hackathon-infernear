@@ -106,7 +106,9 @@ test('real NEAR adapter uses finalized views, distinct signers, numeric receipts
   ]);
   assert.deepEqual(signed[4].args, { message: 'signed-json', signature: '0xfixture-signature' });
   assert.deepEqual(signed[5].args, { signed: [{ standard: 'erc191', payload: 'signed-payload', signature: 'secp256k1:fixture' }] });
-  assert.deepEqual(await connector.balances(), [ { account: 'relay.near', free: 990_000_000_000_000_000_000_000n }, { account: 'vault.near', free: 990_000_000_000_000_000_000_000n } ]);
+  // Every account that pays gas is watched, not only the relay and the vault.
+  assert.deepEqual((await connector.balances()).map(balance => balance.account), ['relay.near', 'vault.near', 'gateway.near', 'keeper.near']);
+  assert.ok((await connector.balances()).every(balance => balance.free === 990_000_000_000_000_000_000_000n));
 });
 
 test('Flex2-3: real EVM adapter reads finalized holders and honors the configured bridge minimum', async t => {

@@ -340,3 +340,16 @@ test('a debit that stays unconfirmed is dropped as an operator loss after twelve
   assert.ok(h.events.some(e => e.event === 'inference_loss' && e.details.reason === 'debit_unconfirmed'));
   await h.gateway.retryDebits(); assert.equal(h.connector.debitCalls, 12);
 });
+
+test('chats are refused while the connector cannot store another debit, before any upstream cost', async t => {
+  let clock = 1_000_000;
+  const h = await harness({ now: () => clock }); t.after(h.close);
+  h.connector.storageBalance = async () => ({ amount: '19999999999999999999999', storage_usage: 1000 });
+  const refused = await fetch(h.base + '/v1/chat/completions', { method: 'POST', headers: h.headers, body: raw() });
+  assert.equal(refused.status, 503); assert.equal((await refused.json()).error.code, 'ledger_storage_low');
+  assert.equal(h.requests.filter(r => r.path.startsWith('/v1/chat/completions')).length, 0);
+  h.connector.storageBalance = async () => ({ amount: '20000000000000000000000', storage_usage: 1000 });
+  clock += 60_000;
+  const served = await fetch(h.base + '/v1/chat/completions', { method: 'POST', headers: h.headers, body: raw() });
+  assert.equal(served.status, 200); await served.arrayBuffer(); await settle(h.gateway);
+});

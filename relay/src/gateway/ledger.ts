@@ -24,6 +24,17 @@ export class Gateway {
     this.auth = options.auth; this.upstream = options.upstream; this.connector = options.connector;
     this.cap = options.maxTokens; this.report = options.report; this.now = options.now ?? Date.now; this.retryMs = options.retryMs ?? 2000;
   }
+  // A debit stores about 0.001 NEAR of state on the connector. Once its free balance cannot cover
+  // more, every debit would fail after the inference was served and its gas would be wasted, so
+  // stop admitting chats until the operator tops it up. One free read per minute.
+  private storage = { checked: -Infinity, low: false };
+  private async storageLow(): Promise<boolean> {
+    if (this.now() - this.storage.checked >= 60_000) {
+      const state = await this.connector.storageBalance();
+      this.storage = { checked: this.now(), low: BigInt(state.amount) - BigInt(state.storage_usage) * 10n ** 19n < 10n ** 22n };
+    }
+    return this.storage.low;
+  }
   private user(id: string): User {
     if (!this.users.has(id)) this.users.set(id, { lock: new Mutex(), epoch: 0, active: 0, reservations: new Map() });
     return this.users.get(id)!;
@@ -90,6 +101,7 @@ export class Gateway {
         body.messages.some((m: any) => !m || (m.content !== null && m.content !== undefined &&
           typeof m.content !== 'string' && (!Array.isArray(m.content) || m.content.some((p: any) => p?.type !== 'text')))))
       invalid('Only text chat and encrypted tool definitions/calls are served');
+    if (await this.storageLow()) throw new HttpError(503, 'ledger_storage_low', 'The credit ledger is out of storage; the operator must top it up');
     const model = (await this.upstream.models()).find(m => m.id === body.model);
     if (!model) throw new HttpError(404, 'model_not_found', 'Model is not a canonical attested TEE text model');
     const inputBound = Math.ceil(raw.length / 2);

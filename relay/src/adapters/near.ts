@@ -80,7 +80,7 @@ export async function nearConnector(config: { rpc: string; contract: string; gat
       },
     },
     async balances() {
-      return Promise.all([...new Set([config.relayAccount, config.rheaVault])].map(async account => {
+      return Promise.all([...new Set([config.relayAccount, config.rheaVault, config.gatewayAccount, config.keeperAccount])].map(async account => {
         const state = await provider.viewAccount({ accountId: account, blockQuery: { finality: 'final' } });
         // NEAR storage locks 1e19 yocto per byte; report the spendable gas/storage headroom.
         const free = BigInt(state.amount) - BigInt(state.storage_usage) * 10n ** 19n;
