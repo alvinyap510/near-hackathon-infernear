@@ -4,7 +4,7 @@ The vault, the connector, the relay and the dashboard are built in parallel agai
 
 ## Shared conventions
 
-- **User id:** the CAIP-10 id of the vault-share owner, with the address in lower case: `eip155:8453:0xabc…`. Users never need a NEAR account.
+- **User id:** EVM owners use `eip155:8453:<lower-case address>`; NEAR-wallet owners use `near:mainnet:<account_id>`. EVM users do not need a NEAR account. NEAR-only sessions use native Rhea USDC and keys/credits; Base vaults require an EVM wallet.
 - **Vault id:** `eip155:8453:<lower-case EVM address>` or `near:mainnet:<NEAR vault account id>`. The namespace identifies the chain of `source_block`.
 - **Amounts on NEAR:** JSON strings of integers (`U128`). Credits are in **micro-USD**. USDC yield uses `rate = "1000000000000000000"`; other yield tokens use the frozen rate below. Principal and token totals remain in their token base units.
 - **Prices:** NEAR AI quotes cost per token in nano-USD (`amount` at `scale: 9`). Cost in micro-USD = `ceil(tokens × nano_per_token / 1000)`.
@@ -61,8 +61,9 @@ Initialize once with `new(usdc: AccountId, rhea: AccountId, intents: AccountId, 
 
 | Method | Caller | Result / effect |
 |---|---|---|
-| `ft_on_transfer(sender_id: AccountId, amount: U128, msg: String) → U128` | configured USDC FT | `msg = {"user":"eip155:8453:0x<40 lower-case hex>"}`. Returns the full amount for wrong token, invalid user/message, below-minimum amount or insufficient storage balance. Otherwise allocates the whole user record, queues the received amount and returns `"0"`. No promises. |
+| `ft_on_transfer(sender_id: AccountId, amount: U128, msg: String) → U128` | configured USDC FT | `msg = {"user":"eip155:8453:0x<40 lower-case hex>"}`. Returns the full amount for wrong token, invalid user/message, below-minimum amount or insufficient storage balance. Otherwise allocates the whole user record, queues the received amount and returns `"0"`. No promises. NEAR-wallet deposits instead use `msg.user = "near:mainnet:<account_id>"` and require `sender_id == account_id`; otherwise refund the full amount. |
 | `request_withdraw(message: String, signature: String)` | anyone | Verify the exact EIP-191 JSON below against the stored owner. Hex signature is 65-byte `r || s || v`, optional `0x`, v 0/1 or 27/28, low-s required. Requires not busy, current nonce, unexpired, `0 < amount <= principal`. Consume nonce and replace any unsent request. |
+| `withdraw(amount: U128)` | NEAR account; attach 1 yoctoNEAR | Queue a native withdrawal for `near:mainnet:<predecessor>`; the keeper's next `run()` pays USDC directly to that account. The dashboard attaches 100 Tgas. |
 | `run()` | anyone | Serialize one measure → attribute/admit/plan → Rhea withdrawal → send/resolve, or supply cycle. Requires 300 Tgas prepaid. Scans at most 10 entries from each queue; actual sends fit the remaining gas after reserving the terminal callback. Each planned exit gets one funding attempt. If its coverage-adjusted payout exceeds idle after the Rhea withdrawal, remove the request with `exit_unfunded`, leaving principal and nonce unchanged. Only exits deferred for send capacity remain queued in order. Exits precede treasury payments. |
 | `position(user: String)` | view | `{ principal: U128, yield_credited: U128, pending_in: U128, pending_out: Option<U128> }`; yield includes unsettled index entitlement. |
 | `idle() → U128` | view | Accounted cash, excluding pending deposits and unsolicited FT transfers. |
@@ -77,7 +78,9 @@ The owner signs the **exact UTF-8 string**, with integer amount as a JSON string
 {"action":"withdraw","network":"mainnet","vault":"<vault account id>","user":"eip155:8453:0x<40 lower-case hex>","amount":"1000000","nonce":0,"expires_at":1794000000}
 ```
 
-Principal payouts and rejected-deposit returns are USDC `ft_transfer_call` transfers to the configured Intents verifier with `msg = "0x<owner address>"`. `simple_withdraw` receives `w * 1e12` internal Rhea units; only its terminal `true` result adds `w` to accounted idle. A terminal callback consumes each outgoing record exactly once. Partial exit refunds restore `floor(claim * refunded / out)` principal; complete failure restores the full claim. Requests are consumed when sent or dropped as unfunded; a failed funding attempt and restored principal both require a new signature.
+EVM-owner principal payouts and rejected-deposit returns are USDC `ft_transfer_call` transfers to the configured Intents verifier with `msg = "0x<owner address>"`. `simple_withdraw` receives `w * 1e12` internal Rhea units; only its terminal `true` result adds `w` to accounted idle. A terminal callback consumes each outgoing record exactly once. Partial exit refunds restore `floor(claim * refunded / out)` principal; complete failure restores the full claim. Requests are consumed when sent or dropped as unfunded; a failed funding attempt and restored principal both require a new signature.
+
+NEAR-wallet users deposit by signing native USDC `ft_transfer_call({ receiver_id: vault, amount, msg: JSON.stringify({ user: "near:mainnet:<account_id>" }) })` with 1 yoctoNEAR and 100 Tgas. Their own account must be the FT sender. Native withdrawals call `withdraw({ amount })` with the same deposit/gas; payouts use plain USDC `ft_transfer` to the account after the keeper runs. These paths use neither 1Click nor Intents. Amounts and the 1-USDC deposit minimum use native USDC's six decimals. Views are unchanged.
 
 NEP-297 events use `standard: "infernear"`, `version: "1.0.0"`, one-element `data` arrays:
 
@@ -101,7 +104,7 @@ Base URL: `VITE_RELAY_URL` / `RELAY_PORT`. Errors on every route use OpenAI's er
 
 ### Key routes (wallet proof)
 
-`POST /keys` and `POST /keys/revoke` each take `{ message, signature }`: an EIP-4361 message (chain 8453, `domain` and `uri` = the dashboard's origin (`RELAY_WEB_ORIGIN`), the site the wallet signs on, the nonce below, a required `expirationTime`) and its signature. The nonce is consumed. There is no session token.
+`POST /keys` and `POST /keys/revoke` accept either the NEP-413 envelope below or `{ message, signature }`: an EIP-4361 message (chain 8453, `domain` and `uri` = the dashboard's origin (`RELAY_WEB_ORIGIN`), the site the wallet signs on, the nonce below, a required `expirationTime`) and its signature. The nonce is consumed. There is no session token.
 
 | Route | Auth | Body → response |
 |---|---|---|
@@ -117,6 +120,26 @@ Base URL: `VITE_RELAY_URL` / `RELAY_PORT`. Errors on every route use OpenAI's er
 | `POST /intents/execute` | ERC-191 signed Intents payload | `{ signed: [{ standard: "erc191", payload: "<exact JSON string>", signature: "secp256k1:<base58 65-byte r-s-v>" }, …] }` → `{ tx_hash }` |
 
 These routes require no API key or inference credits. The relay checks signature, expiry and configured verifying contract before paying NEAR gas; the on-chain vault/verifier checks nonce and authorization. They share the anonymous per-IP bucket (30 requests/minute), including requests carrying an API key. Intents signatures use recovery id 0/1; the payload contains the verifier's `signer_id`, `verifying_contract`, `deadline`, `nonce` and `intents` fields. The vault route preserves the signed message bytes. Neither route accepts caller-selected NEAR receiver, method, gas or deposit fields.
+
+### NEAR-wallet key proofs (NEP-413)
+
+The same `POST /keys` and `POST /keys/revoke` routes also accept:
+
+```json
+{"near":{"account_id":"alice.near","public_key":"ed25519:<base58 32-byte key>","signature":"<base64 64-byte signature>","message":"<canonical JSON below>","nonce":"<base64 32 bytes>","recipient":"<dashboard host, including port>"}}
+```
+
+`message` is exactly `JSON.stringify` of these fields in this order, with no additional whitespace or fields:
+
+```json
+{"statement":"Authorize one InferNear API key action.","account_id":"alice.near","nonce":"<GET /auth/nonce value>","expires_at":1794485100}
+```
+
+`expires_at` is a Unix-seconds integer strictly in the future and at most 300 seconds ahead. The account in the signed message must equal the envelope account (including implicit 64-hex accounts); this prevents relabelling a proof between accounts sharing a key. `near.nonce = base64(SHA256(UTF8(relay_nonce)))`. Both base64 fields must use canonical padded encoding. `recipient` equals `new URL(RELAY_WEB_ORIGIN).host`, exactly as the SIWE domain check.
+
+Verify ed25519 over SHA256 of the NEP-413 Borsh payload: `u32_le(2147484061) || borsh_string(message) || nonce[32] || borsh_string(recipient) || 0x00` (callbackUrl None). Only a key returned as `FullAccess` by a finalized `view_access_key(account_id, public_key)` is accepted. A function-call key, unknown key, RPC failure, invalid proof or expired/reused nonce yields `401 invalid_api_key`; proof bodies, keys and RPC URLs are never logged. The existing body/IP limits still apply. The same five-minute nonce map is consumed by an atomic delete after verification and the key read; concurrent SIWE/NEAR replays cannot both succeed.
+
+Success uses `near:mainnet:<account_id>` in the existing API-key payload and connector ledger. Responses and key epoch/expiry rules are unchanged. Revocation shares the daily operator-paid transaction count with EVM revocations and the other sponsored routes.
 
 ### API routes (OpenAI format)
 
