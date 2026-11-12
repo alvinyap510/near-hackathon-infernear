@@ -613,7 +613,7 @@ svg {
   justify-content: flex-end;
   min-height: 100vh;
   min-height: 100svh;
-  padding: var(--hud) 0 min(120px, 13vh);
+  padding: var(--hud) 0 clamp(72px, 9vh, 120px);
   overflow: hidden;
   background: var(--night);
   color: var(--snow);
@@ -759,11 +759,13 @@ svg {
   text-transform: uppercase;
 }
 
-/* Three lines sit below the particle stream (34% down) and left of the 3D mark,
-   so on desktop the size follows both the viewport width and height. */
+/* Three lines sit below the particle stream (34% down, its dots reach about 46%) and left of
+   the 3D mark, so on desktop the size follows both the viewport width and height. The looser
+   line height keeps the comma after YIELD clear of the line below. */
 .hero .mega {
   margin-top: 22px;
-  font-size: clamp(54px, min(6.6vw, 15.6vh - 46px), 100px);
+  font-size: clamp(40px, min(6.6vw, 16vh - 66px), 100px);
+  line-height: 0.92;
 }
 
 .mega .line {
@@ -773,6 +775,12 @@ svg {
 .mega em {
   font-style: normal;
   color: var(--mint);
+}
+
+/* CHAIN glows like the 3D mark; with motion the glow breathes once the line is in. */
+.hero .lit {
+  display: inline-block;
+  filter: drop-shadow(0 0 0.14em rgba(0, 236, 151, 0.5));
 }
 
 .hero-sub {
@@ -847,6 +855,17 @@ svg {
 .motion .hero-sub { animation-delay: 0.35s; }
 .motion .ctas { animation-delay: 0.45s; }
 .motion .stream-k { animation-delay: 1.2s; }
+.motion .hero .lit { animation: breathe 3.5s ease-in-out 1.4s infinite alternate both; }
+
+@keyframes breathe {
+  from {
+    filter: drop-shadow(0 0 0.07em rgba(0, 236, 151, 0.3));
+  }
+
+  to {
+    filter: drop-shadow(0 0 0.24em rgba(0, 236, 151, 0.8));
+  }
+}
 
 @keyframes rise {
   from {
