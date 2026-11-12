@@ -1406,15 +1406,36 @@ svg {
   color: var(--ink-2);
 }
 
+/* Both checks are always there, dimmed, and light up as each one happens. */
 .tn-ok {
-  margin-top: 6px;
   font-family: var(--mono);
   font-stretch: 87.5%;
   font-size: 12px;
   font-weight: 600;
   color: var(--mint-ink);
-  opacity: var(--ok, 1);
+  opacity: calc(0.32 + var(--on, 1) * 0.68);
   transition: opacity 0.3s;
+}
+
+.tn-ok-att {
+  --on: var(--ok-att, 1);
+  margin-top: 8px;
+}
+
+.tn-ok-sig {
+  --on: var(--ok-sig, 1);
+}
+
+.tn-k-near {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.tn-k-near .icon {
+  width: 14px;
+  height: 14px;
+  color: var(--snow);
 }
 
 .tee-wire {
@@ -2928,4 +2949,48 @@ svg {
 .deck .foot {
   margin-top: 72px;
   padding-bottom: 56px;
+}
+
+/* ---------- Quiet life in empty space ----------
+   A faint dot grid in each section's own colour, drifting slowly. It is masked to the right,
+   away from the text column, and sits beneath the content. Still under reduced motion. */
+
+.sec,
+.outro {
+  isolation: isolate;
+  overflow: clip;
+}
+
+.sec::before,
+.outro::before {
+  content: '';
+  position: absolute;
+  inset: -56px;
+  z-index: -1;
+  pointer-events: none;
+  background-image: radial-gradient(circle, currentColor 1px, transparent 1.5px);
+  background-size: 28px 28px;
+  opacity: 0.07;
+  -webkit-mask-image: linear-gradient(90deg, transparent 30%, #000 80%);
+  mask-image: linear-gradient(90deg, transparent 30%, #000 80%);
+}
+
+.motion .sec::before,
+.motion .outro::before {
+  animation: drift 50s linear infinite;
+}
+
+@keyframes drift {
+  to {
+    transform: translate(28px, 56px);
+  }
+}
+
+@media (max-width: 720px) {
+  .sec::before,
+  .outro::before {
+    -webkit-mask-image: linear-gradient(180deg, transparent 10%, #000 50%, transparent 90%);
+    mask-image: linear-gradient(180deg, transparent 10%, #000 50%, transparent 90%);
+    opacity: 0.05;
+  }
 }

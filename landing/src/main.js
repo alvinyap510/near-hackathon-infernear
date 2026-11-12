@@ -211,10 +211,12 @@ function teeAt(c, now) {
   const [w1, w2] = wires.map((w) => w.getBoundingClientRect());
   const yF = w1.top - box.top + w1.height * 0.35;
   const yB = w1.top - box.top + w1.height * 0.65;
-  const x1a = w1.left - box.left + 26;
-  const x1b = w1.right - box.left - 26;
-  const x2a = w2.left - box.left + 26;
-  const x2b = w2.right - box.left - 26;
+  // Packets stay half their width clear of the boxes at either end of a wire.
+  const pad = packet.offsetWidth / 2 + 8;
+  const x1a = w1.left - box.left + pad;
+  const x1b = w1.right - box.left - pad;
+  const x2a = w2.left - box.left + pad;
+  const x2b = w2.right - box.left - pad;
   const lerp = (a, b, k) => a + (b - a) * ease(k);
   let x = x1a;
   let y = yF;
@@ -252,7 +254,8 @@ function teeAt(c, now) {
   const inside = c >= 0.5 && c < 0.62;
   st.setProperty('--glow', inside ? '1' : '0');
   st.setProperty('--open', c >= 0.46 && c < 0.5 ? '1' : '0');
-  st.setProperty('--ok', c > 0.95 || c < 0.04 ? '1' : '0');
+  st.setProperty('--ok-att', c >= 0.06 ? '1' : '0');
+  st.setProperty('--ok-sig', c > 0.94 ? '1' : '0');
   proofAtt.classList.toggle('lit', c < 0.12);
   proofSig.classList.toggle('lit', c >= 0.56 && c < 0.8);
 }
