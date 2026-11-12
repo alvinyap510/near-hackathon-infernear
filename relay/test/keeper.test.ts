@@ -109,3 +109,16 @@ test('Rhea runs only for reported work and never while busy; low relay and vault
   assert.equal(events.filter(e => e.event === 'low_near_balance').length, 6);
   assert.ok(events.some(e => e.details.reason === 'vault_busy'));
 });
+
+test('a long holder list is posted in batches of at most 100 entries, each under the same snapshot', async () => {
+  const connector = new FakeConnector();
+  const users = Array.from({ length: 250 }, (_, i) => `eip155:8453:0x${i.toString(16).padStart(40, '0')}`);
+  const vault: VaultPort = { id: VAULT, kind: 'topup', async skim() {}, async snapshot() { return { rate: 10n ** 18n, block: 7n, unpaid: 0n, paid: 250_000_000n, entries: users.map(user => [user, 1_000_000n]) }; } };
+  const keeper = new Keeper([vault], connector, { async tick() { return {}; } }, () => {});
+  await keeper.tick();
+  assert.deepEqual(connector.posts.map(post => post.entries.length), [100, 100, 50]);
+  assert.ok(connector.posts.every(post => post.paid === 250_000_000n && post.sourceBlock === 7n && post.rate === 10n ** 18n));
+  assert.equal((await connector.account(users[0])).credited, 1_000_000n);
+  assert.equal((await connector.account(users[249])).credited, 1_000_000n);
+  await keeper.tick(); assert.equal(connector.postCalls, 3); // nothing changed: no repost
+});
