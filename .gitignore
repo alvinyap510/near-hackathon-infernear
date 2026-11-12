@@ -20,3 +20,6 @@ target/
 
 # python
 __pycache__/
+
+# vercel
+.vercel/
