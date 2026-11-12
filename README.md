@@ -84,7 +84,7 @@ Each component's README has the full verification set: Base fork tests against r
 | Gateway and keeper (TypeScript, Node) | `relay/` | [relay/README.md](relay/README.md) |
 | Dashboard (Vite, React) | `web/` | [web/README.md](web/README.md) |
 | Interfaces between components | `docs/` | [docs/interfaces.md](docs/interfaces.md) |
-| Server setup (systemd, Caddy) | `deploy/` | [deploy/setup.sh](deploy/setup.sh) |
+| Deployment (Docker, Cloudflare Tunnel) | `deploy/` | [deploy/README.md](deploy/README.md) |
 
 ## Fund-safety rules
 

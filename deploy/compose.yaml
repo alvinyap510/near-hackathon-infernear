@@ -1,0 +1,15 @@
+# Relay behind a Cloudflare Tunnel. The relay publishes no host port, so the tunnel is the
+# only way in: that is what makes RELAY_CLIENT_IP_HEADER=cf-connecting-ip safe to trust.
+# Run from the repository root: docker compose --env-file .env -f deploy/compose.yaml up -d --build
+services:
+  relay:
+    build: ../relay
+    env_file: ../.env
+    restart: unless-stopped
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.7
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    restart: unless-stopped
+    depends_on: [relay]
