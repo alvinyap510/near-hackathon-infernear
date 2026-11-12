@@ -10,6 +10,10 @@ type User = { lock: Mutex; floor?: bigint; epoch: number; pendingEpoch?: number;
 export type Reservation = { token: string; user: string; amount: bigint; model: Model; inputBound: number; maxTokens: number; streaming: boolean; body: Buffer; encrypted: boolean };
 type Job = { reservation: Reservation; amount: bigint; receipt: Receipt; stage: 'metered' | 'broadcast'; running: boolean; sends: number; next: number };
 
+// Tokens a chat template may add to a plain request beyond its own bytes (role markers, tool-use
+// instructions). Qwen3.8's template adds about 200 for a request with tools; this leaves room.
+const PLAIN_TEMPLATE_TOKENS = 1024;
+
 export class Gateway {
   readonly auth: Auth;
   readonly upstream: Upstream;
@@ -121,8 +125,9 @@ export class Gateway {
     if (!model) throw new HttpError(404, 'model_not_found', 'Model is not a canonical attested TEE text model');
     const upstreamBody = encrypted ? raw : Buffer.from(JSON.stringify(body));
     // Upper bound on input tokens. Encrypted content is hex, two body bytes per plaintext byte; a plain
-    // body can tokenize to one token per byte (digits, unmergeable bytes), so it is bounded by its length.
-    const inputBound = encrypted ? Math.ceil(upstreamBody.length / 2) : upstreamBody.length;
+    // body can tokenize to one token per byte (digits, unmergeable bytes), and the model's chat template
+    // adds role markers and tool instructions on top, so it is bounded by its length plus an allowance.
+    const inputBound = encrypted ? Math.ceil(upstreamBody.length / 2) : upstreamBody.length + PLAIN_TEMPLATE_TOKENS;
     const amount = costMicro(inputBound, body.max_tokens, model.inNano, model.outNano);
     const state = this.user(key.user);
     return state.lock.run(async () => {

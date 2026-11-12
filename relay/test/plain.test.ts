@@ -72,14 +72,15 @@ test('a private request cannot be downgraded by nominating its encryption header
   assert.equal(sentUpstream(h).length, 0);
 });
 
-test('standard mode reserves one input token per request byte, so token-dense prompts cannot be under-charged', async t => {
+test('standard mode reserves one input token per request byte plus a template allowance, so dense or tool-heavy prompts cannot be under-charged', async t => {
   const h = await harness({ seed: false }); t.after(h.close);
   const plain = { authorization: `Bearer ${h.key}`, 'content-type': 'application/json' };
   const digits = body({ messages: [{ role: 'user', content: '7'.repeat(10_000) }], max_tokens: 1, tools: undefined, n: undefined });
   const bytes = Buffer.byteLength(JSON.stringify(JSON.parse(digits)));
   // Fixture prices are 1,000 nano-USD (one micro-USD) per token, in and out: the reservation is one micro-USD
-  // per request byte plus one for the single output token. Half the bytes, the encrypted-mode bound, would not do.
-  const needed = BigInt(bytes + 1);
+  // per request byte, plus 1,024 for what the model's chat template adds, plus one for the single output token.
+  // Half the bytes, the encrypted-mode bound, would not do.
+  const needed = BigInt(bytes + 1024 + 1);
   h.connector.seed(USER, needed - 1n);
   assert.equal((await fetch(h.base + '/v1/chat/completions', { method: 'POST', headers: plain, body: digits })).status, 402);
   h.connector.seed(USER, needed);
