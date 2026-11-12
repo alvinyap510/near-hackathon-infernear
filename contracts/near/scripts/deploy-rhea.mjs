@@ -31,7 +31,8 @@ async function deploy() {
   stage('register_storage');
   await register(usdc,id);await register(rhea,id);await register(usdc,treasury);
   if(cushion>0n)await sponsor.callFunction({contractId:usdc,methodName:'ft_transfer',args:{receiver_id:id,amount:String(cushion)},deposit:1n});
-  const observed=BigInt(await view(provider,usdc,'ft_balance_of',{account_id:id}));
+  // Final-finality views can lag the transfer by a few blocks.
+  let observed=0n;for(let i=0;i<10&&observed!==cushion;i++){observed=BigInt(await view(provider,usdc,'ft_balance_of',{account_id:id}));if(observed!==cushion)await new Promise(r=>setTimeout(r,2000));}
   if(observed!==cushion)throw new Error('cushion balance mismatch before initialization');
   stage('deploy_and_initialize');
   await vault.signAndSendTransaction({receiverId:id,actions:[
