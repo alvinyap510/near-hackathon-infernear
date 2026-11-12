@@ -211,8 +211,8 @@ const proofSig = $('.te-sig', tee);
 let lastHex = 0;
 
 /**
- * The flow at phase c (0..1): attestation lights, the prompt is encrypted at your app, crosses
- * as ciphertext (hidden behind the relay), opens in the enclave, and the signed reply returns.
+ * The flow at phase c (0..1): attestation lights, the prompt is encrypted at your app, passes
+ * through InferNear's relay as ciphertext, opens in the enclave, and the signed reply returns.
  */
 function teeAt(c, now) {
   const st = tee.style;
@@ -262,7 +262,7 @@ function teeAt(c, now) {
   st.setProperty('--pk', vis.toFixed(3));
   const inside = c >= 0.5 && c < 0.62;
   st.setProperty('--glow', inside ? '1' : '0');
-  st.setProperty('--open', c >= 0.46 && c < 0.5 ? '1' : '0');
+  st.setProperty('--pass', (c >= 0.26 && c < 0.33) || (c >= 0.76 && c < 0.83) ? '1' : '0');
   st.setProperty('--ok-att', c >= 0.06 ? '1' : '0');
   st.setProperty('--ok-sig', c > 0.94 ? '1' : '0');
   proofAtt.classList.toggle('lit', c < 0.12);
