@@ -1,6 +1,6 @@
 import { reportError, type Connector, type Report } from '../types.ts';
 
-export type VaultKind = 'aave' | 'rate' | 'pendle' | 'rhea';
+export type VaultKind = 'aave' | 'rate' | 'pendle' | 'rhea' | 'topup';
 // `work` names why a transaction is needed, decided from free reads; absent means none is.
 export type VaultSnapshot = { block: bigint; unpaid: bigint; paid: bigint; rate: bigint; busy?: boolean; entries: [string, bigint][]; work?: string | null };
 export interface VaultPort {

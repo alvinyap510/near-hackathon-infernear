@@ -6,7 +6,8 @@ import { RateUnavailable, type BridgePort, type VaultPort } from '../keeper/keep
 const vaultAbi = parseAbi(['function skim()', 'function unpaid() view returns (uint256)', 'function paidTotal() view returns (uint256)', 'function yieldCredited(address) view returns (uint256)', 'function yieldToken() view returns (address)']);
 const feedAbi = parseAbi(['function latestRoundData() view returns (uint80, int256, uint256, uint256, uint80)']);
 const oracleAbi = parseAbi(['function getPtToAssetRate(address market, uint32 duration) view returns (uint256)']);
-export type EvmVaultConfig = { address: Address } & ({ kind: 'aave' } | { kind: 'rate'; feed: Address; heartbeat: number } | { kind: 'pendle'; market: Address; oracle: Address });
+// `topup` is the CreditTopUp contract: credits bought with USDC, read and posted like a vault's paid yield.
+export type EvmVaultConfig = { address: Address } & ({ kind: 'aave' } | { kind: 'rate'; feed: Address; heartbeat: number } | { kind: 'pendle'; market: Address; oracle: Address } | { kind: 'topup' });
 export type BridgeToken = { token: Address; originAsset: string; minimumBaseUnits: string };
 
 // Canonical Multicall3. One eth_call runs paidTotal, skim, paidTotal in sequence, so the
@@ -14,6 +15,8 @@ export type BridgeToken = { token: Address; originAsset: string; minimumBaseUnit
 const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11';
 const multicallAbi = parseAbi(['struct Call3 { address target; bool allowFailure; bytes callData; }', 'struct Result { bool success; bytes returnData; }', 'function aggregate3(Call3[] calls) payable returns (Result[] returnData)']);
 
+const topUpAbi = parseAbi(['function paid(address) view returns (uint256)', 'function paidTotal() view returns (uint256)', 'function usdc() view returns (address)']);
+const paidEvent = parseAbiItem('event Paid(address indexed payer, address indexed beneficiary, uint256 amount)');
 const transferEvent = parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 value)');
 
 export function evmPorts(config: { rpc: string; chainId: number; key: Hex; vaults: EvmVaultConfig[]; fromBlock: bigint; oneClickUrl: string; oneClickToken?: string; bridgeTokens: BridgeToken[]; destinationAsset: string; recipient: string; slippageBps: number; minYieldMicro: bigint; now?: () => number }): { vaults: VaultPort[]; bridge: BridgePort } {
@@ -28,13 +31,14 @@ export function evmPorts(config: { rpc: string; chainId: number; key: Hex; vault
   const now = config.now ?? Date.now;
   const yieldTokens = new Set<Address>();
   const vaults: VaultPort[] = config.vaults.map(entry => {
-    if (!['aave', 'rate', 'pendle'].includes(entry.kind)) throw new Error('Invalid EVM vault kind');
+    if (!['aave', 'rate', 'pendle', 'topup'].includes(entry.kind)) throw new Error('Invalid EVM vault kind');
     const address = entry.address;
     let nextBlock = config.fromBlock;
     const holders = new Set<Address>();
     return {
       id: `eip155:${config.chainId}:${address.toLowerCase()}`, kind: entry.kind,
       async skim() {
+        if (entry.kind === 'topup') return;
         await signingLock.run(async () => {
           const hash = await wallet.writeContract({ address, abi: vaultAbi, functionName: 'skim' });
           const receipt = await publicClient.waitForTransactionReceipt({ hash });
@@ -47,9 +51,21 @@ export function evmPorts(config: { rpc: string; chainId: number; key: Hex; vault
         // Event scans start at deployment; chunking avoids RPC log-range limits, not archive-state reads.
         while (nextBlock <= blockNumber) {
           const toBlock = nextBlock + 1999n < blockNumber ? nextBlock + 1999n : blockNumber;
-          const logs = await publicClient.getLogs({ address, event: transferEvent, fromBlock: nextBlock, toBlock });
-          for (const log of logs) for (const owner of [log.args.from, log.args.to]) if (owner && owner !== zeroAddress) holders.add(owner.toLowerCase() as Address);
+          if (entry.kind === 'topup') {
+            for (const log of await publicClient.getLogs({ address, event: paidEvent, fromBlock: nextBlock, toBlock })) if (log.args.beneficiary) holders.add(log.args.beneficiary.toLowerCase() as Address);
+          } else {
+            const logs = await publicClient.getLogs({ address, event: transferEvent, fromBlock: nextBlock, toBlock });
+            for (const log of logs) for (const owner of [log.args.from, log.args.to]) if (owner && owner !== zeroAddress) holders.add(owner.toLowerCase() as Address);
+          }
           nextBlock = toBlock + 1n;
+        }
+        if (entry.kind === 'topup') {
+          // A purchase is paid in full when it is made: nothing is ever unpaid, and there is nothing to skim.
+          const [paid, token] = await Promise.all([publicClient.readContract({ address, abi: topUpAbi, functionName: 'paidTotal', blockNumber }), publicClient.readContract({ address, abi: topUpAbi, functionName: 'usdc', blockNumber })]);
+          yieldTokens.add(token.toLowerCase() as Address);
+          const entries: [string, bigint][] = [];
+          for (const owner of holders) entries.push([`eip155:${config.chainId}:${owner}`, await publicClient.readContract({ address, abi: topUpAbi, functionName: 'paid', args: [owner], blockNumber })]);
+          return { block: blockNumber, unpaid: 0n, paid, rate: 1_000_000_000_000_000_000n, entries, work: null };
         }
         const read = (functionName: 'unpaid' | 'paidTotal' | 'yieldToken') => publicClient.readContract({ address, abi: vaultAbi, functionName, blockNumber });
         const [unpaid, paid, token] = await Promise.all([read('unpaid'), read('paidTotal'), read('yieldToken')]);
