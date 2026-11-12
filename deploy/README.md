@@ -2,7 +2,7 @@
 
 The relay runs as one Docker container behind a [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/). The server opens no inbound port: `cloudflared` connects out to Cloudflare, and the public hostname reaches the relay only through it. The dashboard is a static build hosted separately (for example on Vercel).
 
-**Status: prepared, not yet run against a live server.**
+**Status: this is how the mainnet relay at `api.infernear.dev` has run since 12 Nov 2026.**
 
 ## Relay
 
