@@ -14,7 +14,10 @@ function proof(relayNonce:string, now:number, overrides:Record<string,unknown>={
   const message=JSON.stringify({statement:KEY_STATEMENT,account_id:overrides.account_id??'alice.near',nonce:relayNonce,expires_at:Math.floor(now/1000)+300});
   const near={account_id:'alice.near',public_key:publicKey,signature:'',message,nonce:createHash('sha256').update(relayNonce).digest('base64'),recipient:'relay.test',...overrides};
   const tag=Buffer.alloc(4);tag.writeUInt32LE(2147484061);
-  near.signature=sign(null,createHash('sha256').update(Buffer.concat([tag,text(near.message),Buffer.from(near.nonce,'base64'),text(near.recipient),Buffer.from([0])])).digest(),signer).toString('base64');
+  // `signedCallback` is what the wallet put in the NEP-413 payload; `callback_url` (an override) is what the proof claims.
+  const signedCallback=overrides.signedCallback as string|undefined; delete (near as Record<string,unknown>).signedCallback;
+  const callback=signedCallback===undefined?[Buffer.from([0])]:[Buffer.from([1]),text(signedCallback)];
+  near.signature=sign(null,createHash('sha256').update(Buffer.concat([tag,text(near.message),Buffer.from(near.nonce,'base64'),text(near.recipient),...callback])).digest(),signer).toString('base64');
   return {near};
 }
 const post=(base:string,path:string,value:unknown)=>fetch(base+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(value)});
@@ -91,4 +94,24 @@ test('NEAR key routes share the same 30-per-minute IP bucket',async t=>{
   const h=await harness({nearKey:async()=>true});t.after(h.close);
   for(let i=0;i<30;i++)assert.equal((await post(h.base,'/keys',{near:null})).status,401);
   assert.equal((await post(h.base,'/keys/revoke',{near:null})).status,429);
+});
+
+test('NEP-413 proofs signed with a callback URL (redirect wallets) verify only with that exact dashboard URL',async t=>{
+  const now=Date.now(), h=await harness({now:()=>now,nearKey:async(_a,k)=>k===publicKey});t.after(h.close);
+  const url='http://relay.test/#keys';
+  const good=await post(h.base,'/keys',proof(await nonce(h.base),now,{signedCallback:url,callback_url:url}));
+  assert.equal(good.status,200);
+  assert.equal((await h.gateway.authenticate(`Bearer ${(await good.json()).key}`)).user,'near:mainnet:alice.near');
+  const invalid=[
+    proof(await nonce(h.base),now,{signedCallback:url}),                                   // signed with a URL the proof does not carry
+    proof(await nonce(h.base),now,{callback_url:url}),                                     // carries a URL the wallet did not sign
+    proof(await nonce(h.base),now,{signedCallback:url,callback_url:'http://relay.test/#x'}),
+    proof(await nonce(h.base),now,{signedCallback:'https://evil.test/',callback_url:'https://evil.test/'}), // not the dashboard
+    proof(await nonce(h.base),now,{signedCallback:url,callback_url:5}),
+    proof(await nonce(h.base),now,{signedCallback:'not a url',callback_url:'not a url'}),
+  ];
+  for(const p of invalid) {
+    const response=await post(h.base,'/keys',p);assert.equal(response.status,401);
+    assert.equal((await response.json()).error.code,'invalid_api_key');
+  }
 });

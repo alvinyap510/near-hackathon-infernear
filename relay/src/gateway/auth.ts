@@ -53,11 +53,14 @@ export class Auth {
   }
   private async nearProof(value: unknown): Promise<string> {
     if (!value || typeof value !== 'object') throw unauthorized();
-    const { account_id, public_key, signature, message, nonce, recipient } = value as Record<string, unknown>;
+    const { account_id, public_key, signature, message, nonce, recipient, callback_url } = value as Record<string, unknown>;
     if (typeof account_id !== 'string' || account_id.length < 2 || account_id.length > 64 ||
         !/^[a-z0-9]+(?:[-_.][a-z0-9]+)*$/.test(account_id) || typeof public_key !== 'string' ||
         !/^ed25519:[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(public_key) || typeof signature !== 'string' || typeof message !== 'string' ||
         typeof nonce !== 'string' || recipient !== this.origin.host) throw unauthorized();
+    // NEP-413 signs an optional callback URL. Redirect wallets (MyNearWallet) put the page URL there,
+    // extension wallets sign none. When the proof carries one it must be a dashboard URL.
+    if (callback_url !== undefined && (typeof callback_url !== 'string' || callback_url.length > 2048 || new URL(callback_url).origin !== this.origin.origin)) throw unauthorized();
     const parsed = JSON.parse(message), time = Math.floor(this.now() / 1000);
     if (parsed.statement !== KEY_STATEMENT || parsed.account_id !== account_id || typeof parsed.nonce !== 'string' ||
         !Number.isSafeInteger(parsed.expires_at) || parsed.expires_at <= time || parsed.expires_at > time + 300 ||
@@ -76,7 +79,8 @@ export class Auth {
     if (key.length !== 32) throw unauthorized();
     const string = (text: string) => { const bytes = Buffer.from(text, 'utf8'), size = Buffer.alloc(4); size.writeUInt32LE(bytes.length); return Buffer.concat([size, bytes]); };
     const tag = Buffer.alloc(4); tag.writeUInt32LE(2147484061);
-    const digest = createHash('sha256').update(Buffer.concat([tag, string(message), nonceBytes, string(recipient), Buffer.from([0])])).digest();
+    const digest = createHash('sha256').update(Buffer.concat([tag, string(message), nonceBytes, string(recipient),
+      ...(typeof callback_url === 'string' ? [Buffer.from([1]), string(callback_url)] : [Buffer.from([0])])])).digest();
     const ed25519 = createPublicKey({ key: Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), key]), format: 'der', type: 'spki' });
     if (!verify(null, digest, ed25519, signatureBytes) || !await this.nearKey(account_id, public_key)) throw unauthorized();
     if (parsed.expires_at <= Math.floor(this.now() / 1000) || !this.nonces.get(parsed.nonce) || !this.nonces.delete(parsed.nonce)) throw unauthorized();
