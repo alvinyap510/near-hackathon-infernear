@@ -11,16 +11,17 @@ InferNear is an OpenAI-format API endpoint on top of NEAR AI's private TEE model
 
 Built at the NEAR HACKATHON (1–14 Nov 2026).
 
-> **Status (13 Nov 2026): deployed on mainnet, with small caps.** The API is live at `https://api.infernear.dev/v1` and the console at `https://app.infernear.dev`. Three Base vaults and the NEAR credit ledger are live; the **Rhea vault is deployed but paused** while a contract fix is redeployed (see known limits). **The live relay runs an earlier build of this repository:** standard mode and NEAR-wallet sign-in are in `main` and tested here, but not on the server yet, so today the live endpoint serves private-mode calls and EVM-wallet sign-in only. No user deposit has been made yet, so no credits exist on the ledger. Every command under "Verify it yourself" still runs from a clean clone, offline after install, against mocks and fixtures.
+> **Status (13 Nov 2026): deployed on mainnet, with small caps.** The API is live at `https://api.infernear.dev/v1` and the console at `https://app.infernear.dev`. Three Base vaults and the NEAR credit ledger are live; the Rhea vault on NEAR runs its fixed code since 13 Nov and has completed a cycle (see known limits). The landing page is at `https://infernear.dev`. No user deposit has been made yet, so no credits exist on the ledger. Every command under "Verify it yourself" still runs from a clean clone, offline after install, against mocks and fixtures.
 
 ## Live deployment
 
 | Piece | Where |
 |---|---|
 | API endpoint | `https://api.infernear.dev/v1` (OpenAI Chat Completions format; `GET /v1/models` lists the served TEE models) |
+| Landing page | `https://infernear.dev` |
 | Console | `https://app.infernear.dev` |
 | Credit ledger (NEAR) | [`connector.infernear-ai.near`](https://nearblocks.io/address/connector.infernear-ai.near) |
-| Rhea USDC vault (NEAR) | [`rhea.infernear-ai.near`](https://nearblocks.io/address/rhea.infernear-ai.near), paused |
+| Rhea USDC vault (NEAR) | [`rhea.infernear-ai.near`](https://nearblocks.io/address/rhea.infernear-ai.near) |
 | Aave USDC vault (Base) | [`0x19110449a361855d30090BC26112E9a5c3793198`](https://basescan.org/address/0x19110449a361855d30090BC26112E9a5c3793198) |
 | cbETH vault (Base) | [`0x20B3852c32FFCBfD6a713045e7eA411683446f40`](https://basescan.org/address/0x20B3852c32FFCBfD6a713045e7eA411683446f40) |
 | Pendle PT-deJAAA vault (Base) | [`0x5801707F6AF54f33Ab3E1910c09D79B81D4Be92c`](https://basescan.org/address/0x5801707F6AF54f33Ab3E1910c09D79B81D4Be92c) |
@@ -61,7 +62,7 @@ flowchart LR
 | # | What NEAR Intents carries | How | Where in this repo | Status on 12 Nov 2026 |
 |---|---|---|---|---|
 | 1 | USDC from another chain to the user's own Base address, ready to deposit | 1Click quote, then one transfer on the origin chain | `web/src/screens/Bridge.tsx` | The console shows real 1Click dry-run quotes for USDC from Ethereum, Arbitrum, Optimism or Polygon to Base; sending is switched off in this release |
-| 2 | Base USDC into the Rhea USDC vault **on NEAR** | 1Click delivers native USDC to the vault with `ft_transfer_call`, carrying `{"user":"eip155:8453:<address>"}` so the vault records the principal under the user's EVM address | `web/src/data/rhea.ts`, `contracts/near/rhea-vault/src/lib.rs` (`ft_on_transfer`) | Built and tested on fixtures; the live route returns quotes (dry run below); no funded deposit yet, and the vault is paused |
+| 2 | Base USDC into the Rhea USDC vault **on NEAR** | 1Click delivers native USDC to the vault with `ft_transfer_call`, carrying `{"user":"eip155:8453:<address>"}` so the vault records the principal under the user's EVM address | `web/src/data/rhea.ts`, `contracts/near/rhea-vault/src/lib.rs` (`ft_on_transfer`) | Built and tested on fixtures; the live route returns quotes (dry run below); no funded deposit yet |
 | 3 | The user's principal back from NEAR to their own Base address | The user signs a withdrawal with their EVM wallet (ERC-191); the vault pays out through `intents.near` to that same address, and a second signed intent moves it to Base. The relay submits both, so the user pays no NEAR gas | `contracts/near/rhea-vault/src/lib.rs` (`request_withdraw`), `relay/src/gateway/signed.ts` (`/rhea/withdraw`, `/intents/execute`) | Built and tested on fixtures; not yet run with funds |
 | 4 | InferNear's collected yield from Base to its treasury on NEAR | The keeper asks 1Click for a quote and sends the yield token to the deposit address once it is worth bridging | `relay/src/adapters/evm.ts` (`bridgeToken`) | Built and tested; switched off in this deployment (`ONECLICK_TOKENS=[]`) |
 
@@ -199,9 +200,9 @@ The three Base vaults and the credit ledger have no owner, admin, pause or upgra
 
 - **Live inference was verified once, by probe.** On 2026-11-12 `npm run spike` in `relay` sent encrypted JS and Python requests, plain and streaming, through the relay to a NEAR AI TEE model; TEE signatures verified and every charge matched NEAR's bill after rounding up to whole micro-USD ([details](relay/README.md#live-sdk-probe--passed-on-2026-11-12)). It needs your own NEAR AI key to reproduce.
 - **The model build check is off.** The SDK still verifies the model's TEE hardware attestation and signatures, but NEAR's check that the model runs NEAR's published proxy build currently rejects NEAR's own deploys, so we leave it out until NEAR fixes it. The gateway build check stays on.
-- **The Rhea vault is paused.** On mainnet its first cycles failed because the contract gave Rhea's asset view too little gas; a second defect (idle cash not supplied in a cycle that also pays yield) is fixed in this repository. The fixed code has not been redeployed yet, so do not deposit into the Rhea vault.
+- **The Rhea vault was redeployed with a fix on 13 Nov 2026.** Its first cycles on mainnet failed because the contract gave Rhea's asset view too little gas; a second defect (idle cash not supplied in a cycle that also pays yield) was fixed with it. The code was replaced on the same account with the stored state unchanged ([transaction](https://nearblocks.io/txns/DW2hx4izJCcMMgJ8C9h2cXaaNo2JcZAADMsnTJBu4D79)), and the next cycle supplied the vault's 1 USDC cushion to Rhea Lend ([transaction](https://nearblocks.io/txns/5K8tsb9HZNFQJDbbSj2arXd2xHjyrtxzGaK4QPTsC7oW)). It holds no user deposit yet.
 - **No deposit, credit or paid API call has happened on mainnet yet.** The contracts, relay and console are live, and wallet sign-in and API-key issue were checked against the live relay; the first funded round trip is still to come. The console's deposit, withdrawal and Meteor sign-in flows have so far run only in automated tests, not with a real wallet.
-- **The live relay runs an earlier build.** Standard mode and NEAR-wallet sign-in are tested in this repository but are not on the server yet, so on the live console a Standard call and Meteor sign-in fail today. Private mode and EVM-wallet sign-in are unaffected.
+- **Standard mode and NEAR-wallet sign-in went live on 13 Nov 2026 and are only partly exercised.** Against the live relay, a throwaway EVM wallet signed in, received a key, and its plain OpenAI-format call was accepted up to the credit check (`402 insufficient_credit`, as expected with no credits). A paid standard call and a sign-in with a real NEAR wallet have not been done yet.
 - **Standard mode is not private from the relay.** The relay can read the prompt and reply in transit; it stores neither. Use private mode when that matters.
 - **In the console, "Try the API" sends a real standard-mode call; private mode there is code samples only.** A private call is made with NEAR AI's SDK from your own code, as in the probe above.
 - **The credit top-up contract is not deployed.** It is built and tested, and the console hides its box until an address is configured.
