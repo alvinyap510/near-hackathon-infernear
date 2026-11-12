@@ -2541,13 +2541,13 @@ svg {
   margin-left: auto;
 }
 
-.foot nav a {
+.foot a {
   color: var(--snow);
   font-weight: 600;
   text-decoration: none;
 }
 
-.foot nav a:hover {
+.foot a:hover {
   color: var(--mint);
 }
 
