@@ -46,7 +46,7 @@ Restart loses in-memory jobs and nonces. Broadcast transactions may still land; 
 
 ## Keeper behavior
 
-`EVM_VAULTS` is a JSON array of entries with an explicit `kind`. Set deployed vault addresses; these are not token addresses. `VAULT_START_BLOCK` includes the earliest deployment. Entry schemas:
+`EVM_VAULTS` is a JSON array of entries with an explicit `kind`. Set deployed vault addresses; these are not token addresses. `VAULT_START_BLOCK` must be at or before the earliest deployment among all entries, the top-up contract included. Entry schemas:
 
 ```json
 [

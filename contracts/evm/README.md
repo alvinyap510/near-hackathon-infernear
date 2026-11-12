@@ -67,9 +67,9 @@ With enough gas, a reverting payout emits `PayFailed`, retains unpaid attributio
 
 ## Credit top-up
 
-`src/CreditTopUp.sol` sells credits for USDC. `pay(amount, beneficiary)` moves the caller's USDC straight to the immutable recipient and adds `amount` to `paid[beneficiary]` and `paidTotal`; it emits `Paid(payer, beneficiary, amount)`. **It is a purchase, not a deposit: nothing can be redeemed**, the contract never holds tokens, and it has no owner, admin, pause or upgrade path. The keeper posts `paid(beneficiary)` to the NEAR ledger at 1 USDC = 1 USD of credits. Eight tests cover exact delivery to the recipient, accumulation, paying for another address, rejected zero inputs, a failed transfer recording nothing, and a fuzzed check that recorded credits equal the USDC the recipient received.
+`src/CreditTopUp.sol` sells credits for USDC. `pay(amount, beneficiary)` moves the caller's USDC straight to the immutable recipient and adds `amount` to `paid[beneficiary]` and `paidTotal`; it emits `Paid(payer, beneficiary, amount)`. **It is a purchase, not a deposit: nothing can be redeemed**, the contract never holds tokens, and it has no owner, admin, pause or upgrade path. Payments below the immutable `minimum` revert, because each new beneficiary costs the operator ledger storage on NEAR. USDC sent to the contract directly, instead of through `pay`, earns no credits and cannot be recovered. The keeper posts `paid(beneficiary)` to the NEAR ledger at 1 USDC = 1 USD of credits. Eight tests cover exact delivery to the recipient, accumulation, paying for another address, rejected dust and zero inputs, a failed transfer recording nothing, and a fuzzed check that recorded credits equal the USDC the recipient received.
 
-`script/DeployTopUp.s.sol:DeployTopUp.run()` reads `EVM_USDC`, `EVM_YIELD_RECIPIENT` and `EVM_DEPLOYER_PRIVATE_KEY`. It moves no tokens.
+`script/DeployTopUp.s.sol:DeployTopUp.run()` reads `EVM_USDC`, `EVM_YIELD_RECIPIENT`, `EVM_TOPUP_MINIMUM` (USDC base units; `1000000` is 1 USDC) and `EVM_DEPLOYER_PRIVATE_KEY`. It moves no tokens.
 
 ## One deployment script, three kinds
 
