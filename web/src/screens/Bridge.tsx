@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { ErrorNote, Spinner, errorText } from '../components/ui.tsx';
+import { ErrorNote, Spinner, errorText, tokenAmount } from '../components/ui.tsx';
 import { data, type Address, type BridgeQuote, type Chain } from '../data/index.ts';
-import { formatUsd, parseUsdc, shortHex } from '../data/money.ts';
+import { parseUsdc, shortHex } from '../data/money.ts';
+
+const USDC = { address: '', symbol: 'USDC', decimals: 6 } as const;
 
 export function Bridge({ address, onDeposit }: { address: Address; onDeposit: () => void }) {
   const [chains, setChains] = useState<Chain[]>([]);
@@ -92,13 +94,13 @@ export function Bridge({ address, onDeposit }: { address: Address; onDeposit: ()
                 <div>
                   <dt>You send</dt>
                   <dd>
-                    {formatUsd(quote.amountIn)} USDC on {chainName(quote.fromChain)}
+                    {tokenAmount(quote.amountIn, USDC)} on {chainName(quote.fromChain)}
                   </dd>
                 </div>
                 <div>
                   <dt>You receive</dt>
                   <dd>
-                    <strong>≈ {formatUsd(quote.amountOut)} USDC</strong> on Base
+                    <strong>≈ {tokenAmount(quote.amountOut, USDC)}</strong> on Base
                   </dd>
                 </div>
                 <div>

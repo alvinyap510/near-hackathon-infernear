@@ -81,7 +81,7 @@ export function Keys({
 
       <div className="split keys-split">
         <ol className="steps rise d1">
-          <li className={`step ${proof ? 'done' : 'current'}`}>
+          <li className={`step ${proof ? 'done' : issued ? '' : 'current'}`}>
             <span className="step-n" aria-hidden="true">01</span>
             <div className="step-body">
               <h2 className="step-title">

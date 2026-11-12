@@ -79,17 +79,17 @@ export function Connect({ onConnected }: { onConnected: (a: Address) => void }) 
 
       <section className="pillars" aria-label="What InferNear guarantees">
         <article className="pillar rise d3">
-          <span className="pillar-n">i.</span>
+          <span className="pillar-n">01</span>
           <h2>Principal stays yours</h2>
           <p>An ERC-4626 vault with no owner, admin or upgrade key. Only you can redeem your shares. A loss in the underlying protocol is shared by depositors pro-rata; it is never covered by InferNear.</p>
         </article>
         <article className="pillar rise d4">
-          <span className="pillar-n">ii.</span>
+          <span className="pillar-n">02</span>
           <h2>Yield becomes credits</h2>
           <p>The vault attributes each holder’s yield on-chain and pays it to InferNear. Your credits on NEAR match it.</p>
         </article>
         <article className="pillar rise d5">
-          <span className="pillar-n">iii.</span>
+          <span className="pillar-n">03</span>
           <h2>Every bill is checkable</h2>
           <p>Each call is debited on NEAR with a receipt. Recompute it from the model’s signed token counts.</p>
         </article>

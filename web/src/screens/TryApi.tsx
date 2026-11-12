@@ -107,9 +107,12 @@ export function TryApi({ apiKey, onChanged, onKeys }: { apiKey: string | null; o
         <div className="console">
           <section className="card run rise d2" aria-labelledby="run-h">
             <div className="card-row">
-              <h2 id="run-h" className="card-title">
-                Run it here
-              </h2>
+              <div className="title-group">
+                <h2 id="run-h" className="card-title">
+                  Run it here
+                </h2>
+                {data.isRunMock && <span className="sim-tag">Simulation</span>}
+              </div>
               {model && (
                 <span className="model-chip" title={model.id}>
                   {models.length > 1 ? (
@@ -216,9 +219,12 @@ function Verified({ attestation, result }: { attestation: Attestation; result: R
   return (
     <section className="verified rise" aria-labelledby="ver-h">
       <div className="verified-head">
-        <h2 id="ver-h" className="card-title">
-          Verified
-        </h2>
+        <div className="title-group">
+          <h2 id="ver-h" className="card-title">
+            Verified
+          </h2>
+          {data.isRunMock && <span className="sim-tag">Simulation</span>}
+        </div>
         <span className="verified-model">{attestation.model}</span>
       </div>
       <ul className="ver-list">
