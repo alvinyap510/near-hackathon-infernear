@@ -2,6 +2,15 @@
 // are bigint token base units; only connector credits are micro-USD, never floats.
 
 export type Address = `0x${string}`;
+export type Session = { kind: 'evm'; address: Address; user: string } | { kind: 'near'; accountId: string; user: string };
+export type SessionInput = Address | Session;
+export type WalletOption = { id: string; kind: 'evm' | 'near'; name: string; icon?: string; available: boolean; installUrl?: string };
+export type CatalogueVault = {
+  id: string; kind: VaultKind; name: string; chainName: 'Base' | 'NEAR'; assetSymbol: string;
+  yieldShape: string; strategy: string; lossNote: string; wallets: ('evm' | 'near')[];
+  deposited?: string; cap?: string; rateNow?: string; yourPrincipal?: string; yourYield?: string;
+  status: 'open' | 'paused'; statusNote?: string;
+};
 
 /** CAIP-10 id of the vault-share owner, address lower-cased. */
 export type UserId = string;
@@ -27,7 +36,7 @@ export type VaultPosition = {
   yieldCredited: bigint;
   walletBalance: bigint;
   allowance: bigint;
-  rhea?: { pendingIn: bigint; pendingOut: bigint | null; coverage: bigint; busy: boolean; intentsBalance: bigint };
+  rhea?: { pendingIn: bigint; pendingOut: bigint | null; coverage: bigint; busy: boolean; intentsBalance: bigint; usdcRegistered?: boolean };
 };
 export type VaultAccount = {
   id: VaultId;
@@ -40,6 +49,7 @@ export type VaultAccount = {
   lossNote: string;
   /** Pendle app link to acquire PT separately; no zap. */
   buyUrl?: string;
+  usable?: boolean;
   position: VaultPosition;
 };
 
@@ -62,7 +72,9 @@ export type Overview = {
 export type TxResult = { txHash: string };
 
 /** Single-use EIP-4361 proof, consumed by one key action; never a session. */
-export type WalletProof = { message: string; signature: `0x${string}` };
+export type EvmWalletProof = { message: string; signature: `0x${string}` };
+export type NearWalletProof = { near: { account_id: string; public_key: string; signature: string; message: string; nonce: string; recipient: string } };
+export type WalletProof = EvmWalletProof | NearWalletProof;
 
 export type IssuedKey = { key: string; keyEpoch: number; expiresAt: string };
 export type Revoked = { keyEpoch: number; txHash: string };
@@ -161,23 +173,31 @@ export interface DashboardData {
   readonly isMock: boolean;
   readonly isRunMock: boolean;
   connect(): Promise<Address>;
+  walletOptions(): Promise<WalletOption[]>;
+  connectWallet(id: string): Promise<Session>;
+  restoreSession(): Promise<Session | null>;
+  disconnect(): Promise<void>;
+  catalogue(session?: Session): Promise<CatalogueVault[]>;
+  rheaDepositNear(session: Extract<Session, { kind: 'near' }>, assets: bigint): Promise<TxResult>;
+  rheaWithdrawNear(session: Extract<Session, { kind: 'near' }>, assets: bigint): Promise<TxResult>;
   /** Four vaults plus one aggregate connector credit account. Legacy vault aliases Aave only. */
-  overview(address: Address): Promise<Overview>;
+  overview(session: SessionInput): Promise<Overview>;
   /** EVM only. Omitting vaultId selects Aave for the current screen. Assets/shares are native units. */
-  deposit(address: Address, assets: bigint, vaultId?: VaultId): Promise<TxResult>;
-  redeem(address: Address, shares: bigint, vaultId?: VaultId): Promise<TxResult>;
+  deposit(session: SessionInput, assets: bigint, vaultId?: VaultId): Promise<TxResult>;
+  redeem(session: SessionInput, shares: bigint, vaultId?: VaultId): Promise<TxResult>;
   /** Always dry. direction withdraw previews Intents USDC -> the user's Base wallet. */
-  rheaQuote(address: Address, assets: bigint, direction: RheaDirection): Promise<RheaQuote>;
+  rheaQuote(session: SessionInput, assets: bigint, direction: RheaDirection): Promise<RheaQuote>;
   /** Call only after user confirmation: create non-dry quote and transfer Base USDC once. */
-  rheaDeposit(address: Address, assets: bigint): Promise<RheaTransfer>;
+  rheaDeposit(session: SessionInput, assets: bigint): Promise<RheaTransfer>;
   /** First withdrawal signature: nominal USDC claim, from the vault to the user's Intents balance.
    * Refresh overview to observe pendingOut/busy and actual intentsBalance before the second step. */
-  rheaWithdraw(address: Address, claim: bigint): Promise<TxResult>;
+  rheaWithdraw(session: SessionInput, claim: bigint): Promise<TxResult>;
   /** Second, separately confirmed signature: quote actual Intents USDC and fund it with a transfer intent. */
-  rheaExit(address: Address, assets: bigint): Promise<RheaTransfer>;
+  rheaExit(session: SessionInput, assets: bigint): Promise<RheaTransfer>;
   /** One status read; poll until terminal. SUCCESS for deposits still needs vault activation (pendingIn). */
   rheaStatus(depositAddress: string): Promise<RheaSwapStatus>;
-  walletProof(address: Address): Promise<WalletProof>;
+  walletProof(address: Address): Promise<EvmWalletProof>;
+  walletProof(session: Session): Promise<WalletProof>;
   createKey(proof: WalletProof): Promise<IssuedKey>;
   revokeAll(proof: WalletProof): Promise<Revoked>;
   models(): Promise<Model[]>;

@@ -16,3 +16,11 @@ export function walletProofMessage(address: `0x${string}`, nonce: string, siteUr
     statement: 'Authorize one InferNear API key action.',
   });
 }
+
+export const KEY_STATEMENT = 'Authorize one InferNear API key action.';
+export function nearProofMessage(nonce: string, accountId: string, now = new Date()): string {
+  return JSON.stringify({ statement: KEY_STATEMENT, account_id: accountId, nonce, expires_at: Math.floor(now.getTime() / 1000) + 300 });
+}
+export async function nearProofNonce(nonce: string): Promise<Uint8Array> {
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(nonce)));
+}

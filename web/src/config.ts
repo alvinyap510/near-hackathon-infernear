@@ -2,6 +2,10 @@
 const env = import.meta.env ?? {};
 
 export const config = {
+  aavePoolAddress: env.VITE_AAVE_POOL_ADDRESS as `0x${string}` | undefined,
+  rheaLendAccount: env.VITE_RHEA_LEND_ACCOUNT as string | undefined,
+  rheaCap: env.VITE_RHEA_CAP as string | undefined,
+  rheaStatusNote: env.VITE_RHEA_STATUS_NOTE as string | undefined,
   relayUrl: env.VITE_RELAY_URL as string | undefined,
   vaultChainId: env.VITE_BASE_CHAIN_ID as string | undefined,
   vaultAddress: env.VITE_VAULT_ADDRESS as string | undefined,
@@ -20,6 +24,10 @@ export const config = {
 };
 
 export type LiveConfig = {
+  aavePoolAddress?: `0x${string}`;
+  rheaLendAccount?: string;
+  rheaCap?: string;
+  rheaStatusNote?: string;
   relayUrl: string;
   vaultChainId: number;
   vaultAddress: `0x${string}`;
@@ -37,7 +45,7 @@ export type LiveConfig = {
   pendleAppUrl: string;
 };
 
-export function liveConfig(values = config): LiveConfig | null {
+export function liveConfig(values: Partial<typeof config> = config): LiveConfig | null {
   if (!values.relayUrl || !values.vaultChainId || !values.vaultAddress ||
       !values.baseRpcUrl || !values.nearRpcUrl || !values.connectorAccount ||
       !values.rateVaultAddress || !values.pendleVaultAddress || !values.rheaVaultAccount ||
@@ -47,6 +55,8 @@ export function liveConfig(values = config): LiveConfig | null {
   if (!Number.isSafeInteger(Number(values.vaultChainId)) || Number(values.vaultChainId) <= 0 ||
       !Number.isInteger(Number(values.slippageBps)) || Number(values.slippageBps) < 0 || Number(values.slippageBps) > 10_000) return null;
   return {
+    aavePoolAddress: values.aavePoolAddress, rheaLendAccount: values.rheaLendAccount,
+    rheaCap: values.rheaCap, rheaStatusNote: values.rheaStatusNote,
     rateVaultAddress: values.rateVaultAddress as LiveConfig['rateVaultAddress'],
     pendleVaultAddress: values.pendleVaultAddress as LiveConfig['pendleVaultAddress'],
     rheaVaultAccount: values.rheaVaultAccount, nearUsdcAccount: values.nearUsdcAccount,

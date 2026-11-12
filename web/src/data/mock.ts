@@ -5,9 +5,13 @@
 import { caip10, config } from '../config.ts';
 import { DataError } from './errors.ts';
 import { expectedDebit, tokenCost } from './money.ts';
+import { emptyPosition, evmAddress } from './session.ts';
+import { STRATEGIES } from './catalogue.ts';
+import { formatAmount } from './money.ts';
+import { nearProofMessage, nearProofNonce } from './proof.ts';
 import { LOSS_NOTES } from './types.ts';
 import type {
-  Address,
+  Address, Session, SessionInput, WalletProof, EvmWalletProof,
   Attestation,
   DashboardData,
   Model,
@@ -72,6 +76,7 @@ export function createMockData(): DashboardData {
   }));
   const state = { credited: 4_020_000n, spent: 342_118n, keyEpoch: 2, debited: new Map<string, bigint>() };
   const rhea = vaults[3].position;
+  const initialNearPosition = structuredClone(rhea);
   const swaps = new Map<string, () => void>();
   const select = (id?: string) => {
     const index = id === undefined ? 0 : vaults.findIndex(vault => vault.id === id && vault.kind !== 'rhea');
@@ -100,16 +105,80 @@ export function createMockData(): DashboardData {
       credits: { credited: state.credited, spent: state.spent, available: state.credited - state.spent, keyEpoch: state.keyEpoch } };
   };
 
-  return {
+  let session: Session | null = null;
+  const nearAccounts = new Map<string, {position:typeof rhea;credited:bigint;spent:bigint;keyEpoch:number;debited:Map<string,bigint>}>();
+  const nearAccount = (id:string) => {
+    let account = nearAccounts.get(id);
+    if(!account) { account={position:structuredClone(initialNearPosition),credited:4_020_000n,spent:342_118n,keyEpoch:2,debited:new Map()}; account.position.rhea!.usdcRegistered=true; nearAccounts.set(id,account); }
+    return account;
+  };
+  const nearOverview = (owner:Extract<Session,{kind:'near'}>):Overview => {
+    const record=nearAccount(owner.accountId), position=record.position;
+    if(position.rhea!.pendingOut!==null) {
+      const claim=position.rhea!.pendingOut; position.shares-=claim; position.principal=position.shares*position.rhea!.coverage/10n**18n;
+      position.walletBalance+=claim*position.rhea!.coverage/10n**18n; position.rhea!.pendingOut=null;
+    }
+    const result:Overview={user:`near:mainnet:${owner.accountId}`,vaults:vaults.map(v=>({...structuredClone(v),usable:v.kind==='rhea',position:v.kind==='rhea'?structuredClone(position):emptyPosition()})),
+      vault:{...emptyPosition(),walletUsdc:0n},credits:{credited:record.credited,spent:record.spent,available:record.credited-record.spent,keyEpoch:record.keyEpoch}};
+    const queued=position.rhea!.pendingIn;
+    if(queued>0n) {position.shares+=queued;position.principal+=queued;position.rhea!.pendingIn=0n;}
+    return result;
+  };
+  async function walletProof(address:Address):Promise<EvmWalletProof>;
+  async function walletProof(owner:Session):Promise<WalletProof>;
+  async function walletProof(input:SessionInput):Promise<WalletProof> {
+    if(typeof input!=='string' && input.kind==='near') {
+      const nonce=hex(24), message=nearProofMessage(nonce,input.accountId);
+      proofs.set(message,`near:mainnet:${input.accountId}`);
+      return {near:{account_id:input.accountId,public_key:'ed25519:mock-public-key',signature:'mock-signature',message,
+        nonce:btoa(String.fromCharCode(...await nearProofNonce(nonce))),recipient:'mock.invalid'}};
+    }
+    const address=evmAddress(input), origin=new URL(config.relayUrl || globalThis.location?.origin || 'https://mock.invalid');
+    const message=[`${origin.host} wants you to sign in with your Ethereum account:`,address,'','Authorize one InferNear API key action.','',`URI: ${origin.origin}`,'Version: 1',
+      `Chain ID: ${caip10(address).split(':')[1]}`,`Nonce: ${hex(8)}`,`Issued At: ${new Date().toISOString()}`,`Expiration Time: ${new Date(Date.now()+300_000).toISOString()}`].join('\n');
+    proofs.set(message,caip10(address));return {message,signature:`0x${hex(65)}`};
+  }
+
+  const result:DashboardData = {
     isMock: true,
     isRunMock: true,
 
+    async walletOptions() { return [{id:'evm:mock',kind:'evm',name:'Mock EVM wallet',available:true},{id:'near:meteor-wallet',kind:'near',name:'Mock Meteor Wallet',available:true},{id:'near:my-near-wallet',kind:'near',name:'Mock MyNearWallet',available:true}]; },
+    async connectWallet(id) {
+      if(id==='evm:mock') return session={kind:'evm',address:MOCK_ADDRESS,user:caip10(MOCK_ADDRESS,chainId)};
+      if(id==='near:meteor-wallet' || id==='near:my-near-wallet') return session={kind:'near',accountId:'demo.near',user:'near:mainnet:demo.near'};
+      throw new DataError('wallet_missing','Unknown mock wallet.');
+    },
+    async restoreSession() { return session; },
+    async disconnect() {session=null;},
+    async catalogue(owner) {
+      const own=owner?(await result.overview(owner)).vaults:[];
+      return vaults.map(v=>({id:v.id,kind:v.kind,name:v.name,chainName:v.kind==='rhea'?'NEAR':'Base',assetSymbol:v.asset.symbol,...STRATEGIES[v.kind],lossNote:v.lossNote,
+        wallets:v.kind==='rhea'?['evm','near']:['evm'],deposited:`${formatAmount(v.position.shares,v.asset.decimals,2)} mock principal`,cap:`10,000 mock units`,
+        status:v.kind==='rhea' && config.rheaStatusNote?'paused':'open',statusNote:v.kind==='rhea' && config.rheaStatusNote?config.rheaStatusNote:'Mock catalogue — simulated chain state.',
+        ...(own.find(p=>p.kind===v.kind)?.usable!==false && owner?{yourPrincipal:`${formatAmount(own.find(p=>p.kind===v.kind)!.position.principal,v.asset.decimals,6)} ${v.asset.symbol}`,yourYield:`${formatAmount(own.find(p=>p.kind===v.kind)!.position.yieldCredited,v.asset.decimals,6)} ${v.yieldToken.symbol}`}:{})}));
+    },
+    async rheaDepositNear(owner,assets) {
+      if(owner.kind!=='near') throw new DataError('wallet_kind','Use a NEAR wallet.');
+      if(assets<1_000_000n) throw new DataError('amount','The minimum Rhea deposit is 1 USDC.');
+      const position=nearAccount(owner.accountId).position;
+      if(assets>position.walletBalance) throw new DataError('balance','That is more USDC than the wallet holds.');
+      position.walletBalance-=assets; position.rhea!.pendingIn+=assets; return {txHash:`mock-near-${hex(16)}`};
+    },
+    async rheaWithdrawNear(owner,assets) {
+      if(owner.kind!=='near') throw new DataError('wallet_kind','Use a NEAR wallet.');
+      positive(assets);const position=nearAccount(owner.accountId).position;
+      if(assets>position.shares) throw new DataError('balance','That is more than your principal claim.');
+      position.rhea!.pendingOut=assets;return {txHash:`mock-near-${hex(16)}`};
+    },
     async connect() {
       await sleep(500);
       return MOCK_ADDRESS;
     },
 
-    async overview(address) {
+    async overview(input) {
+      if(typeof input!=='string' && input.kind==='near') return nearOverview(input);
+      const address=evmAddress(input);
       await sleep(250);
       const queued = rhea.rhea!.pendingIn;
       const result = overview(address);
@@ -117,7 +186,8 @@ export function createMockData(): DashboardData {
       return result;
     },
 
-    async deposit(_address, assets, vaultId) {
+    async deposit(input, assets, vaultId) {
+      evmAddress(input);
       positive(assets); const index = select(vaultId), position = vaults[index].position;
       if (assets > position.walletBalance) throw new DataError('balance', 'That is more than the wallet holds.');
       await sleep(900); position.walletBalance -= assets;
@@ -125,7 +195,8 @@ export function createMockData(): DashboardData {
       position.principal = position.shares * (10n ** 18n) / factors[index];
       return { txHash: `0x${hex(32)}` };
     },
-    async redeem(_address, shares, vaultId) {
+    async redeem(input, shares, vaultId) {
+      evmAddress(input);
       positive(shares); const index = select(vaultId), position = vaults[index].position;
       if (shares > position.shares) throw new DataError('balance', 'That is more than your principal.');
       await sleep(900); position.shares -= shares;
@@ -133,8 +204,9 @@ export function createMockData(): DashboardData {
       position.principal = position.shares * (10n ** 18n) / factors[index];
       return { txHash: `0x${hex(32)}` };
     },
-    async rheaQuote(_address, assets, direction) { return quote(assets, direction); },
-    async rheaDeposit(_address, assets) {
+    async rheaQuote(input, assets, direction) { evmAddress(input); return quote(assets, direction); },
+    async rheaDeposit(input, assets) {
+      evmAddress(input);
       positive(assets);
       if (assets > vaults[0].position.walletBalance) throw new DataError('balance', 'That is more USDC than the wallet holds.');
       const funded = quote(assets, 'deposit', false);
@@ -143,13 +215,15 @@ export function createMockData(): DashboardData {
       swaps.set(funded.depositAddress!, () => { rhea.rhea!.pendingIn += funded.amountOut; });
       return { txHash: `0x${hex(32)}`, quote: funded };
     },
-    async rheaWithdraw(_address, claim) {
+    async rheaWithdraw(input, claim) {
+      evmAddress(input);
       positive(claim);
       if (claim > rhea.shares) throw new DataError('balance', 'That is more than your principal claim.');
       rhea.rhea!.pendingOut = claim;
       return { txHash: `mock-near-${hex(16)}` };
     },
-    async rheaExit(_address, assets) {
+    async rheaExit(input, assets) {
+      evmAddress(input);
       positive(assets);
       if (assets > rhea.rhea!.intentsBalance) throw new DataError('balance', 'Wait for USDC to reach your Intents balance.');
       const funded = quote(assets, 'withdraw', false); rhea.rhea!.intentsBalance -= assets;
@@ -162,37 +236,27 @@ export function createMockData(): DashboardData {
       return { status: 'SUCCESS', terminal: true, isMock: true };
     },
 
-    async walletProof(address) {
-      await sleep(700);
-      const origin = new URL(config.relayUrl || window.location.origin);
-      const message = [
-        `${origin.host} wants you to sign in with your Ethereum account:`, address, '',
-        'Authorize one InferNear API key action.', '', `URI: ${origin.origin}`, 'Version: 1',
-        `Chain ID: ${caip10(address).split(':')[1]}`, `Nonce: ${hex(8)}`,
-        `Issued At: ${new Date().toISOString()}`,
-        `Expiration Time: ${new Date(Date.now() + 300_000).toISOString()}`,
-      ].join('\n');
-      proofs.set(message, caip10(address));
-      return { message, signature: `0x${hex(65)}` };
-    },
+    walletProof,
 
     async createKey(proof) {
-      const user = consume(proof.message);
+      const user = consume('near' in proof?proof.near.message:proof.message);
+      const account=user.startsWith('near:mainnet:')?nearAccount(user.slice(13)):state;
       await sleep(600);
       const exp = Math.floor(Date.now() / 1000) + 30 * 86_400;
-      const payload = base64url(JSON.stringify({ user, epoch: state.keyEpoch, exp }));
+      const payload = base64url(JSON.stringify({ user, epoch: account.keyEpoch, exp }));
       return {
         key: `inf_${payload}.${hex(32)}`,
-        keyEpoch: state.keyEpoch,
+        keyEpoch: account.keyEpoch,
         expiresAt: new Date(exp * 1000).toISOString(),
       };
     },
 
     async revokeAll(proof) {
-      consume(proof.message);
+      const user=consume('near' in proof?proof.near.message:proof.message);
+      const account=user.startsWith('near:mainnet:')?nearAccount(user.slice(13)):state;
       await sleep(1100);
-      state.keyEpoch += 1;
-      return { keyEpoch: state.keyEpoch, txHash: hex(32) };
+      account.keyEpoch += 1;
+      return { keyEpoch: account.keyEpoch, txHash: hex(32) };
     },
 
     async models() {
@@ -200,10 +264,13 @@ export function createMockData(): DashboardData {
     },
 
     async run({ key, model, prompt, maxTokens }, onEvent: (event: RunEvent) => void) {
+      let activeUser='';
+      try { activeUser=JSON.parse(atob(key.slice(4).split('.')[0].replace(/-/g,'+').replace(/_/g,'/'))).user; } catch { /* Fixture-only legacy keys have no payload. */ }
+      const activeState=activeUser.startsWith('near:mainnet:')?nearAccount(activeUser.slice(13)):state;
       if (!key.startsWith('inf_')) throw new DataError('key', 'Create an API key first.');
       const inputBound = BigInt(Math.ceil(new TextEncoder().encode(prompt).length * 2));
       const reservation = tokenCost(Number(inputBound), maxTokens, model.inPriceNano, model.outPriceNano);
-      if (state.credited - state.spent < reservation)
+      if (activeState.credited - activeState.spent < reservation)
         throw new DataError('credits', 'Not enough credits for this request (402).');
 
       await sleep(700);
@@ -238,8 +305,8 @@ export function createMockData(): DashboardData {
         source: 'signed_usage',
       };
       const charged = expectedDebit(receipt, reservation);
-      state.spent += charged;
-      state.debited.set(receipt.inferenceId, charged);
+      activeState.spent += charged;
+      activeState.debited.set(receipt.inferenceId, charged);
 
       return {
         text: MOCK_REPLY,
@@ -254,7 +321,7 @@ export function createMockData(): DashboardData {
 
     async debitedAmount(inferenceId) {
       await sleep(400);
-      return state.debited.get(inferenceId) ?? null;
+      return state.debited.get(inferenceId) ?? [...nearAccounts.values()].map(account=>account.debited.get(inferenceId)).find(value=>value!==undefined) ?? null;
     },
 
     async bridgeChains() {
@@ -281,4 +348,5 @@ export function createMockData(): DashboardData {
       };
     },
   };
+  return result;
 }

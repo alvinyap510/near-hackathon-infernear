@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Check, CopyButton, ErrorNote, Spinner, errorText } from '../components/ui.tsx';
 import { apiBaseUrl } from '../config.ts';
-import { data, type Address, type IssuedKey, type Overview, type WalletProof } from '../data/index.ts';
+import { data, type Address, type IssuedKey, type Overview, type EvmWalletProof as WalletProof } from '../data/index.ts';
 import { shortHex } from '../data/money.ts';
 
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });

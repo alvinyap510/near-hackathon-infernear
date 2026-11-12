@@ -3,14 +3,20 @@ import {
   custom, defineChain, getAddress, http, type EIP1193Provider, type Hash,
 } from 'viem';
 import { caip10, type LiveConfig } from '../config.ts';
-import { vaultAbi, usdcAbi } from './abi.ts';
+import { vaultAbi, usdcAbi, aavePoolAbi } from './abi.ts';
 import { DataError, readAmount as amount } from './errors.ts';
 import { createMockData } from './mock.ts';
 import { createRheaData, type NearView } from './rhea.ts';
+import { createWallets, defaultWallets, type Wallets } from './wallets.ts';
+import { nearSessionData } from './near-session.ts';
+import { evmAddress, emptyPosition } from './session.ts';
+import { STRATEGIES, decimalPercent } from './catalogue.ts';
+import { formatAmount } from './money.ts';
 import { walletProofMessage } from './proof.ts';
-import { LOSS_NOTES, type Address, type DashboardData, type VaultAccount } from './types.ts';
+import { LOSS_NOTES, type Address, type DashboardData, type VaultAccount, type Session, type SessionInput, type Overview, type WalletProof, type EvmWalletProof, type CatalogueVault } from './types.ts';
 
 type Dependencies = {
+  wallets?: Wallets;
   ethereum?: Pick<EIP1193Provider, 'request'>;
   fetch?: typeof globalThis.fetch;
   now?: () => Date;
@@ -28,6 +34,7 @@ export function dataError(error: unknown): DataError {
 
 export function createLiveData(settings: LiveConfig, dependencies: Dependencies = {}): DashboardData {
   const fetcher = dependencies.fetch ?? globalThis.fetch.bind(globalThis);
+  const wallets = dependencies.wallets ?? (dependencies.ethereum ? createWallets(settings, { ethereum: dependencies.ethereum }) : defaultWallets);
   const now = dependencies.now ?? (() => new Date());
   const chain = defineChain({
     id: settings.vaultChainId,
@@ -43,7 +50,7 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
     try { return await run(); } catch (error) { throw dataError(error); }
   };
   const wallet = () => {
-    const provider = dependencies.ethereum ?? (globalThis as typeof globalThis & { ethereum?: Pick<EIP1193Provider, 'request'> }).ethereum;
+    const provider = wallets.evmProvider();
     if (!provider) throw new DataError('wallet_missing', 'Install or enable an injected Ethereum wallet.');
     return createWalletClient({ chain, transport: custom(provider) });
   };
@@ -106,17 +113,87 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
     },
   });
 
-  return {
+  const near = nearSessionData(settings, { wallets, view: nearView, relay, now,
+    origin: () => dependencies.origin ?? globalThis.location?.origin ?? settings.relayUrl });
+  const nearOverview = async (session: Extract<Session, {kind:'near'}>): Promise<Overview> => {
+    const user = `near:mainnet:${session.accountId}`;
+    const [credits, position, coverage, busy, balance, storage] = await Promise.all([
+      nearView<{credited:string;spent:string;available:string;key_epoch:number}>('account',{user}),
+      nearView<{principal:string;yield_credited:string;pending_in:string;pending_out:string|null}>('position',{user},settings.rheaVaultAccount),
+      nearView<string>('coverage',{},settings.rheaVaultAccount), nearView<boolean>('busy',{},settings.rheaVaultAccount),
+      nearView<string>('ft_balance_of',{account_id:session.accountId},settings.nearUsdcAccount),
+      nearView<{total:string}|null>('storage_balance_of',{account_id:session.accountId},settings.nearUsdcAccount),
+    ]);
+    if (!Number.isSafeInteger(credits.key_epoch) || credits.key_epoch < 0 || typeof busy !== 'boolean') throw new DataError('near_rpc','Invalid NEAR account state.');
+    const vaults: VaultAccount[] = evmVaults.map(v => ({id:caip10(v.address,chain.id),kind:v.kind,name:v.name,
+      chain:{id:`eip155:${chain.id}`,name:'Base'},asset:{address:'',symbol:v.symbol,decimals:v.decimals},
+      yieldToken:{address:'',symbol:v.symbol,decimals:v.decimals},unitsLabel:v.units,lossNote:LOSS_NOTES[v.kind],usable:false,position:emptyPosition()}));
+    const token = {address:settings.nearUsdcAccount,symbol:'USDC',decimals:6} as const;
+    vaults.push({id:`near:mainnet:${settings.rheaVaultAccount}`,kind:'rhea',name:'Rhea USDC',chain:{id:'near:mainnet',name:'NEAR'},asset:token,yieldToken:token,
+      unitsLabel:'USDC',lossNote:LOSS_NOTES.rhea,usable:true,position:{principal:amount(position.principal)*amount(coverage)/10n**18n,shares:amount(position.principal),
+        yieldCredited:amount(position.yield_credited),walletBalance:amount(balance),allowance:0n,
+        rhea:{pendingIn:amount(position.pending_in),pendingOut:position.pending_out===null?null:amount(position.pending_out),coverage:amount(coverage),busy,intentsBalance:0n,
+          usdcRegistered:storage!==null && typeof storage.total==='string'}}});
+    return {user,vaults,vault:{...emptyPosition(),walletUsdc:0n},credits:{credited:amount(credits.credited),spent:amount(credits.spent),available:amount(credits.available),keyEpoch:credits.key_epoch}};
+  };
+  async function walletProof(address: Address): Promise<EvmWalletProof>;
+  async function walletProof(session: Session): Promise<WalletProof>;
+  async function walletProof(input: SessionInput): Promise<WalletProof> {
+    return guarded(async () => {
+      if (typeof input !== 'string' && input.kind === 'near') return near.walletProof(input);
+      const address = evmAddress(input), client = await readyWallet(address);
+      const {nonce} = await relay<{nonce:string}>('/auth/nonce');
+      const message = walletProofMessage(address,nonce,dependencies.origin ?? globalThis.location?.origin ?? settings.relayUrl,chain.id,now());
+      return {message,signature:await client.signMessage({account:getAddress(address),message})};
+    });
+  }
+
+  const result: DashboardData = {
     isMock: false,
     isRunMock: true,
-    connect: () => guarded(async () => {
-      const client = wallet();
-      const [address] = await client.requestAddresses();
-      if (!address) throw new DataError('wallet_account', 'The wallet returned no account.');
-      if (await client.getChainId() !== chain.id) await client.switchChain({ id: chain.id });
-      return address.toLowerCase() as Address;
+    walletOptions: () => wallets.walletOptions(),
+    connectWallet: id => guarded(() => wallets.connectWallet(id)),
+    restoreSession: () => wallets.restoreSession(),
+    disconnect: () => wallets.disconnect(),
+    rheaDepositNear: (session, assets) => guarded(() => near.rheaDepositNear(session, assets)),
+    rheaWithdrawNear: (session, assets) => guarded(() => near.rheaWithdrawNear(session, assets)),
+    catalogue: session => guarded(async () => {
+      const positions = session ? (session.kind === 'near' ? await nearOverview(session) : await result.overview(session)).vaults : [];
+      const blockNumber = await publicClient.getBlockNumber({cacheTime:0});
+      const list = await Promise.all(evmVaults.map(async (v):Promise<CatalogueVault> => {
+        const [principal,cap] = await Promise.all(['totalSupply','depositCap'].map(functionName => publicClient.readContract({address:v.address,abi:vaultAbi,functionName:functionName as 'totalSupply'|'depositCap',blockNumber})));
+        const own = positions.find(p=>p.kind===v.kind), unit = v.kind==='rate'?'ETH principal':v.kind==='pendle'?'USDC principal':'USDC';
+        const item:CatalogueVault = {id:caip10(v.address,chain.id),kind:v.kind,name:v.name,chainName:'Base',assetSymbol:v.symbol,...STRATEGIES[v.kind],lossNote:LOSS_NOTES[v.kind],wallets:['evm'],
+          deposited:`${formatAmount(principal,v.decimals,6)} ${unit}`,cap:`${formatAmount(cap,v.decimals,6)} ${unit}`,status:principal>=cap?'paused':'open',
+          ...(principal>=cap?{statusNote:'Deposit cap reached.'}:{}),
+          ...(own?.usable!==false && own?{yourPrincipal:`${formatAmount(own.position.principal,v.decimals,6)} ${v.symbol}`,yourYield:`${formatAmount(own.position.yieldCredited,v.decimals,6)} ${v.symbol}`}:{})};
+        if(v.kind==='aave' && settings.aavePoolAddress) {
+          const asset = await publicClient.readContract({address:v.address,abi:vaultAbi,functionName:'asset',blockNumber});
+          const reserve = await publicClient.readContract({address:settings.aavePoolAddress,abi:aavePoolAbi,functionName:'getReserveData',args:[asset],blockNumber});
+          const ray=reserve.currentLiquidityRate;
+          item.rateNow=`${ray*10000n/10n**27n/100n}.${String(ray*10000n/10n**27n%100n).padStart(2,'0')}% — Aave supply rate now, variable`;
+        }
+        return item;
+      }));
+      const own=positions.find(v=>v.kind==='rhea');
+      const item:CatalogueVault={id:`near:mainnet:${settings.rheaVaultAccount}`,kind:'rhea',name:'Rhea USDC',chainName:'NEAR',assetSymbol:'USDC',...STRATEGIES.rhea,lossNote:LOSS_NOTES.rhea,wallets:['evm','near'],status:settings.rheaStatusNote?'paused':'open',
+        ...(settings.rheaStatusNote?{statusNote:settings.rheaStatusNote}:{}),...(settings.rheaCap?{cap:`${formatAmount(amount(settings.rheaCap,'config'),6,2)} USDC`}:{}),
+        ...(own?{yourPrincipal:`${formatAmount(own.position.principal,6,6)} USDC`,yourYield:`${formatAmount(own.position.yieldCredited,6,6)} USDC`}:{})};
+      if(settings.rheaLendAccount) {
+        const asset=await nearView<{supply_apr:string}>('get_asset',{token_id:settings.nearUsdcAccount},settings.rheaLendAccount);
+        item.rateNow=`${decimalPercent(asset.supply_apr)} — Rhea supply rate now, variable`;
+      }
+      return [...list,item];
     }),
-    overview: (address) => guarded(async () => {
+    connect: () => guarded(async () => {
+      const session=await wallets.connectWallet('evm:injected');
+      if(session.kind!=='evm') throw new DataError('wallet_kind','Use an EVM wallet.');
+      await readyWallet(session.address);
+      return session.address;
+    }),
+    overview: (input) => guarded(async () => {
+      if(typeof input !== 'string' && input.kind==='near') return nearOverview(input);
+      const address=evmAddress(input);
       // Use one Base block so the redemption preview refers to the shares displayed.
       const blockNumber = await publicClient.getBlockNumber({ cacheTime: 0 });
       const user = caip10(address, chain.id);
@@ -160,7 +237,8 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
         credited: amount(credits.credited), spent: amount(credits.spent), available: amount(credits.available), keyEpoch: credits.key_epoch,
       } };
     }),
-    deposit: (address, assets, vaultId) => guarded(async () => {
+    deposit: (input, assets, vaultId) => guarded(async () => {
+      const address=evmAddress(input);
       if (assets <= 0n) throw new DataError('amount', 'Enter an amount above zero.');
       const client = await readyWallet(address);
       const selected = selectVault(vaultId);
@@ -173,7 +251,8 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
         address: selected.address, abi: vaultAbi, functionName: 'deposit', args: [assets, address], account: address,
       }));
     }),
-    redeem: (address, shares, vaultId) => guarded(async () => {
+    redeem: (input, shares, vaultId) => guarded(async () => {
+      const address=evmAddress(input);
       if (shares <= 0n) throw new DataError('amount', 'Enter an amount above zero.');
       const client = await readyWallet(address);
       const selected = selectVault(vaultId);
@@ -181,17 +260,12 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
         address: selected.address, abi: vaultAbi, functionName: 'redeem', args: [shares, address, address], account: address,
       }));
     }),
-    rheaQuote: (...args) => guarded(() => rhea.rheaQuote(...args)),
-    rheaDeposit: (...args) => guarded(() => rhea.rheaDeposit(...args)),
-    rheaWithdraw: (...args) => guarded(() => rhea.rheaWithdraw(...args)),
-    rheaExit: (...args) => guarded(() => rhea.rheaExit(...args)),
+    rheaQuote: (input, assets, direction) => guarded(() => rhea.rheaQuote(evmAddress(input),assets,direction)),
+    rheaDeposit: (input,assets) => guarded(() => rhea.rheaDeposit(evmAddress(input),assets)),
+    rheaWithdraw: (input,assets) => guarded(() => rhea.rheaWithdraw(evmAddress(input),assets)),
+    rheaExit: (input,assets) => guarded(() => rhea.rheaExit(evmAddress(input),assets)),
     rheaStatus: (...args) => guarded(() => rhea.rheaStatus(...args)),
-    walletProof: (address) => guarded(async () => {
-      const client = await readyWallet(address);
-      const { nonce } = await relay<{ nonce: string }>('/auth/nonce');
-      const message = walletProofMessage(address, nonce, dependencies.origin ?? globalThis.location?.origin ?? settings.relayUrl, chain.id, now());
-      return { message, signature: await client.signMessage({ account: getAddress(address), message }) };
-    }),
+    walletProof,
     createKey: (proof) => guarded(async () => {
       const result = await relay<{ key: string; key_epoch: number; expires_at: number }>('/keys', proof);
       return { key: result.key, keyEpoch: result.key_epoch, expiresAt: new Date(result.expires_at * 1000).toISOString() };
@@ -209,4 +283,5 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
     bridgeChains: simulated.bridgeChains,
     bridgeQuote: simulated.bridgeQuote,
   };
+  return result;
 }
