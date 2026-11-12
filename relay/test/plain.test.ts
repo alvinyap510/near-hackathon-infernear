@@ -55,3 +55,35 @@ test('standard mode keeps the same refusals: token cap, n, unknown model, no cre
   assert.equal(await status({}, { 'content-type': 'application/json' }), 401);
   assert.equal(sentUpstream(h).length, 0);
 });
+
+test('a private request cannot be downgraded by nominating its encryption headers in Connection', async t => {
+  const h = await harness(); t.after(h.close);
+  const names = ['x-encryption-version', 'x-signing-algo', 'x-client-pub-key', 'x-model-pub-key', 'x-encrypt-all-fields', 'x-no-aliasing'];
+  const { request } = await import('node:http');
+  const send = (connection: string) => new Promise<number>((resolve, reject) => {
+    const url = new URL(h.base + '/v1/chat/completions');
+    const req = request({ host: url.hostname, port: url.port, path: url.pathname, method: 'POST', headers: { ...h.headers, connection } }, res => { res.resume(); res.on('end', () => resolve(res.statusCode!)); });
+    req.on('error', reject); req.end(body());
+  });
+  assert.equal(await send(names.join(', ')), 400);          // all stripped: still private intent, incomplete set
+  assert.equal(await send('x-no-aliasing'), 400);
+  const alone = await fetch(h.base + '/v1/chat/completions', { method: 'POST', headers: { authorization: `Bearer ${h.key}`, 'x-no-aliasing': 'true' }, body: body() });
+  assert.equal(alone.status, 400);                           // any one encryption header means private mode
+  assert.equal(sentUpstream(h).length, 0);
+});
+
+test('standard mode reserves one input token per request byte, so token-dense prompts cannot be under-charged', async t => {
+  const h = await harness({ seed: false }); t.after(h.close);
+  const plain = { authorization: `Bearer ${h.key}`, 'content-type': 'application/json' };
+  const digits = body({ messages: [{ role: 'user', content: '7'.repeat(10_000) }], max_tokens: 1, tools: undefined, n: undefined });
+  const bytes = Buffer.byteLength(JSON.stringify(JSON.parse(digits)));
+  // Fixture prices are 1,000 nano-USD (one micro-USD) per token, in and out: the reservation is one micro-USD
+  // per request byte plus one for the single output token. Half the bytes, the encrypted-mode bound, would not do.
+  const needed = BigInt(bytes + 1);
+  h.connector.seed(USER, needed - 1n);
+  assert.equal((await fetch(h.base + '/v1/chat/completions', { method: 'POST', headers: plain, body: digits })).status, 402);
+  h.connector.seed(USER, needed);
+  const served = await fetch(h.base + '/v1/chat/completions', { method: 'POST', headers: plain, body: digits });
+  assert.equal(served.status, 200); await served.arrayBuffer(); await settle(h.gateway);
+  assert.equal(h.gateway.state(USER).pending, 0);
+});

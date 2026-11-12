@@ -92,8 +92,10 @@ export class Gateway {
     // relay only forwards those bytes. Standard: a plain OpenAI-format request, which the relay can read
     // in transit. Any encryption header at all means private mode, and then the full set is required:
     // a half-configured SDK must fail, never fall back to sending a prompt in the clear.
+    // The mode is read from the headers as they arrived; the set is then checked as it will be forwarded,
+    // so naming encryption headers in `Connection` cannot strip them and turn a private request into a plain one.
     const forwarded = endToEndHeaders(headers);
-    const encrypted = ['x-encryption-version', 'x-signing-algo', 'x-client-pub-key', 'x-model-pub-key', 'x-encrypt-all-fields'].some(name => forwarded[name] !== undefined);
+    const encrypted = ['x-encryption-version', 'x-signing-algo', 'x-client-pub-key', 'x-model-pub-key', 'x-encrypt-all-fields', 'x-no-aliasing'].some(name => headers[name] !== undefined);
     if (encrypted && (forwarded['x-encryption-version'] !== '3' || !forwarded['x-signing-algo'] ||
         !forwarded['x-client-pub-key'] || !forwarded['x-model-pub-key'] ||
         forwarded['x-encrypt-all-fields'] !== 'true' || forwarded['x-no-aliasing'] !== 'true'))
@@ -118,7 +120,9 @@ export class Gateway {
     const model = (await this.upstream.models()).find(m => m.id === body.model);
     if (!model) throw new HttpError(404, 'model_not_found', 'Model is not a canonical attested TEE text model');
     const upstreamBody = encrypted ? raw : Buffer.from(JSON.stringify(body));
-    const inputBound = Math.ceil(upstreamBody.length / 2);
+    // Upper bound on input tokens. Encrypted content is hex, two body bytes per plaintext byte; a plain
+    // body can tokenize to one token per byte (digits, unmergeable bytes), so it is bounded by its length.
+    const inputBound = encrypted ? Math.ceil(upstreamBody.length / 2) : upstreamBody.length;
     const amount = costMicro(inputBound, body.max_tokens, model.inNano, model.outNano);
     const state = this.user(key.user);
     return state.lock.run(async () => {
@@ -152,7 +156,8 @@ export class Gateway {
       const receipt: Receipt = { inference_id: id, chat_id: meter.chatId, model: reservation.model.id,
         prompt_tokens: usage?.prompt_tokens ?? reservation.inputBound, completion_tokens: usage?.completion_tokens ?? reservation.maxTokens,
         in_price_nano: String(reservation.model.inNano), out_price_nano: String(reservation.model.outNano), source: usage ? 'signed_usage' : 'reservation' };
-      this.jobs.set(id, { reservation, amount, receipt, stage: 'metered', running: false, sends: 0, next: 0 });
+      // Settlement needs the reservation's numbers, not the request: do not keep prompts while a debit is pending.
+      this.jobs.set(id, { reservation: { ...reservation, body: Buffer.alloc(0) }, amount, receipt, stage: 'metered', running: false, sends: 0, next: 0 });
     });
     // Confirmation is independent of delivery; raw responses do not wait on NEAR.
     void this.retryDebits();
