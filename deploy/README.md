@@ -7,7 +7,7 @@ The relay runs as one Docker container behind a [Cloudflare Tunnel](https://deve
 ## Relay
 
 1. In Cloudflare Zero Trust, create a tunnel (Networks → Tunnels → cloudflared) and copy its token. Add a public hostname, for example `api.<your-domain>`, with service `http://relay:8787`.
-2. On a server with Docker, clone this repository and create `.env` from `.env.example`, readable only by its owner (`chmod 600 .env`). Set the relay and keeper sections, plus:
+2. On a server with Docker, clone this repository and create `.env` from `.env.example`, readable only by its owner (`chmod 600 .env`). The relay container receives this whole file, so keep deployment-only keys (`NEAR_DEPLOYER_PRIVATE_KEY`, `NEAR_RHEA_VAULT_PRIVATE_KEY`, `EVM_DEPLOYER_PRIVATE_KEY`) in a separate file that only the deploy scripts read. Set the relay and keeper sections, plus:
    - `RELAY_PUBLIC_URL=https://api.<your-domain>`
    - `RELAY_PORT=8787`
    - `RELAY_CLIENT_IP_HEADER=cf-connecting-ip`
