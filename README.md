@@ -104,6 +104,20 @@ No contract has an owner, admin, pause or upgrade path. The Rhea vault's full-ac
 - **The relay is trusted for prices and attribution.** It cannot spend principal, but it decides how yield is priced and who earned it; both are publicly recomputable from chain data.
 - **Encryption hides content, not metadata.** A relay can still observe request size, timing and token counts.
 
+## Third-party libraries and services
+
+All installed through package managers at pinned versions; no templates or pre-existing code were copied in.
+
+| Component | Libraries |
+|---|---|
+| Base vaults | OpenZeppelin Contracts 5.4, Aave v3 origin 3.6, Aave address book, forge-std (tests) |
+| NEAR contracts | near-sdk and near-contract-standards 5.30; near-workspaces, proptest and tokio (tests) |
+| Relay and NEAR scripts | viem, near-api-js; TypeScript (type checks) |
+| Dashboard | React 19, viem, @scure/base, Vite, Fontsource fonts (Hanken Grotesk, Martian Mono, Instrument Serif) |
+| Live SDK probe (optional) | NEAR AI's official [inference SDK](https://github.com/nearai/inference-sdk), installed outside the repo |
+
+External services used at runtime: NEAR AI Cloud, NEAR Intents 1Click, Rhea Lend, Aave v3, Pendle, Chainlink price feeds, and Base and NEAR RPC endpoints.
+
 ## Prior art
 
 Paying for AI with yield is not new. NEAR AI's own Staking for Inference (announced July 2026) converts NEAR staking yield into inference credits for NEAR stakers, and BRRRAIN pools staked NEAR to give holders AI credits through a gateway that sees plaintext prompts. Venice, Morpheus and 0G use token-based credit models. InferNear differs in who it serves and how: users on other chains keep the asset they already hold, earn market yield in several shapes with no NEAR price exposure, get a per-user on-chain credit ledger, and send prompts the relay cannot read.
