@@ -146,55 +146,52 @@
 
           <ul class="vaults">
             <li class="vault ticks" data-reveal>
-              <div class="v-top"><span class="chip chip-base">Base</span><span class="v-asset">USDC</span></div>
-              <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
-                <path class="base" d="M10 76H190" /><path class="area" d="M10 76L190 20V76Z" /><path class="line" d="M10 76L190 20" pathLength="1" />
-                <circle class="dot" r="4" cx="10" cy="76" />
-              </svg>
-              <h3>Aave USDC</h3>
-              <p class="v-shape">Growing balance</p>
-              <p class="v-meta">1 USDC = $1</p>
-            </li>
-            <li class="vault ticks" data-reveal>
-              <div class="v-top"><span class="chip chip-base">Base</span><span class="v-asset">cbETH</span></div>
-              <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
-                <path class="base" d="M10 76H190" /><path class="area" d="M10 76C90 74 140 56 190 12V76Z" /><path class="line" d="M10 76C90 74 140 56 190 12" pathLength="1" />
-                <circle class="dot" r="4" cx="10" cy="76" />
-              </svg>
-              <h3>cbETH</h3>
-              <p class="v-shape">Uncapped appreciation</p>
-              <p class="v-meta">Chainlink cbETH/USD</p>
-            </li>
-            <li class="vault ticks" data-reveal>
-              <div class="v-top"><span class="chip chip-base">Base</span><span class="v-asset">PT-deJAAA</span></div>
-              <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
-                <path class="base" d="M10 76H190" /><path class="base" d="M10 22H190" /><path class="area" d="M10 76L150 22H190V76Z" /><path class="line" d="M10 76L150 22H190" pathLength="1" />
-                <circle class="dot" r="4" cx="10" cy="76" />
-              </svg>
-              <h3>Pendle PT</h3>
-              <p class="v-shape">Capped appreciation</p>
-              <p class="v-meta">Expires 26 Nov 2026</p>
-            </li>
-            <li class="vault ticks" data-reveal>
-              <div class="v-top"><span class="chip chip-near">NEAR</span><span class="v-asset">USDC</span></div>
+              <div class="v-top"><span class="tok" title="USDC on NEAR"><i data-icon="usdc" class="tok-coin"></i><i data-icon="near" class="tok-chain"></i></span><span class="chainb"><i data-icon="near"></i>NEAR</span></div>
               <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
                 <path class="base" d="M10 76H190" /><path class="area" d="M10 76H40V68H70V60H100V52H130V44H160V36H190V76Z" /><path class="line" d="M10 76H40V68H70V60H100V52H130V44H160V36H190" pathLength="1" />
                 <circle class="dot" r="4" cx="10" cy="76" />
               </svg>
-              <h3>Rhea USDC</h3>
+              <h3>Rhea USDC vault</h3>
               <p class="v-shape">Lending interest</p>
-              <p class="v-meta">Base USDC via NEAR Intents</p>
+              <p class="v-meta"><img class="rhea" src="./src/assets/rhea-logo.svg" alt="" width="34" height="31" />Rhea Lend</p>
               <p class="chip chip-amber">Operator key · hackathon</p>
+            </li>
+            <li class="vault ticks" data-reveal>
+              <div class="v-top"><span class="tok" title="USDC on Base"><i data-icon="usdc" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span><span class="chainb"><i data-icon="base"></i>Base</span></div>
+              <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
+                <path class="base" d="M10 76H190" /><path class="area" d="M10 76L190 20V76Z" /><path class="line" d="M10 76L190 20" pathLength="1" />
+                <circle class="dot" r="4" cx="10" cy="76" />
+              </svg>
+              <h3>Aave USDC vault</h3>
+              <p class="v-shape">Growing balance</p>
+              <p class="v-meta"><i data-icon="aave"></i>Aave v3</p>
+            </li>
+            <li class="vault ticks" data-reveal>
+              <div class="v-top"><span class="tok" title="cbETH on Base"><i data-icon="cbeth" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span><span class="chainb"><i data-icon="base"></i>Base</span></div>
+              <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
+                <path class="base" d="M10 76H190" /><path class="area" d="M10 76C90 74 140 56 190 12V76Z" /><path class="line" d="M10 76C90 74 140 56 190 12" pathLength="1" />
+                <circle class="dot" r="4" cx="10" cy="76" />
+              </svg>
+              <h3>cbETH vault</h3>
+              <p class="v-shape">Uncapped appreciation</p>
+              <p class="v-meta">Chainlink cbETH/USD</p>
+            </li>
+            <li class="vault ticks" data-reveal>
+              <div class="v-top"><span class="tok" title="Pendle PT-deJAAA on Base"><i data-icon="pendle" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span><span class="chainb"><i data-icon="base"></i>Base</span></div>
+              <svg class="shape" viewBox="0 0 200 90" aria-hidden="true">
+                <path class="base" d="M10 76H190" /><path class="base" d="M10 22H190" /><path class="area" d="M10 76L150 22H190V76Z" /><path class="line" d="M10 76L150 22H190" pathLength="1" />
+                <circle class="dot" r="4" cx="10" cy="76" />
+              </svg>
+              <h3>Pendle PT-deJAAA vault</h3>
+              <p class="v-shape">Capped appreciation</p>
+              <p class="v-meta"><i data-icon="pendle"></i>Matures 26 Nov 2026</p>
             </li>
           </ul>
 
           <ul class="facts" data-reveal aria-label="Vault facts">
-            <li class="fact-warn">Losses fall on depositors, pro-rata</li>
-            <li>No reserve</li>
-            <li>Cap ≈ $10K per vault</li>
-            <li>Base vaults + ledger: no admin</li>
-            <li>Rhea: operator key during the hackathon</li>
-            <li>Staking shape built, not deployed</li>
+            <li class="fact-warn">Depositors bear strategy losses, pro-rata</li>
+            <li>Base vaults and credit ledger: no admin key</li>
+            <li class="fact-warn">Rhea vault: operator key during the hackathon</li>
           </ul>
         </div>
       </section>
@@ -236,7 +233,6 @@
               </div>
               <div><dt>Models</dt><dd><code>GET /v1/models</code> · NEAR AI TEE models, with prices</dd></div>
               <div><dt>Keys</dt><dd>Wallet-signed in the app · 30 days · revocable</dd></div>
-              <div><dt>Private mode</dt><dd>NEAR AI SDK <code>@a0bf5fd</code> (E2EE v3)</dd></div>
             </dl>
           </div>
 
@@ -268,8 +264,7 @@ const completion = await client.chat.completions.create({
   max_tokens: 256,
 });
 console.log(completion.choices[0].message.content);</code></pre>
-<pre role="tabpanel" id="pane-sdk" aria-labelledby="tab-sdk" tabindex="0" hidden><code>// NEAR AI's SDK, pinned at nearai/inference-sdk@a0bf5fd (E2EE v3, PR #127).
-import { InferenceClient, verifyDeploymentImageProvenance } from '@nearai/inference-sdk';
+<pre role="tabpanel" id="pane-sdk" aria-labelledby="tab-sdk" tabindex="0" hidden><code>import { InferenceClient, verifyDeploymentImageProvenance } from '@nearai/inference-sdk';
 
 // "Verified" must mean NEAR's own gateway images, not just genuine TEE hardware.
 const build = (repository, workflow = '.github/workflows/build.yml') => ({ repository, workflow });
@@ -332,69 +327,51 @@ console.log(`Verified ${receipt.signatureKind} reply:`, completion.choices[0].me
           <p class="label" data-reveal><b>006</b> Proof</p>
           <h2 id="proof-h" class="h2" data-split>Check every contract.</h2>
 
+          <ul class="verify" data-reveal>
+            <li>Every address on a public explorer</li>
+            <li>Attestation and signatures, checked by NEAR AI's SDK</li>
+            <li>Every call debited on NEAR, by inference ID</li>
+          </ul>
+
           <table class="addrs" data-reveal>
             <caption class="sr-only">Contracts on mainnet</caption>
             <thead>
-              <tr><th scope="col">Contract</th><th scope="col">Address</th><th scope="col">Admin</th></tr>
+              <tr><th scope="col">Contract</th><th scope="col">Chain</th><th scope="col">Address</th><th scope="col">Admin</th></tr>
             </thead>
             <tbody>
               <tr>
-                <th scope="row"><span class="chip chip-base">Base</span>Aave USDC</th>
-                <td class="addr"><a href="https://basescan.org/address/0x19110449a361855d30090BC26112E9a5c3793198"><code>0x19110449a361855d30090BC26112E9a5c3793198</code></a><button class="copy" type="button" data-copy="0x19110449a361855d30090BC26112E9a5c3793198" aria-label="Copy the Aave USDC vault address" hidden>Copy</button></td>
-                <td><span class="pill">None</span></td>
-              </tr>
-              <tr>
-                <th scope="row"><span class="chip chip-base">Base</span>cbETH</th>
-                <td class="addr"><a href="https://basescan.org/address/0x20B3852c32FFCBfD6a713045e7eA411683446f40"><code>0x20B3852c32FFCBfD6a713045e7eA411683446f40</code></a><button class="copy" type="button" data-copy="0x20B3852c32FFCBfD6a713045e7eA411683446f40" aria-label="Copy the cbETH vault address" hidden>Copy</button></td>
-                <td><span class="pill">None</span></td>
-              </tr>
-              <tr>
-                <th scope="row"><span class="chip chip-base">Base</span>Pendle PT-deJAAA</th>
-                <td class="addr"><a href="https://basescan.org/address/0x5801707F6AF54f33Ab3E1910c09D79B81D4Be92c"><code>0x5801707F6AF54f33Ab3E1910c09D79B81D4Be92c</code></a><button class="copy" type="button" data-copy="0x5801707F6AF54f33Ab3E1910c09D79B81D4Be92c" aria-label="Copy the Pendle PT-deJAAA vault address" hidden>Copy</button></td>
-                <td><span class="pill">None</span></td>
-              </tr>
-              <tr>
-                <th scope="row"><span class="chip chip-near">NEAR</span>Credit ledger</th>
+                <th scope="row"><span class="row-id"><span class="tok" title="NEAR credit ledger"><i data-icon="near" class="tok-coin"></i></span><span>Credit ledger</span></span></th>
+                <td><span class="chainb"><i data-icon="near"></i>NEAR</span></td>
                 <td class="addr"><a href="https://nearblocks.io/address/connector.infernear-ai.near"><code>connector.infernear-ai.near</code></a><button class="copy" type="button" data-copy="connector.infernear-ai.near" aria-label="Copy the credit ledger account" hidden>Copy</button></td>
                 <td><span class="pill">None</span></td>
               </tr>
               <tr>
-                <th scope="row"><span class="chip chip-near">NEAR</span>Rhea USDC</th>
+                <th scope="row"><span class="row-id"><span class="tok" title="USDC on NEAR"><i data-icon="usdc" class="tok-coin"></i><i data-icon="near" class="tok-chain"></i></span><span>Rhea USDC vault</span></span></th>
+                <td><span class="chainb"><i data-icon="near"></i>NEAR</span></td>
                 <td class="addr"><a href="https://nearblocks.io/address/rhea.infernear-ai.near"><code>rhea.infernear-ai.near</code></a><button class="copy" type="button" data-copy="rhea.infernear-ai.near" aria-label="Copy the Rhea USDC vault account" hidden>Copy</button></td>
                 <td><span class="pill pill-amber">Operator key · hackathon</span></td>
               </tr>
+              <tr>
+                <th scope="row"><span class="row-id"><span class="tok" title="USDC on Base"><i data-icon="usdc" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span><span>Aave USDC vault</span></span></th>
+                <td><span class="chainb"><i data-icon="base"></i>Base</span></td>
+                <td class="addr"><a href="https://basescan.org/address/0x19110449a361855d30090BC26112E9a5c3793198"><code>0x19110449a361855d30090BC26112E9a5c3793198</code></a><button class="copy" type="button" data-copy="0x19110449a361855d30090BC26112E9a5c3793198" aria-label="Copy the Aave USDC vault address" hidden>Copy</button></td>
+                <td><span class="pill">None</span></td>
+              </tr>
+              <tr>
+                <th scope="row"><span class="row-id"><span class="tok" title="cbETH on Base"><i data-icon="cbeth" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span><span>cbETH vault</span></span></th>
+                <td><span class="chainb"><i data-icon="base"></i>Base</span></td>
+                <td class="addr"><a href="https://basescan.org/address/0x20B3852c32FFCBfD6a713045e7eA411683446f40"><code>0x20B3852c32FFCBfD6a713045e7eA411683446f40</code></a><button class="copy" type="button" data-copy="0x20B3852c32FFCBfD6a713045e7eA411683446f40" aria-label="Copy the cbETH vault address" hidden>Copy</button></td>
+                <td><span class="pill">None</span></td>
+              </tr>
+              <tr>
+                <th scope="row"><span class="row-id"><span class="tok" title="Pendle PT-deJAAA on Base"><i data-icon="pendle" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span><span>Pendle PT-deJAAA vault</span></span></th>
+                <td><span class="chainb"><i data-icon="base"></i>Base</span></td>
+                <td class="addr"><a href="https://basescan.org/address/0x5801707F6AF54f33Ab3E1910c09D79B81D4Be92c"><code>0x5801707F6AF54f33Ab3E1910c09D79B81D4Be92c</code></a><button class="copy" type="button" data-copy="0x5801707F6AF54f33Ab3E1910c09D79B81D4Be92c" aria-label="Copy the Pendle PT-deJAAA vault address" hidden>Copy</button></td>
+                <td><span class="pill">None</span></td>
+              </tr>
             </tbody>
           </table>
-
-          <h3 class="limits-h" data-reveal>Known limits</h3>
-          <div class="limits" data-reveal>
-            <details>
-              <summary>Private mode verified live once</summary>
-              <p>
-                A 2026-11-12 probe: JS and Python, plain and streaming. Signatures verified; charges matched NEAR's bill.
-                <a href="https://github.com/alvinyap510/near-hackathon-infernear/blob/main/relay/README.md#live-sdk-probe--passed-on-2026-11-12">Details</a>
-              </p>
-            </details>
-            <details>
-              <summary>Standard mode: the relay reads content</summary>
-              <p>The relay and the Cloudflare Tunnel in front of it see standard-mode prompts and replies in transit.</p>
-            </details>
-            <details>
-              <summary>Encryption hides content, not metadata</summary>
-              <p>Request size, timing and token counts stay visible to the relay.</p>
-            </details>
-            <details>
-              <summary>Model build check is off</summary>
-              <p>TEE attestation and signatures are still verified. NEAR's proxy-build check rejects NEAR's own deploys.</p>
-            </details>
-            <details>
-              <summary>Relay trusted for prices and attribution</summary>
-              <p>It cannot spend principal. Both are recomputable from chain data.</p>
-            </details>
-            <details>
-              <summary>Deposits carry strategy risk</summary>
-              <p>Losses fall on depositors pro-rata, with no reserve. Each vault is capped at about $10K.</p>
-            </details>
+          <p class="readme" data-reveal><a href="https://github.com/alvinyap510/near-hackathon-infernear#readme">Full technical notes in the README <span aria-hidden="true">→</span></a></p>
           </div>
         </div>
       </section>

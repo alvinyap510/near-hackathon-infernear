@@ -178,9 +178,8 @@ svg {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 11px;
   height: 52px;
-  padding: 0 24px;
+  padding: 1px 24px 0;
   border: 1.5px solid transparent;
   border-radius: 12px;
   font: inherit;
@@ -193,12 +192,21 @@ svg {
   transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.2s var(--ease);
 }
 
+/* The mint square sits in the left padding, outside the centred label. */
+.btn:has(.sq) {
+  padding-left: 42px;
+  padding-right: 42px;
+}
+
 .btn .sq {
+  position: absolute;
+  left: 18px;
+  top: calc(50% - 4px);
   transition: transform 0.35s var(--ease);
 }
 
 .btn:hover .sq {
-  transform: rotate(90deg) scale(1.25);
+  transform: scale(0.6);
 }
 
 .btn:active {
@@ -207,16 +215,34 @@ svg {
 
 .btn-sm {
   height: 40px;
-  padding: 0 16px;
+  padding: 1px 16px 0;
   font-size: 14px;
   border-radius: 10px;
 }
 
+.btn-sm:has(.sq) {
+  padding-left: 32px;
+  padding-right: 32px;
+}
+
+.btn-sm .sq {
+  left: 14px;
+}
+
 .btn-lg {
   height: 60px;
-  padding: 0 30px;
+  padding: 1px 30px 0;
   font-size: 18px;
   border-radius: 14px;
+}
+
+.btn-lg:has(.sq) {
+  padding-left: 50px;
+  padding-right: 50px;
+}
+
+.btn-lg .sq {
+  left: 22px;
 }
 
 .btn-mint {
@@ -243,7 +269,7 @@ svg {
   align-items: center;
   gap: 7px;
   height: 22px;
-  padding: 0 8px;
+  padding: 1px calc(8px - 0.08em) 0 8px;
   border-radius: 6px;
   font-family: var(--mono);
   font-stretch: 87.5%;
@@ -304,7 +330,7 @@ svg {
   align-items: center;
   gap: 6px;
   height: 20px;
-  padding: 0 7px;
+  padding: 1px calc(7px - 0.1em) 0 7px;
   border-radius: 5px;
   background: rgba(242, 183, 5, 0.16);
   color: #6f5100;
@@ -422,7 +448,7 @@ svg {
   align-items: center;
   gap: 8px;
   height: 34px;
-  padding: 0 12px;
+  padding: 1px calc(12px - 0.08em) 0 12px;
   border-radius: 8px;
   font-family: var(--mono);
   font-stretch: 87.5%;
@@ -444,12 +470,18 @@ svg {
   opacity: 1;
 }
 
-.hud-nav a[aria-current]::before {
+.hud-nav a::before {
   content: '';
   width: 6px;
   height: 6px;
   border-radius: 1.5px;
   background: var(--mint);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.hud-nav a[aria-current]::before {
+  opacity: 1;
 }
 
 .hud-rail {
@@ -534,7 +566,7 @@ svg {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 8px;
+  padding: 4px calc(8px - 0.08em) 4px 8px;
   border-radius: 6px;
   background: rgba(20, 21, 25, 0.55);
   backdrop-filter: blur(8px);
@@ -1683,7 +1715,8 @@ svg {
   font-size: 12.5px;
   line-height: 1.75;
   color: #d9dadd;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .console-body pre code {
@@ -2087,7 +2120,7 @@ svg {
   gap: 14px 32px;
   max-width: 1280px;
   margin: 140px auto 0;
-  padding: 24px var(--gutter) 40px calc(var(--gutter) + var(--rail));
+  padding: 24px var(--gutter) 72px calc(var(--gutter) + var(--rail));
   border-top: 1px solid var(--night-line);
   font-size: 13.5px;
   color: var(--snow-2);
@@ -2324,5 +2357,175 @@ svg {
 
   .foot nav {
     margin-left: 0;
+  }
+}
+
+/* ---------- Real chain, token and protocol marks ----------
+   From @web3icons/core (full-colour branded marks; NEAR's mark in black or white) and Rhea's
+   own logo. One pattern everywhere: the coin, with its chain as a badge on its lower-right
+   corner, in a fixed-size slot so names line up. Chains always show their name beside the mark. */
+
+.icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+}
+
+.icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.tok {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: var(--tok, 32px);
+  height: var(--tok, 32px);
+}
+
+.tok-coin {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  color: var(--ink);
+}
+
+.light .tok-coin:not(.icon-near),
+.band .tok-coin:not(.icon-near) {
+  box-shadow: 0 0 0 1px rgba(20, 21, 25, 0.1);
+}
+
+.dark .tok-coin {
+  color: var(--snow);
+}
+
+/* On dark surfaces coins sit on a light disc, so dark marks (Pendle's pendulum) stay visible. */
+.dark .tok-coin:not(.icon-near) {
+  background: var(--snow);
+}
+
+.tok-chain {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 46%;
+  height: 46%;
+  padding: 1.5px;
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 0 0 2px var(--paper);
+}
+
+.band .tok-chain {
+  background: var(--paper-2);
+  box-shadow: 0 0 0 2px var(--paper-2);
+}
+
+.dark .tok-chain {
+  background: var(--night-2);
+  color: var(--snow);
+  box-shadow: 0 0 0 2px var(--night-2);
+}
+
+.chainb {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 1px 10px 0 7px;
+  border-radius: 8px;
+  background: rgba(20, 21, 25, 0.06);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.chainb .icon {
+  width: 17px;
+  height: 17px;
+  margin-top: -1px;
+}
+
+.dark .chainb {
+  background: rgba(244, 244, 240, 0.1);
+  color: var(--snow);
+}
+
+.v-top {
+  --tok: 46px;
+}
+
+.v-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.v-meta .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.rhea {
+  width: 26px;
+  height: 24px;
+  padding: 3px;
+  border-radius: 6px;
+  background: #171b2c;
+}
+
+.row-id {
+  --tok: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  white-space: nowrap;
+}
+
+.addrs thead th:first-child {
+  padding-left: 48px;
+}
+
+.verify {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  margin-top: 28px;
+}
+
+.verify li {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.verify li::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--mint-ink);
+}
+
+.readme {
+  margin-top: 28px;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.readme a {
+  color: var(--mint-ink);
+  text-underline-offset: 4px;
+}
+
+@media (max-width: 720px) {
+  .hud-bottom {
+    display: none;
   }
 }

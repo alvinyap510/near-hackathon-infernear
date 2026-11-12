@@ -1,6 +1,9 @@
 import '@fontsource-variable/hanken-grotesk';
 import '@fontsource-variable/martian-mono/standard.css';
 import './styles.css';
+import { placeIcons } from './icons.js';
+
+placeIcons();
 
 const motion = document.documentElement.classList.contains('motion');
 const $ = (s, el = document) => el.querySelector(s);
