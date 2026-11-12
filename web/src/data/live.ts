@@ -96,9 +96,9 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
   };
 
   const evmVaults = [
-    { kind: 'aave', address: settings.vaultAddress, name: 'Aave USDC', symbol: 'USDC', decimals: 6, units: 'USDC' },
-    { kind: 'rate', address: settings.rateVaultAddress, name: 'cbETH RateVault', symbol: 'cbETH', decimals: 18, units: 'ETH wei' },
-    { kind: 'pendle', address: settings.pendleVaultAddress, name: 'PT-deJAAA', symbol: 'PT-deJAAA', decimals: 18, units: 'USDC-scaled18' },
+    { kind: 'aave', address: settings.vaultAddress, name: 'Aave USDC vault', symbol: 'USDC', decimals: 6, units: 'USDC' },
+    { kind: 'rate', address: settings.rateVaultAddress, name: 'cbETH vault', symbol: 'cbETH', decimals: 18, units: 'ETH wei' },
+    { kind: 'pendle', address: settings.pendleVaultAddress, name: 'Pendle PT-deJAAA vault', symbol: 'PT-deJAAA', decimals: 18, units: 'USDC-scaled18' },
   ] as const;
   const selectVault = (id?: string) => {
     const selected = id === undefined ? evmVaults[0] : evmVaults.find(vault => caip10(vault.address, chain.id) === id);
@@ -130,7 +130,7 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
       chain:{id:`eip155:${chain.id}`,name:'Base'},asset:{address:'',symbol:v.symbol,decimals:v.decimals},
       yieldToken:{address:'',symbol:v.symbol,decimals:v.decimals},unitsLabel:v.units,lossNote:LOSS_NOTES[v.kind],usable:false,position:emptyPosition()}));
     const token = {address:settings.nearUsdcAccount,symbol:'USDC',decimals:6} as const;
-    vaults.push({id:`near:mainnet:${settings.rheaVaultAccount}`,kind:'rhea',name:'Rhea USDC',chain:{id:'near:mainnet',name:'NEAR'},asset:token,yieldToken:token,
+    vaults.push({id:`near:mainnet:${settings.rheaVaultAccount}`,kind:'rhea',name:'Rhea USDC vault',chain:{id:'near:mainnet',name:'NEAR'},asset:token,yieldToken:token,
       unitsLabel:'USDC',lossNote:LOSS_NOTES.rhea,usable:true,position:{principal:amount(position.principal)*amount(coverage)/10n**18n,shares:amount(position.principal),
         yieldCredited:amount(position.yield_credited),walletBalance:amount(balance),allowance:0n,
         rhea:{pendingIn:amount(position.pending_in),pendingOut:position.pending_out===null?null:amount(position.pending_out),coverage:amount(coverage),busy,intentsBalance:0n,
@@ -183,28 +183,28 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
       const blockNumber = await publicClient.getBlockNumber({cacheTime:0});
       const list = await Promise.all(evmVaults.map(async (v):Promise<CatalogueVault> => {
         const [principal,cap] = await Promise.all(['totalSupply','depositCap'].map(functionName => publicClient.readContract({address:v.address,abi:vaultAbi,functionName:functionName as 'totalSupply'|'depositCap',blockNumber})));
-        const own = positions.find(p=>p.kind===v.kind), unit = v.kind==='rate'?'ETH principal':v.kind==='pendle'?'USDC principal':'USDC';
+        const own = positions.find(p=>p.kind===v.kind), unit = v.kind==='rate'?'ETH principal':v.kind==='pendle'?'USDC principal':'USDC', digits = v.kind==='rate'?4:2;
         const item:CatalogueVault = {id:caip10(v.address,chain.id),kind:v.kind,name:v.name,chainName:'Base',assetSymbol:v.symbol,...STRATEGIES[v.kind],lossNote:LOSS_NOTES[v.kind],wallets:['evm'],
-          deposited:`${formatAmount(principal,v.decimals,6)} ${unit}`,cap:`${formatAmount(cap,v.decimals,6)} ${unit}`,status:principal>=cap?'paused':'open',
+          deposited:`${formatAmount(principal,v.decimals,digits)} ${unit}`,cap:`${formatAmount(cap,v.decimals,digits)} ${unit}`,status:principal>=cap?'paused':'open',
           ...(principal>=cap?{statusNote:'Deposit cap reached.'}:{}),
           ...(own?.usable!==false && own?{yourPrincipal:`${formatAmount(own.position.principal,v.decimals,6)} ${v.symbol}`,yourYield:`${formatAmount(own.position.yieldCredited,v.decimals,6)} ${v.symbol}`}:{})};
         if(v.kind==='aave' && settings.aavePoolAddress) {
           const asset = await publicClient.readContract({address:v.address,abi:vaultAbi,functionName:'asset',blockNumber});
           const reserve = await publicClient.readContract({address:settings.aavePoolAddress,abi:aavePoolAbi,functionName:'getReserveData',args:[asset],blockNumber});
           const ray=reserve.currentLiquidityRate;
-          item.rateNow=`${ray*10000n/10n**27n/100n}.${String(ray*10000n/10n**27n%100n).padStart(2,'0')}% — Aave supply rate now, variable`;
+          item.rateNow=`${ray*10000n/10n**27n/100n}.${String(ray*10000n/10n**27n%100n).padStart(2,'0')}% · Aave supply rate now, variable`;
         }
         return item;
       }));
       const own=positions.find(v=>v.kind==='rhea');
-      const item:CatalogueVault={id:`near:mainnet:${settings.rheaVaultAccount}`,kind:'rhea',name:'Rhea USDC',chainName:'NEAR',assetSymbol:'USDC',...STRATEGIES.rhea,lossNote:LOSS_NOTES.rhea,wallets:['evm','near'],status:settings.rheaStatusNote?'paused':'open',
+      const item:CatalogueVault={id:`near:mainnet:${settings.rheaVaultAccount}`,kind:'rhea',name:'Rhea USDC vault',chainName:'NEAR',assetSymbol:'USDC',...STRATEGIES.rhea,lossNote:LOSS_NOTES.rhea,wallets:['evm','near'],status:settings.rheaStatusNote?'paused':'open',
         ...(settings.rheaStatusNote?{statusNote:settings.rheaStatusNote}:{}),...(settings.rheaCap?{cap:`${formatAmount(amount(settings.rheaCap,'config'),6,2)} USDC`}:{}),
         ...(own?{yourPrincipal:`${formatAmount(own.position.principal,6,6)} USDC`,yourYield:`${formatAmount(own.position.yieldCredited,6,6)} USDC`}:{})};
       if(settings.rheaLendAccount) {
         const asset=await nearView<{supply_apr:string}>('get_asset',{token_id:settings.nearUsdcAccount},settings.rheaLendAccount);
-        item.rateNow=`${decimalPercent(asset.supply_apr)} — Rhea supply rate now, variable`;
+        item.rateNow=`${decimalPercent(asset.supply_apr)} · Rhea supply rate now, variable`;
       }
-      return [...list,item];
+      return [item,...list]; // the NEAR vault comes first
     }),
     connect: () => guarded(async () => {
       const session=await wallets.connectWallet('evm:injected');
@@ -248,7 +248,7 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
       if (!Number.isSafeInteger(credits.key_epoch) || credits.key_epoch < 0 || typeof busy !== 'boolean')
         throw new DataError('near_rpc', 'NEAR returned invalid account state.');
       const rheaToken = { address: settings.nearUsdcAccount, symbol: 'USDC', decimals: 6 } as const;
-      vaults.push({ id: `near:mainnet:${settings.rheaVaultAccount}`, kind: 'rhea', name: 'Rhea USDC', chain: { id: 'near:mainnet', name: 'NEAR' },
+      vaults.push({ id: `near:mainnet:${settings.rheaVaultAccount}`, kind: 'rhea', name: 'Rhea USDC vault', chain: { id: 'near:mainnet', name: 'NEAR' },
         asset: rheaToken, yieldToken: rheaToken, unitsLabel: 'USDC', lossNote: LOSS_NOTES.rhea,
         position: { principal: amount(rheaPosition.principal) * amount(coverage) / (10n ** 18n), shares: amount(rheaPosition.principal),
           yieldCredited: amount(rheaPosition.yield_credited), walletBalance: vaults[0].position.walletBalance, allowance: 0n,

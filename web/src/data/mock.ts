@@ -64,7 +64,7 @@ export function createMockData(): DashboardData {
   const factors = [10n ** 18n, 1_143_299_420_807_401_681n, 997_201_215_082_272_248n, 10n ** 18n];
   const vaults: VaultAccount[] = tokens.map((asset, i) => ({
     id: i === 3 ? 'near:mainnet:mock-rhea.near' : `eip155:${chainId}:0x${String(i + 4).repeat(40)}`,
-    kind: (['aave', 'rate', 'pendle', 'rhea'] as const)[i], name: ['Aave USDC', 'cbETH RateVault', 'PT-deJAAA', 'Rhea USDC'][i],
+    kind: (['aave', 'rate', 'pendle', 'rhea'] as const)[i], name: ['Aave USDC vault', 'cbETH vault', 'Pendle PT-deJAAA vault', 'Rhea USDC vault'][i],
     chain: i === 3 ? { id: 'near:mainnet', name: 'NEAR' } : base,
     asset, yieldToken: asset, unitsLabel: ['USDC', 'ETH wei', 'USDC-scaled18', 'USDC'][i],
     lossNote: LOSS_NOTES[(['aave', 'rate', 'pendle', 'rhea'] as const)[i]],
@@ -158,14 +158,15 @@ export function createMockData(): DashboardData {
     async walletOptions() { return [{id:'evm:mock',kind:'evm',name:'Mock EVM wallet',available:true},{id:'near:meteor-wallet',kind:'near',name:'Mock Meteor Wallet',available:true},{id:'near:my-near-wallet',kind:'near',name:'Mock MyNearWallet',available:true}]; },
     async connectWallet(id) {
       if(id==='evm:mock') return session={kind:'evm',address:MOCK_ADDRESS,user:caip10(MOCK_ADDRESS,chainId)};
-      if(id==='near:meteor-wallet' || id==='near:my-near-wallet') return session={kind:'near',accountId:'demo.near',user:'near:mainnet:demo.near'};
+      if(id==='near:meteor-wallet') return session={kind:'near',accountId:'demo.near',user:'near:mainnet:demo.near'};
       throw new DataError('wallet_missing','Unknown mock wallet.');
     },
     async restoreSession() { return session; },
     async disconnect() {session=null;},
     async catalogue(owner) {
       const own=owner?(await result.overview(owner)).vaults:[];
-      return vaults.map(v=>({id:v.id,kind:v.kind,name:v.name,chainName:v.kind==='rhea'?'NEAR':'Base',assetSymbol:v.asset.symbol,...STRATEGIES[v.kind],lossNote:v.lossNote,
+      // The NEAR vault comes first, as in the live catalogue.
+      return [...vaults].sort((a,b)=>Number(b.kind==='rhea')-Number(a.kind==='rhea')).map(v=>({id:v.id,kind:v.kind,name:v.name,chainName:v.kind==='rhea'?'NEAR':'Base',assetSymbol:v.asset.symbol,...STRATEGIES[v.kind],lossNote:v.lossNote,
         wallets:v.kind==='rhea'?['evm','near']:['evm'],deposited:`${formatAmount(v.position.shares,v.asset.decimals,2)} mock principal`,cap:`10,000 mock units`,
         status:v.kind==='rhea' && config.rheaStatusNote?'paused':'open',statusNote:v.kind==='rhea' && config.rheaStatusNote?config.rheaStatusNote:'Mock catalogue — simulated chain state.',
         ...(own.find(p=>p.kind===v.kind)?.usable!==false && owner?{yourPrincipal:`${formatAmount(own.find(p=>p.kind===v.kind)!.position.principal,v.asset.decimals,6)} ${v.asset.symbol}`,yourYield:`${formatAmount(own.find(p=>p.kind===v.kind)!.position.yieldCredited,v.asset.decimals,6)} ${v.yieldToken.symbol}`}:{})}));

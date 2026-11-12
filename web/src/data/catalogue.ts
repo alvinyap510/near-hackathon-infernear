@@ -1,9 +1,9 @@
 import type { CatalogueVault, VaultKind } from './types.ts';
 export const STRATEGIES: Record<VaultKind, Pick<CatalogueVault, 'yieldShape' | 'strategy'>> = {
-  aave: { yieldShape: 'Lending balance', strategy: 'Supply USDC to Aave; principal remains redeemable and yield funds inference credits.' },
-  rate: { yieldShape: 'ETH exchange rate', strategy: 'Hold cbETH; its ETH exchange-rate growth funds inference credits.' },
-  pendle: { yieldShape: 'Principal-token maturity', strategy: 'Hold PT-deJAAA towards maturity; attributed yield funds inference credits.' },
-  rhea: { yieldShape: 'Lending balance', strategy: 'Supply native USDC to Rhea Lend on NEAR; yield funds inference credits.' },
+  aave: { yieldShape: 'Growing balance', strategy: 'Supply USDC to Aave; principal remains redeemable and yield funds inference credits.' },
+  rate: { yieldShape: 'Uncapped appreciation', strategy: 'Hold cbETH; its ETH exchange-rate growth funds inference credits.' },
+  pendle: { yieldShape: 'Capped appreciation', strategy: 'Hold PT-deJAAA towards maturity; attributed yield funds inference credits.' },
+  rhea: { yieldShape: 'Lending interest', strategy: 'Supply native USDC to Rhea Lend on NEAR; yield funds inference credits.' },
 };
 /** Integer-only percentage display from an on-chain decimal ratio. */
 export function decimalPercent(ratio: string): string {

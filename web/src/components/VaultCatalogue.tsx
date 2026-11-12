@@ -5,7 +5,7 @@ import { ErrorNote, LockIcon, ProtocolMark, VaultMark, type Protocol } from './u
 export type CatalogueVault = {
   id: string;
   kind: 'aave' | 'rate' | 'pendle' | 'rhea';
-  name: string; // 'Aave USDC', 'cbETH RateVault', 'PT-deJAAA', 'Rhea USDC'
+  name: string; // 'Rhea USDC vault', 'Aave USDC vault', 'cbETH vault', 'Pendle PT-deJAAA vault'
   chainName: 'Base' | 'NEAR';
   assetSymbol: string; // what you deposit
   yieldShape: string; // 'Growing balance', 'Uncapped appreciation', 'Capped appreciation', 'Lending interest'
