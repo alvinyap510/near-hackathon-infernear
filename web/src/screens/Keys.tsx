@@ -1,20 +1,20 @@
 import { useState } from 'react';
 import { Check, CopyButton, ErrorNote, Spinner, errorText } from '../components/ui.tsx';
 import { apiBaseUrl } from '../config.ts';
-import { data, type Address, type IssuedKey, type Overview, type EvmWalletProof as WalletProof } from '../data/index.ts';
+import { data, type Session, type IssuedKey, type Overview, type WalletProof } from '../data/index.ts';
 import { shortHex } from '../data/money.ts';
 
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
 export function Keys({
-  address,
+  session,
   overview,
   issued,
   onIssued,
   onChanged,
   onTry,
 }: {
-  address: Address;
+  session: Session;
   overview: Overview;
   issued: IssuedKey | null;
   onIssued: (k: IssuedKey | null) => void;
@@ -44,13 +44,13 @@ export function Keys({
 
   const signProof = () =>
     act('sign', async () => {
-      const p = await data.walletProof(address);
+      const p = await data.walletProof(session);
       setChallenge(p);
       setProof(p);
     });
 
   const actionProof = async () => {
-    const p = proof ?? await data.walletProof(address);
+    const p = proof ?? await data.walletProof(session);
     setChallenge(p);
     setProof(null); // A proof belongs to one action; retries obtain a new nonce.
     return p;
@@ -87,13 +87,13 @@ export function Keys({
             <span className="step-n" aria-hidden="true">01</span>
             <div className="step-body">
               <h2 className="step-title">
-                <Check state={proof || used ? 'ok' : 'idle'} /> Sign with Ethereum
+                <Check state={proof || used ? 'ok' : 'idle'} /> Sign with {session.kind==='near'?'NEAR':'Ethereum'}
               </h2>
-              <p className="step-text">Your wallet signs a standard EIP-4361 message. No transaction, no gas.</p>
+              <p className="step-text">Your wallet signs {session.kind==='near'?'a NEP-413':'an EIP-4361'} message. No transaction, no gas.</p>
               {challenge && (
                 <details className="siwe">
                   <summary>Message you signed</summary>
-                  <pre>{challenge.message}</pre>
+                  <pre>{'near' in challenge?challenge.near.message:challenge.message}</pre>
                 </details>
               )}
               {proof ? (
@@ -215,7 +215,7 @@ export function Keys({
             </div>
             <div>
               <dt>Client</dt>
-              <dd>NEAR AI’s SDK with E2EE v3. Unencrypted requests are refused.</dd>
+              <dd>Standard OpenAI requests, or the NEAR AI SDK for private E2EE v3 requests.</dd>
             </div>
             <div>
               <dt>Models</dt>
@@ -238,7 +238,7 @@ export function Keys({
           <ul className="codes">
             <li><code>401</code> bad, expired or revoked key</li>
             <li><code>402</code> not enough credits</li>
-            <li><code>400</code> unencrypted or unsupported parameter</li>
+            <li><code>400</code> unsupported parameter</li>
             <li><code>429</code> more than 4 requests in flight</li>
           </ul>
         </aside>

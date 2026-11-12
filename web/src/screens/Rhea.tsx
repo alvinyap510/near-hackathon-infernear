@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Check, ErrorNote, Spinner, errorText, plainAmount, tokenAmount } from '../components/ui.tsx';
-import { data, type Address, type RheaQuote, type RheaTransfer, type VaultAccount } from '../data/index.ts';
+import { AssetBadge, ChainBadge, Check, ErrorNote, Spinner, errorText, plainAmount, tokenAmount } from '../components/ui.tsx';
+import { data, type Session, type RheaQuote, type RheaTransfer, type VaultAccount } from '../data/index.ts';
 import { parseAmount, shortHex } from '../data/money.ts';
 
 const STATUS_POLL_MS = 5_000;
@@ -91,9 +91,9 @@ function QuoteTable({ quote, from, to }: { quote: RheaQuote; from: string; to: s
   );
 }
 
-export function RheaPanel({ address, vault, onChanged }: { address: Address; vault: VaultAccount; onChanged: () => Promise<void> }) {
+export function RheaPanel({ session, vault, paused, onChanged }: { session: Extract<Session,{kind:'evm'}>; vault: VaultAccount; paused?:string; onChanged: () => Promise<void> }) {
   const [mode, setMode] = useState<'deposit' | 'withdraw'>(
-    vault.position.rhea && (vault.position.rhea.pendingOut !== null || vault.position.rhea.intentsBalance > 0n) ? 'withdraw' : 'deposit',
+    paused || vault.position.rhea && (vault.position.rhea.pendingOut !== null || vault.position.rhea.intentsBalance > 0n) ? 'withdraw' : 'deposit',
   );
   const r = vault.position.rhea;
 
@@ -108,27 +108,27 @@ export function RheaPanel({ address, vault, onChanged }: { address: Address; vau
   return (
     <section className="card vault-form rhea" aria-labelledby="vault-h">
       <div className="card-row">
-        <h2 id="vault-h" className="card-title">
-          {vault.name}
-        </h2>
+        <h2 id="vault-h" className="card-title">{vault.name}</h2><span className="ticket-badges"><ChainBadge name="NEAR"/><AssetBadge symbol="USDC"/></span>
         <div className="seg-control" role="radiogroup" aria-label="Action">
-          {(['deposit', 'withdraw'] as const).map((m) => (
-            <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>
+          {(paused?['withdraw'] as const:['deposit','withdraw'] as const).map((m) => (
+            <button key={m} type="button" role="radio" aria-checked={(paused?'withdraw':mode) === m} className={(paused?'withdraw':mode) === m ? 'on' : ''} onClick={() => setMode(m)}>
               {m === 'deposit' ? 'Deposit' : 'Withdraw'}
             </button>
           ))}
         </div>
       </div>
-      {mode === 'deposit' ? (
-        <RheaDeposit address={address} vault={vault} onChanged={onChanged} />
+      {paused && <p className="loss-note" role="status">Paused: {paused}</p>}
+      {!paused && mode === 'deposit' ? (
+        <RheaDeposit session={session} vault={vault} onChanged={onChanged} />
       ) : (
-        <RheaWithdraw address={address} vault={vault} onChanged={onChanged} />
+        <RheaWithdraw session={session} vault={vault} onChanged={onChanged} />
       )}
     </section>
   );
 }
 
-function RheaDeposit({ address, vault, onChanged }: { address: Address; vault: VaultAccount; onChanged: () => Promise<void> }) {
+function RheaDeposit({ session, vault, onChanged }: { session: Extract<Session,{kind:'evm'}>; vault: VaultAccount; onChanged: () => Promise<void> }) {
+  const address=session.address;
   const { asset, position } = vault;
   const r = position.rhea!;
   const [input, setInput] = useState('');
@@ -150,7 +150,7 @@ function RheaDeposit({ address, vault, onChanged }: { address: Address; vault: V
     setBusy('quote');
     setError(null);
     try {
-      setQuote(await data.rheaQuote(address, amount, 'deposit'));
+      setQuote(await data.rheaQuote(session, amount, 'deposit'));
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -163,7 +163,7 @@ function RheaDeposit({ address, vault, onChanged }: { address: Address; vault: V
     setBusy('send');
     setError(null);
     try {
-      const transfer = await data.rheaDeposit(address, quote.amountIn);
+      const transfer = await data.rheaDeposit(session, quote.amountIn);
       setFlow({ transfer, sharesBefore: position.shares, outcome: null });
       setQuote(null);
       setInput('');
@@ -258,7 +258,7 @@ function RheaDeposit({ address, vault, onChanged }: { address: Address; vault: V
             }}
             aria-invalid={invalid}
           />
-          <span className="unit">USDC</span>
+          <span className="unit"><AssetBadge symbol="USDC"/></span>
         </span>
       </label>
       {quote ? (
@@ -286,7 +286,8 @@ function RheaDeposit({ address, vault, onChanged }: { address: Address; vault: V
   );
 }
 
-function RheaWithdraw({ address, vault, onChanged }: { address: Address; vault: VaultAccount; onChanged: () => Promise<void> }) {
+function RheaWithdraw({ session, vault, onChanged }: { session: Extract<Session,{kind:'evm'}>; vault: VaultAccount; onChanged: () => Promise<void> }) {
+  const address=session.address;
   const { asset, position } = vault;
   const r = position.rhea!;
   const [input, setInput] = useState('');
@@ -321,18 +322,18 @@ function RheaWithdraw({ address, vault, onChanged }: { address: Address; vault: 
   const sign = () =>
     act('request', async () => {
       if (claim === null || claim === 0n) return;
-      const tx = await data.rheaWithdraw(address, claim);
+      const tx = await data.rheaWithdraw(session, claim);
       setRequest({ hash: tx.txHash, sharesBefore: position.shares });
       setInput('');
       await onChanged();
     });
 
-  const previewExit = () => act('quote', async () => setExitQuote(await data.rheaQuote(address, r.intentsBalance, 'withdraw')));
+  const previewExit = () => act('quote', async () => setExitQuote(await data.rheaQuote(session, r.intentsBalance, 'withdraw')));
 
   const sendExit = () =>
     act('exit', async () => {
       if (!exitQuote) return;
-      setExit({ transfer: await data.rheaExit(address, exitQuote.amountIn), outcome: null });
+      setExit({ transfer: await data.rheaExit(session, exitQuote.amountIn), outcome: null });
       setExitQuote(null);
       await onChanged();
     });
@@ -368,7 +369,7 @@ function RheaWithdraw({ address, vault, onChanged }: { address: Address; vault: 
                 </span>
                 <span className={`input-wrap ${invalid ? 'bad' : ''}`}>
                   <input inputMode="decimal" autoComplete="off" placeholder="0.00" value={input} onChange={(e) => setInput(e.target.value)} aria-invalid={invalid} />
-                  <span className="unit">USDC</span>
+                  <span className="unit"><AssetBadge symbol="USDC"/></span>
                 </span>
               </label>
               {!full && (

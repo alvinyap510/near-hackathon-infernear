@@ -3,9 +3,10 @@ import {
   custom, defineChain, getAddress, http, type EIP1193Provider, type Hash,
 } from 'viem';
 import { caip10, type LiveConfig } from '../config.ts';
-import { vaultAbi, usdcAbi, aavePoolAbi } from './abi.ts';
+import { vaultAbi, usdcAbi, aavePoolAbi, topUpAbi } from './abi.ts';
 import { DataError, readAmount as amount } from './errors.ts';
-import { createMockData } from './mock.ts';
+import { createChatData } from './chat.ts';
+import { createBridgeData } from './bridge.ts';
 import { createRheaData, type NearView } from './rhea.ts';
 import { createWallets, defaultWallets, type Wallets } from './wallets.ts';
 import { nearSessionData } from './near-session.ts';
@@ -43,8 +44,8 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
     rpcUrls: { default: { http: [settings.baseRpcUrl] } },
   });
   const publicClient = createPublicClient({ chain, transport: http(settings.baseRpcUrl, { fetchFn: fetcher }) });
-  // These methods stay simulated until the SDK spike lands. They cannot spend live credits.
-  const simulated = createMockData();
+  const chat = createChatData(settings.relayUrl, fetcher);
+  const bridge = createBridgeData(settings, fetcher, now);
 
   const guarded = async <T>(run: () => Promise<T>): Promise<T> => {
     try { return await run(); } catch (error) { throw dataError(error); }
@@ -150,9 +151,29 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
 
   const result: DashboardData = {
     isMock: false,
-    isRunMock: true,
+    isRunMock: false,
+    topUpAccount: input => guarded(async () => {
+      if (!settings.topUpAddress || (typeof input!=='string' && input.kind!=='evm')) return null;
+      const address=evmAddress(input), blockNumber=await publicClient.getBlockNumber({cacheTime:0});
+      const read={address:settings.topUpAddress,abi:topUpAbi,blockNumber} as const;
+      const [minimum,paid,paidTotal,usdc]=await Promise.all([publicClient.readContract({...read,functionName:'minimum'}),publicClient.readContract({...read,functionName:'paid',args:[address]}),publicClient.readContract({...read,functionName:'paidTotal'}),publicClient.readContract({...read,functionName:'usdc'})]);
+      const [walletBalance,allowance]=await Promise.all([publicClient.readContract({address:usdc,abi:usdcAbi,functionName:'balanceOf',args:[address],blockNumber}),publicClient.readContract({address:usdc,abi:usdcAbi,functionName:'allowance',args:[address,settings.topUpAddress],blockNumber})]);
+      return{minimum,paid,paidTotal,walletBalance,allowance,token:usdc};
+    }),
+    topUp: (input,assets) => guarded(async () => {
+      const address=evmAddress(input);
+      if(assets<=0n) throw new DataError('amount','Enter an amount above zero.');
+      const account=await result.topUpAccount(input);
+      if(!account || !settings.topUpAddress) throw new DataError('topup_unavailable','Credit purchases are not configured.');
+      if(assets<account.minimum) throw new DataError('amount','That is below the credit purchase minimum.');
+      if(assets>account.walletBalance) throw new DataError('balance','That is more USDC than your wallet holds.');
+      let client=await readyWallet(address);
+      if(account.allowance<assets) await confirmed(await client.writeContract({address:account.token,abi:usdcAbi,functionName:'approve',args:[settings.topUpAddress,assets],account:address}));
+      client=await readyWallet(address); // A wallet/account may change while approval confirms.
+      return confirmed(await client.writeContract({address:settings.topUpAddress,abi:topUpAbi,functionName:'pay',args:[assets,address],account:address}));
+    }),
     walletOptions: () => wallets.walletOptions(),
-    connectWallet: id => guarded(() => wallets.connectWallet(id)),
+    connectWallet: id => guarded(async () => { const owner=await wallets.connectWallet(id); if(owner.kind==='evm') await readyWallet(owner.address); return owner; }),
     restoreSession: () => wallets.restoreSession(),
     disconnect: () => wallets.disconnect(),
     rheaDepositNear: (session, assets) => guarded(() => near.rheaDepositNear(session, assets)),
@@ -278,10 +299,10 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
       const result = await nearView<string | null>('debited_amount', { inference_id: id });
       return result === null ? null : amount(result);
     }),
-    models: simulated.models,
-    run: simulated.run,
-    bridgeChains: simulated.bridgeChains,
-    bridgeQuote: simulated.bridgeQuote,
+    models: chat.models,
+    run: (request,onEvent) => guarded(() => chat.run(request,onEvent)),
+    bridgeChains: bridge.bridgeChains,
+    bridgeQuote: bridge.bridgeQuote,
   };
   return result;
 }

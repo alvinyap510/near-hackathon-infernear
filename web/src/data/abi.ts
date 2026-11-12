@@ -22,3 +22,11 @@ export const usdcAbi = parseAbi([
 export const aavePoolAbi = parseAbi([
   'function getReserveData(address) view returns ((uint256 configuration,uint128 liquidityIndex,uint128 currentLiquidityRate,uint128 variableBorrowIndex,uint128 currentVariableBorrowRate,uint128 currentStableBorrowRate,uint40 lastUpdateTimestamp,uint16 id,address aTokenAddress,address stableDebtTokenAddress,address variableDebtTokenAddress,address interestRateStrategyAddress,uint128 accruedToTreasury,uint128 unbacked,uint128 isolationModeTotalDebt))',
 ]);
+
+export const topUpAbi = parseAbi([
+  'function pay(uint256 amount, address beneficiary)',
+  'function minimum() view returns (uint256)',
+  'function paid(address) view returns (uint256)',
+  'function paidTotal() view returns (uint256)',
+  'function usdc() view returns (address)',
+]);

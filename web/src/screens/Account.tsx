@@ -1,8 +1,11 @@
 import { useState, type FormEvent } from 'react';
-import { ChainBadge, ErrorNote, LockIcon, Source, Spinner, errorText, plainAmount, tokenAmount } from '../components/ui.tsx';
-import { data, type Address, type Overview, type Token, type VaultAccount, type VaultKind } from '../data/index.ts';
+import { AssetBadge, ChainBadge, ErrorNote, LockIcon, Source, Spinner, errorText, plainAmount, tokenAmount } from '../components/ui.tsx';
+import { data, type Session, type Overview, type Token, type VaultAccount, type VaultKind } from '../data/index.ts';
 import { formatUsd, parseAmount, shortHex } from '../data/money.ts';
 import { RheaPanel } from './Rhea.tsx';
+import { NativeRhea } from './NativeRhea.tsx';
+import { TopUp } from './TopUp.tsx';
+import { config } from '../config.ts';
 
 /** Dollars to the cent, with the next two digits set lighter: yield moves in fractions of a cent. */
 function Amount({ micro, fine = false }: { micro: bigint; fine?: boolean }) {
@@ -22,23 +25,26 @@ const ABOUT: Record<VaultKind, string> = {
   aave: 'Lends USDC on Aave v3 on Base. Interest grows the position; only the part above your principal becomes credits.',
   rate: 'cbETH is Coinbase’s liquid-staking ETH. Its value in ETH rises as staking rewards accrue, so principal is counted in ETH.',
   pendle: 'PT-deJAAA is a Pendle principal token on a Centrifuge AAA-rated CLO note. It accretes towards its USDC value at expiry on 26 Nov 2026.',
-  rhea: 'Lends USDC on Rhea on NEAR, held by a keyless InferNear contract. You deposit from Base through NEAR Intents; no NEAR account needed.',
+  rhea: 'Lends USDC through the InferNear vault on NEAR. EVM wallets bridge from Base; NEAR wallets use native USDC.',
 };
 
 export function Account({
-  address,
+  session, selectedId, onSelect, onConnect,
   overview,
   onChanged,
   onBridge,
 }: {
-  address: Address;
+  session: Session;
+  selectedId?: string;
+  onSelect(id:string): void;
+  onConnect(): void;
   overview: Overview;
   onChanged: () => Promise<void>;
   onBridge: () => void;
 }) {
   const { vaults, credits } = overview;
-  const [selectedId, setSelectedId] = useState(vaults[0]?.id);
-  const selected = vaults.find((v) => v.id === selectedId) ?? vaults[0];
+  const [refreshError,setRefreshError]=useState<string|null>(null);
+  const selected = vaults.find((v) => v.id === selectedId) ?? (session.kind==='near'?vaults.find(v=>v.kind==='rhea'):vaults[0]);
 
   return (
     <div className="screen">
@@ -48,10 +54,11 @@ export function Account({
           <h1 className="title">Your vaults and credits</h1>
         </div>
         <p className="user-id">
-          <span className="k">User id</span> <code>{overview.user}</code>
+          <span className="k">User id</span> <code>{overview.user}</code><br/><button type="button" className="btn ghost" onClick={()=>{setRefreshError(null);void onChanged().catch(e=>setRefreshError(errorText(e)));}}>Refresh balances</button>
         </p>
       </header>
 
+      <ErrorNote error={refreshError}/>
       <section className="ledger rise d1" aria-label="Credits">
         <div className="figure accent">
           <span className="figure-k">Credits available</span>
@@ -65,7 +72,7 @@ export function Account({
           <span className="figure-v">
             <Amount micro={credits.credited} fine />
           </span>
-          <span className="figure-note">Each vault’s yield, priced when it was paid</span>
+          <span className="figure-note">Yield and direct credit purchases, posted on NEAR</span>
         </div>
         <div className="figure">
           <span className="figure-k">Spent</span>
@@ -92,24 +99,24 @@ export function Account({
         </ul>
       </section>
 
+      {session.kind==='evm' && <TopUp session={session} onChanged={onChanged}/>}
+
       <section className="picker-wrap rise d3" aria-labelledby="picker-h">
         <h2 id="picker-h" className="mini-h">
           Vaults · principal stays yours in each
         </h2>
         <div className="picker" role="radiogroup" aria-label="Vault">
           {vaults.map((v) => (
-            <VaultTicket key={v.id} vault={v} selected={v.id === selected?.id} onSelect={() => setSelectedId(v.id)} />
+            <VaultTicket key={v.id} vault={v} selected={v.id === selected?.id} onSelect={() => onSelect(v.id)} />
           ))}
         </div>
       </section>
 
       {selected && (
         <div className="split rise d4" key={selected.id}>
-          {selected.kind === 'rhea' ? (
-            <RheaPanel address={address} vault={selected} onChanged={onChanged} />
-          ) : (
-            <VaultForm address={address} vault={selected} onChanged={onChanged} onBridge={onBridge} />
-          )}
+          {selected.usable===false ? <section className="card vault-form"><h2 className="card-title">An EVM wallet is required</h2><p className="card-sub">This Base strategy is not available to a NEAR-only session.</p><button className="btn primary" onClick={onConnect}>Choose an EVM wallet</button></section>
+            : selected.kind==='rhea' ? session.kind==='near' ? <NativeRhea session={session} vault={selected} paused={config.rheaStatusNote} onChanged={onChanged}/> : <RheaPanel session={session} vault={selected} paused={config.rheaStatusNote} onChanged={onChanged}/>
+            : session.kind==='evm' ? <VaultForm session={session} vault={selected} onChanged={onChanged} onBridge={onBridge}/> : null}
           <AboutVault vault={selected} />
         </div>
       )}
@@ -125,7 +132,7 @@ function VaultTicket({ vault, selected, onSelect }: { vault: VaultAccount; selec
     <button type="button" role="radio" aria-checked={selected} className={`ticket ${selected ? 'on' : ''}`} onClick={onSelect}>
       <span className="ticket-badges">
         <ChainBadge name={vault.chain.name} />
-        <span className="badge asset">{asset.symbol}</span>
+        <AssetBadge symbol={asset.symbol}/>
       </span>
       <span className="ticket-name">{vault.name}</span>
       <span className="ticket-principal">
@@ -149,7 +156,7 @@ function AboutVault({ vault }: { vault: VaultAccount }) {
         </h2>
         <span className="ticket-badges">
           <ChainBadge name={vault.chain.name} />
-          <span className="badge asset">{vault.asset.symbol}</span>
+          <AssetBadge symbol={vault.asset.symbol}/>
         </span>
       </div>
       <p className="card-sub">{ABOUT[vault.kind]}</p>
@@ -223,7 +230,7 @@ function AboutVault({ vault }: { vault: VaultAccount }) {
   );
 }
 
-function VaultForm({ address, vault, onChanged, onBridge }: { address: Address; vault: VaultAccount; onChanged: () => Promise<void>; onBridge: () => void }) {
+function VaultForm({ session, vault, onChanged, onBridge }: { session: Extract<Session,{kind:'evm'}>; vault: VaultAccount; onChanged: () => Promise<void>; onBridge: () => void }) {
   const [mode, setMode] = useState<'deposit' | 'redeem'>('deposit');
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -231,6 +238,7 @@ function VaultForm({ address, vault, onChanged, onBridge }: { address: Address; 
   const [done, setDone] = useState<{ mode: string; hash: string; amount: bigint } | null>(null);
 
   const { asset, position } = vault;
+  const address=session.address;
   const shareToken: Token = { ...asset, symbol: 'shares' };
   const max = mode === 'deposit' ? position.walletBalance : position.shares;
   const amount = parseAmount(input, asset.decimals);
@@ -242,7 +250,7 @@ function VaultForm({ address, vault, onChanged, onBridge }: { address: Address; 
     setBusy(true);
     setError(null);
     try {
-      const tx = mode === 'deposit' ? await data.deposit(address, amount, vault.id) : await data.redeem(address, amount, vault.id);
+      const tx = mode === 'deposit' ? await data.deposit(session, amount, vault.id) : await data.redeem(session, amount, vault.id);
       setDone({ mode, hash: tx.txHash, amount });
       setInput('');
       await onChanged();

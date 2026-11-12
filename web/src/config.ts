@@ -2,6 +2,7 @@
 const env = import.meta.env ?? {};
 
 export const config = {
+  topUpAddress: env.VITE_TOPUP_ADDRESS as `0x${string}` | undefined,
   aavePoolAddress: env.VITE_AAVE_POOL_ADDRESS as `0x${string}` | undefined,
   rheaLendAccount: env.VITE_RHEA_LEND_ACCOUNT as string | undefined,
   rheaCap: env.VITE_RHEA_CAP as string | undefined,
@@ -24,6 +25,7 @@ export const config = {
 };
 
 export type LiveConfig = {
+  topUpAddress?: `0x${string}`;
   aavePoolAddress?: `0x${string}`;
   rheaLendAccount?: string;
   rheaCap?: string;
@@ -55,6 +57,7 @@ export function liveConfig(values: Partial<typeof config> = config): LiveConfig 
   if (!Number.isSafeInteger(Number(values.vaultChainId)) || Number(values.vaultChainId) <= 0 ||
       !Number.isInteger(Number(values.slippageBps)) || Number(values.slippageBps) < 0 || Number(values.slippageBps) > 10_000) return null;
   return {
+    topUpAddress: values.topUpAddress,
     aavePoolAddress: values.aavePoolAddress, rheaLendAccount: values.rheaLendAccount,
     rheaCap: values.rheaCap, rheaStatusNote: values.rheaStatusNote,
     rateVaultAddress: values.rateVaultAddress as LiveConfig['rateVaultAddress'],

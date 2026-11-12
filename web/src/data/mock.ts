@@ -105,6 +105,8 @@ export function createMockData(): DashboardData {
       credits: { credited: state.credited, spent: state.spent, available: state.credited - state.spent, keyEpoch: state.keyEpoch } };
   };
 
+  const purchases=new Map<string,bigint>();
+  let purchased=0n;
   let session: Session | null = null;
   const nearAccounts = new Map<string, {position:typeof rhea;credited:bigint;spent:bigint;keyEpoch:number;debited:Map<string,bigint>}>();
   const nearAccount = (id:string) => {
@@ -142,6 +144,16 @@ export function createMockData(): DashboardData {
   const result:DashboardData = {
     isMock: true,
     isRunMock: true,
+    async topUpAccount(input) {
+      if(!config.topUpAddress || (typeof input!=='string' && input.kind!=='evm')) return null;
+      return {minimum:1_000_000n,paid:purchases.get(evmAddress(input).toLowerCase())??0n,paidTotal:purchased,walletBalance:vaults[0].position.walletBalance,allowance:0n,token:tokens[0].address};
+    },
+    async topUp(input,assets) {
+      const owner=evmAddress(input).toLowerCase();if(!config.topUpAddress)throw new DataError('topup_unavailable','Credit purchases are not configured.');
+      if(assets<1_000_000n)throw new DataError('amount','The minimum mock purchase is 1 USDC.');
+      if(assets>vaults[0].position.walletBalance)throw new DataError('balance','That is more USDC than the wallet holds.');
+      vaults[0].position.walletBalance-=assets;purchased+=assets;purchases.set(owner,(purchases.get(owner)??0n)+assets);state.credited+=assets;return{txHash:`mock-topup-${hex(16)}`};
+    },
 
     async walletOptions() { return [{id:'evm:mock',kind:'evm',name:'Mock EVM wallet',available:true},{id:'near:meteor-wallet',kind:'near',name:'Mock Meteor Wallet',available:true},{id:'near:my-near-wallet',kind:'near',name:'Mock MyNearWallet',available:true}]; },
     async connectWallet(id) {
@@ -326,10 +338,10 @@ export function createMockData(): DashboardData {
 
     async bridgeChains() {
       return [
-        { id: 'arb', name: 'Arbitrum' },
-        { id: 'eth', name: 'Ethereum' },
-        { id: 'sol', name: 'Solana' },
-        { id: 'near', name: 'NEAR' },
+        { id: '1', name: 'Ethereum' },
+        { id: '42161', name: 'Arbitrum' },
+        { id: '10', name: 'Optimism' },
+        { id: '137', name: 'Polygon' },
       ];
     },
 

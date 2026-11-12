@@ -1,6 +1,4 @@
-// The copy-paste quickstart shown on "Try the API". It uses NEAR AI's own SDK
-// at the commit that adds E2EE v3 (nearai/inference-sdk#127, later released in v0.3.0);
-// the relay rejects anything older.
+// Standard clients use the official OpenAI package; private clients use the reviewed E2EE v3 SDK.
 export const SDK_PIN = {
   repo: 'nearai/inference-sdk',
   commit: 'a0bf5fdfde5c9179d50f7459bc36db6db326332e',
@@ -12,9 +10,10 @@ type Params = { baseUrl: string; model: string; maxTokens: number };
 const pinComment = (c: string) =>
   `${c} NEAR AI's SDK, pinned at ${SDK_PIN.repo}@${SDK_PIN.commit.slice(0, 7)} (E2EE v3, PR #${SDK_PIN.pr}).`;
 
-export function quickstartJs({ baseUrl, model, maxTokens }: Params): string {
-  return `${pinComment('//')}
-import { InferenceClient, verifyDeploymentImageProvenance } from '@nearai/inference-sdk';
+export function quickstartPrivateJs({ baseUrl, model, maxTokens }: Params): string {
+  return `// npm install @nearai/inference-sdk@0.3.0
+${pinComment('//')}
+import { InferenceClient, verifyDeploymentImageProvenance } from '@nearai/inference-sdk/node';
 
 // NEAR's image-provenance policy for the gateway: "verified" must mean NEAR's
 // own gateway images, not just genuine TEE hardware. The SDK still checks the
@@ -31,6 +30,7 @@ const client = new InferenceClient({
   apiKey: process.env.INFERNEAR_API_KEY, // inf_…
   e2ee: true, // encrypt to the model's TEE key, here, before sending
   gatewayVerification: {
+    includeSpkiFingerprint: false, // application proxy: the browser/relay TLS peer is not the model gateway
     verifiers: {
       deployment: ({ appCompose }) =>
         verifyDeploymentImageProvenance({ appCompose, imagePolicies: GATEWAY_IMAGES }),
@@ -50,7 +50,7 @@ console.log(\`Verified \${receipt.signatureKind} reply:\`, completion.choices[0]
 `;
 }
 
-export function quickstartPython({ baseUrl, model, maxTokens }: Params): string {
+export function quickstartPrivatePython({ baseUrl, model, maxTokens }: Params): string {
   return `${pinComment('#')}
 import asyncio, os
 from nearai_inference_sdk import (
@@ -92,5 +92,40 @@ async def main():
         print(f'Verified {receipt.signature_kind} reply:', completion.choices[0].message.content)
 
 asyncio.run(main())
+`;
+}
+
+
+/** Standard OpenAI client: the relay can read the prompt and reply in transit. */
+export function quickstartJs({baseUrl,model,maxTokens}:Params):string {
+  return `// npm install openai
+// Standard mode: the relay can read the prompt and reply in transit.
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+  baseURL: '${baseUrl}',
+  apiKey: process.env.INFERNEAR_API_KEY,
+});
+const result = await client.chat.completions.create({
+  model: '${model}',
+  messages: [{ role: 'user', content: 'Reply with the word ok.' }],
+  max_tokens: ${maxTokens},
+});
+console.log(result.choices[0].message.content);
+`;
+}
+export function quickstartPython({baseUrl,model,maxTokens}:Params):string {
+  return `# pip install openai
+# Standard mode: the relay can read the prompt and reply in transit.
+import os
+from openai import OpenAI
+
+client = OpenAI(base_url='${baseUrl}', api_key=os.environ['INFERNEAR_API_KEY'])
+result = client.chat.completions.create(
+    model='${model}',
+    messages=[{'role': 'user', 'content': 'Reply with the word ok.'}],
+    max_tokens=${maxTokens},
+)
+print(result.choices[0].message.content)
 `;
 }

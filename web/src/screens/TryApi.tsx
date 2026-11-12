@@ -1,198 +1,33 @@
 import { useEffect, useState } from 'react';
 import { Check, CopyButton, ErrorNote, Spinner, errorText } from '../components/ui.tsx';
 import { apiBaseUrl } from '../config.ts';
-import { data, type Attestation, type Model, type RunResult } from '../data/index.ts';
+import { data, DataError, type Attestation, type Model, type RunResult } from '../data/index.ts';
 import { formatPerMillion, formatUsd, shortHex, expectedDebit } from '../data/money.ts';
-import { quickstartJs, quickstartPython, SDK_PIN } from '../quickstart.ts';
-
-const MAX_TOKENS = 256;
-const LANGS = [
-  { id: 'js', label: 'JavaScript', render: quickstartJs },
-  { id: 'py', label: 'Python', render: quickstartPython },
-] as const;
-
-type Phase = 'idle' | 'attesting' | 'encrypting' | 'streaming' | 'done';
-
-export function TryApi({ apiKey, onChanged, onKeys }: { apiKey: string | null; onChanged: () => Promise<void>; onKeys: () => void }) {
-  const [models, setModels] = useState<Model[]>([]);
-  const [model, setModel] = useState<Model | null>(null);
-  const [lang, setLang] = useState<(typeof LANGS)[number]['id']>('js');
-  const [prompt, setPrompt] = useState('In one sentence, what does a TEE attestation prove?');
-  const [phase, setPhase] = useState<Phase>('idle');
-  const [attestation, setAttestation] = useState<Attestation | null>(null);
-  const [cipher, setCipher] = useState('');
-  const [text, setText] = useState('');
-  const [result, setResult] = useState<RunResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    void data.models().then((list) => {
-      setModels(list);
-      setModel(list[0] ?? null);
-    });
-  }, []);
-
-  const code = (LANGS.find((l) => l.id === lang) ?? LANGS[0]).render({
-    baseUrl: apiBaseUrl(),
-    model: model?.id ?? '<model>',
-    maxTokens: MAX_TOKENS,
-  });
-
-  const run = async () => {
-    if (!apiKey || !model) return;
-    setError(null);
-    setResult(null);
-    setAttestation(null);
-    setCipher('');
-    setText('');
-    setPhase('attesting');
-    try {
-      const r = await data.run({ key: apiKey, model, prompt, maxTokens: MAX_TOKENS }, (ev) => {
-        if (ev.kind === 'attested') {
-          setAttestation(ev.attestation);
-          setPhase('encrypting');
-        } else if (ev.kind === 'encrypted') {
-          setCipher(ev.ciphertext);
-          setPhase('streaming');
-        } else setText((t) => t + ev.delta);
-      });
-      setResult(r);
-      setPhase('done');
-      await onChanged();
-    } catch (e) {
-      setError(errorText(e));
-      setPhase('idle');
-    }
+import { quickstartJs, quickstartPython, quickstartPrivateJs, quickstartPrivatePython, SDK_PIN } from '../quickstart.ts';
+const MAX_TOKENS=64;
+export function TryApi({apiKey,onChanged,onKeys,onCredits}:{apiKey:string|null;onChanged():Promise<void>;onKeys():void;onCredits():void}){
+  const [models,setModels]=useState<Model[]>([]),[model,setModel]=useState<Model|null>(null),[mode,setMode]=useState<'standard'|'private'>('standard'),[lang,setLang]=useState<'js'|'py'>('js');
+  const [key,setKey]=useState(apiKey??''),[prompt,setPrompt]=useState('Reply with the word ok.'),[running,setRunning]=useState(false),[error,setError]=useState<string|null>(null),[needsCredits,setNeedsCredits]=useState(false);
+  const [text,setText]=useState(''),[attestation,setAttestation]=useState<Attestation|null>(null),[result,setResult]=useState<RunResult|null>(null);
+  useEffect(()=>{void data.models().then(list=>{setModels(list);setModel(list[0]??null);}).catch(e=>setError(errorText(e)));},[]);
+  const privateCodeOnly=mode==='private'&&!data.isMock;
+  const render=mode==='standard'?(lang==='js'?quickstartJs:quickstartPython):(lang==='js'?quickstartPrivateJs:quickstartPrivatePython);
+  const code=render({baseUrl:apiBaseUrl(),model:model?.id??'<model>',maxTokens:MAX_TOKENS});
+  const run=async()=>{
+    if(!model||!key)return;setRunning(true);setError(null);setNeedsCredits(false);setResult(null);setAttestation(null);setText('');
+    try{const r=await data.run({key,model,prompt,maxTokens:MAX_TOKENS,mode},event=>{if(event.kind==='text')setText(t=>t+event.delta);if(mode==='private'&&event.kind==='attested')setAttestation(event.attestation);});setResult({...r,mode});if(mode==='private'&&r.attestation)setAttestation(r.attestation);try{await onChanged();}catch{/* Completed inference remains visible if a separate balance refresh fails. */}}
+    catch(e){setError(errorText(e));setNeedsCredits(e instanceof DataError&&(e.code==='insufficient_credit'||e.code==='credits'||e.code==='http_402'));}finally{setRunning(false);}
   };
-
-  const running = phase !== 'idle' && phase !== 'done';
-
-  return (
-    <div className="screen">
-      <header className="page-head rise">
-        <div>
-          <p className="eyebrow">Try the API</p>
-          <h1 className="title">One encrypted call, verified end to end</h1>
-        </div>
-        <p className="page-note">
-          {data.isRunMock ? 'Mock call: replies, attestations and debits are simulated while SDK wiring is pending.' :
-            <>This code is the whole integration. <strong>Run</strong> makes the same call from this browser with your key.</>}
-        </p>
-      </header>
-
-      <div className="try-grid">
-        <section className="codecard rise d1" aria-labelledby="qs-h">
-          <div className="codecard-head">
-            <h2 id="qs-h" className="sr-only">
-              Quickstart
-            </h2>
-            <div className="lang-tabs" role="tablist" aria-label="Language">
-              {LANGS.map((l) => (
-                <button key={l.id} type="button" role="tab" aria-selected={lang === l.id} onClick={() => setLang(l.id)}>
-                  {l.label}
-                </button>
-              ))}
-            </div>
-            <CopyButton text={code} tone="seal" />
-          </div>
-          <pre className="code" tabIndex={0} aria-label={`${lang === 'js' ? 'JavaScript' : 'Python'} quickstart`}>
-            <code>
-              {/* Long lines wrap with a hanging indent under their own indentation, so the
-                  whole snippet is visible without sideways scrolling; the text is unchanged. */}
-              {code.replace(/\n$/, '').split('\n').map((line, i) => (
-                <span key={i} className="code-line" style={{ ['--indent' as string]: line.length - line.trimStart().length }}>
-                  {line || ' '}
-                  {'\n'}
-                </span>
-              ))}
-            </code>
-          </pre>
-          <p className="codecard-foot">
-            SDK pinned at <code>{SDK_PIN.repo}@{SDK_PIN.commit.slice(0, 7)}</code>, the E2EE v3 build. The relay refuses older
-            versions.
-          </p>
-        </section>
-
-        <div className="console">
-          <section className="card run rise d2" aria-labelledby="run-h">
-            <div className="card-row">
-              <div className="title-group">
-                <h2 id="run-h" className="card-title">
-                  Run it here
-                </h2>
-                {data.isRunMock && <span className="sim-tag">Simulation</span>}
-              </div>
-              {model && (
-                <span className="model-chip" title={model.id}>
-                  {models.length > 1 ? (
-                    <select
-                      aria-label="Model"
-                      value={model.id}
-                      onChange={(e) => setModel(models.find((m) => m.id === e.target.value) ?? model)}
-                    >
-                      {models.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    model.name
-                  )}
-                  <span className="model-price">
-                    in {formatPerMillion(model.inPriceNano)} · out {formatPerMillion(model.outPriceNano)}
-                  </span>
-                </span>
-              )}
-            </div>
-            <label className="field">
-              <span className="field-k">Prompt</span>
-              <textarea rows={2} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
-            </label>
-            {apiKey ? (
-              <button type="button" className="btn primary block" onClick={run} disabled={running || !prompt.trim()}>
-                {running ? <Spinner /> : <span className="btn-dot" aria-hidden="true" />}
-                {phase === 'attesting'
-                  ? 'Verifying the model’s TEE…'
-                  : phase === 'encrypting'
-                    ? 'Encrypting to the model key…'
-                    : phase === 'streaming'
-                      ? 'Decrypting the reply…'
-                      : 'Run'}
-              </button>
-            ) : (
-              <div className="needs-key">
-                <span>Run uses your own API key, held only in this tab.</span>
-                <button type="button" className="btn primary" onClick={onKeys}>
-                  Create a key first
-                </button>
-              </div>
-            )}
-            <ErrorNote error={error} />
-
-            {(cipher || text) && (
-              <div className="exchange" aria-live="polite">
-                <div className="wire">
-                  <span className="wire-k">What the relay sees</span>
-                  <code className="wire-v">{cipher}</code>
-                </div>
-                <div className="reply">
-                  <span className="wire-k">What you see</span>
-                  <p className="reply-v">
-                    {text}
-                    {phase === 'streaming' && <span className="caret" aria-hidden="true" />}
-                  </p>
-                </div>
-              </div>
-            )}
-          </section>
-
-          {attestation && <Verified attestation={attestation} result={result} />}
-          {result && <BillCheck result={result} />}
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="screen"><header className="page-head rise"><div><p className="eyebrow">Try the API</p><h1 className="title">Make a call with your credits</h1></div><p className="page-note">{data.isMock?'Mock source: calls and verification are simulated.':'Standard mode calls the live relay. Private mode is available from your code.'}</p></header>
+    <div className="seg-control" role="tablist" aria-label="Chat mode">{(['standard','private'] as const).map(m=><button key={m} type="button" role="tab" aria-selected={mode===m} className={mode===m?'on':''} disabled={running} onClick={()=>{setMode(m);setResult(null);setAttestation(null);setText('');setError(null);}}>{m==='standard'?'Standard':'Private'}</button>)}</div>
+    <p className="loss-note">{mode==='standard'?'In standard mode the relay can read your prompt and reply in transit. The model runs in NEAR AI’s TEE; this panel does not verify a response signature.':'Private mode encrypts to the model key with NEAR AI’s SDK. Browser completion verification is not validated in this release; run the quickstart from your code.'}</p>
+    <div className="try-grid"><section className="codecard rise"><div className="codecard-head"><div className="lang-tabs">{(['js','py'] as const).map(l=><button key={l} type="button" onClick={()=>setLang(l)} aria-selected={lang===l}>{l==='js'?'JavaScript':'Python'}</button>)}</div><CopyButton text={code} tone="seal"/></div><pre className="code" tabIndex={0}><code>{code}</code></pre><p className="codecard-foot">{mode==='standard'?'Official OpenAI package · custom base URL and your key':`Private SDK ${SDK_PIN.repo}@${SDK_PIN.commit.slice(0,7)} · E2EE v3 · response verification`}</p></section>
+    <div className="console"><section className="card run rise"><div className="card-row"><h2 className="card-title">{privateCodeOnly?'Run private mode from your code':'Run it here'}</h2>{data.isRunMock&&<span className="sim-tag">Simulation</span>}</div>
+      <label className="field"><span className="field-k">Model</span><span className="input-wrap"><select value={model?.id??''} disabled={running} onChange={e=>setModel(models.find(m=>m.id===e.target.value)??null)}>{models.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></span></label>{model&&<p className="fineprint">Input {formatPerMillion(model.inPriceNano)} · output {formatPerMillion(model.outPriceNano)} · max {MAX_TOKENS} output tokens</p>}
+      {privateCodeOnly?<p className="card-sub">No browser inference is sent in this mode. Copy the SDK quickstart; no simulated reply or verification will be substituted.</p>:<><label className="field"><span className="field-k">Your API key · kept only in this tab</span><span className="input-wrap"><input type="password" autoComplete="off" value={key} disabled={running} onChange={e=>setKey(e.target.value)} placeholder="inf_…"/></span></label><label className="field"><span className="field-k">Prompt</span><textarea rows={3} value={prompt} disabled={running} onChange={e=>setPrompt(e.target.value)}/></label><button type="button" className="btn primary block" disabled={running||!model||!prompt.trim()||!key} onClick={()=>void run()}>{running?<Spinner/>:null}{running?'Waiting for the reply…':data.isRunMock?'Run simulation':'Run standard call'}</button>{!key&&<button type="button" className="btn outline" onClick={onKeys}>Create an API key</button>}</>}
+      <ErrorNote error={error}/>{needsCredits&&<div className="needs-key"><p>No available credits (402). Deposit into a vault or add credits.</p><button className="btn primary" onClick={onCredits}>Deposit or add credits</button></div>}
+      {text&&<div className="exchange"><div className="reply"><span className="wire-k">Reply</span><p className="reply-v">{text}</p></div></div>}{result&&<p className="fineprint">Inference-Id: <code>{result.receipt.inferenceId}</code><br/>Completion: <code>{result.completionId}</code></p>}</section>
+      {attestation&&<Verified attestation={attestation} result={result}/>} {result&&<BillCheck result={result}/>}</div></div></div>;
 }
 
 function Verified({ attestation, result }: { attestation: Attestation; result: RunResult | null }) {
@@ -221,8 +56,8 @@ function Verified({ attestation, result }: { attestation: Attestation; result: R
     },
     {
       k: 'Reply signature',
-      v: result ? `${result.reply.signatureKind === 'provider_tee' ? 'Signed by the model TEE' : 'Signed by NEAR’s gateway'} · ${shortHex(result.reply.signer)}` : 'waiting for the reply',
-      ok: result !== null,
+      v: result?.reply ? `${result.reply.signatureKind === 'provider_tee' ? 'Signed by the model TEE' : 'Signed by NEAR’s gateway'} · ${shortHex(result.reply.signer)}` : 'waiting for the reply',
+      ok: !!result?.reply,
     },
   ];
   return (
@@ -259,11 +94,13 @@ function Verified({ attestation, result }: { attestation: Attestation; result: R
 function BillCheck({ result }: { result: RunResult }) {
   const { receipt } = result;
   const [debited, setDebited] = useState<bigint | null | undefined>(undefined);
+  const [debitError,setDebitError]=useState<string|null>(null);
 
   useEffect(() => {
     setDebited(undefined);
-    const read = data.isRunMock ? Promise.resolve(result.simulatedDebit ?? null) : data.debitedAmount(receipt.inferenceId);
-    void read.then(setDebited);
+    let stopped=false,timer:ReturnType<typeof setTimeout>;
+    const poll=async()=>{try{const value=data.isRunMock?result.simulatedDebit??null:await data.debitedAmount(receipt.inferenceId);if(stopped)return;setDebited(value);setDebitError(null);if(value===null&&!data.isRunMock)timer=setTimeout(poll,3000);}catch(e){if(!stopped){setDebitError(errorText(e));timer=setTimeout(poll,5000);}}};
+    void poll();return()=>{stopped=true;clearTimeout(timer);};
   }, [receipt.inferenceId, result.simulatedDebit]);
 
   const expected = expectedDebit(receipt, result.reservation);
@@ -294,9 +131,10 @@ function BillCheck({ result }: { result: RunResult }) {
                   ? (signed ? 'Matches capped usage' : 'Matches reserved maximum')
                   : verdict === 'under'
                     ? 'Below the expected debit'
-                    : 'Charged above the expected debit'}
+                    : 'Different from the listed-price estimate'}
         </span>
       </div>
+      <ErrorNote error={debitError}/>
       <table className="bill-table">
         <tbody>
           {signed ? (
@@ -332,7 +170,7 @@ function BillCheck({ result }: { result: RunResult }) {
       </table>
       <p className="fineprint">
         Inference <code>{shortHex(receipt.inferenceId, 8, 4)}</code> · token counts are{' '}
-        {signed ? 'from the model-signed usage' : 'not model-signed'}. Expected debit is min(usage × price, reservation),
+        {signed ? (result.mode==='standard'?'reported by the upstream, not signature-verified':'from the model-signed usage') : 'not model-signed'}. This estimate uses the listed-price snapshot; the on-chain debit is authoritative. Expected debit is min(usage × price, reservation),
         or the full reservation when usage is absent.
       </p>
     </section>

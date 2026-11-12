@@ -6,7 +6,7 @@ import { base58 } from '@scure/base';
 import { decodeFunctionData, encodeFunctionResult, getAddress, hexToString, hexToBytes, type EIP1193Provider, type Hex } from 'viem';
 import { parseSiweMessage } from 'viem/siwe';
 import { caip10, config, liveConfig, type LiveConfig } from '../config.ts';
-import { vaultAbi, usdcAbi } from './abi.ts';
+import { vaultAbi, usdcAbi, topUpAbi } from './abi.ts';
 import { createLiveData } from './live.ts';
 import { DataError } from './errors.ts';
 import type { Address } from './types.ts';
@@ -16,6 +16,7 @@ const VAULT = '0x2222222222222222222222222222222222222222' as Address;
 const USDC = '0x3333333333333333333333333333333333333333' as Address;
 const CBETH = '0x6666666666666666666666666666666666666666' as Address;
 const PT = '0x8888888888888888888888888888888888888888' as Address;
+const TOPUP = '0x9999999999999999999999999999999999999999' as Address;
 const SIGNATURE = `0x${'ab'.repeat(64)}1b` as Hex;
 const settings: LiveConfig = {
   relayUrl: 'https://relay.example:9443', vaultChainId: 8453, vaultAddress: VAULT,
@@ -34,6 +35,7 @@ function fixture() {
   const transactions: { to: Address; data: Hex }[] = [];
   const receiptsRead: string[] = [];
   const state = {
+    minimum: 1_000_000n, paid: 2_000_000n, paidTotal: 5_000_000n,
     chainId: 1, selected: ADDRESS, rejected: false, allowance: 0n,
     shares: huge, assets: huge - 3n, wallet: huge * 2n, spent: huge, credited: huge + 99n,
     nonceNear: 8, coverage: '900000000000000000', busy: false, pendingIn: '2000000', pendingOut: '1000000' as string | null,
@@ -62,10 +64,10 @@ function fixture() {
       } else if (body.method === 'eth_call') {
         const call = body.params[0];
         const isVault = [VAULT, settings.rateVaultAddress, settings.pendleVaultAddress].includes(call.to.toLowerCase());
-        const abi = isVault ? vaultAbi : usdcAbi;
+        const abi = call.to.toLowerCase() === TOPUP ? topUpAbi : isVault ? vaultAbi : usdcAbi;
         const decoded = decodeFunctionData({ abi, data: call.data });
         const asset = call.to.toLowerCase() === settings.rateVaultAddress ? CBETH : call.to.toLowerCase() === settings.pendleVaultAddress ? PT : USDC;
-        const value = decoded.functionName === 'asset' || decoded.functionName === 'yieldToken' ? asset
+        const value = decoded.functionName === 'minimum' ? state.minimum : decoded.functionName === 'paid' ? state.paid : decoded.functionName === 'paidTotal' ? state.paidTotal : decoded.functionName === 'usdc' ? USDC : decoded.functionName === 'asset' || decoded.functionName === 'yieldToken' ? asset
           : decoded.functionName === 'convertToAssets' ? state.assets
           : decoded.functionName === 'yieldCredited' ? 42n
           : decoded.functionName === 'allowance' ? state.allowance
@@ -95,6 +97,8 @@ function fixture() {
     }
     if (state.relayStatus !== 200) return json({ error: { code: state.relayCode, message: 'Fixture relay rejection' } }, state.relayStatus);
     if (url.endsWith('/rhea/withdraw') || url.endsWith('/intents/execute')) return json({ tx_hash: 'fixture-relay-near-tx' });
+    if (url.endsWith('/v1/models')) return json({data:[{id:'fixture/live',inputCostPerToken:{amount:80,scale:9,currency:'USD'},outputCostPerToken:{amount:500,scale:9,currency:'USD'}}]});
+    if (url.endsWith('/v1/chat/completions')) return new Response(JSON.stringify({id:'chatcmpl-live',choices:[{message:{content:'Fixture upstream reply'}}],usage:{prompt_tokens:2,completion_tokens:1}}),{headers:{'content-type':'application/json','Inference-Id':'fixture-inference'}});
     if (url.endsWith('/auth/nonce')) return json({ nonce: `fixtureNonce${++state.nonce}` });
     if (url.endsWith('/keys/revoke')) return json({ key_epoch: 8, tx_hash: 'fixture-near-tx' });
     if (url.endsWith('/keys')) return json({ key: 'inf_fixture.signature', key_epoch: 7, expires_at: 1_800_000_000 });
@@ -118,7 +122,7 @@ function fixture() {
     throw new Error(`Unexpected wallet method ${method}`);
   } } as unknown as Pick<EIP1193Provider, 'request'>;
   const data = createLiveData(settings, { ethereum: provider, fetch: fetcher, now: () => new Date('2026-11-04T12:00:00Z') });
-  return { state, data, requests, walletCalls, transactions, receiptsRead, fetcher };
+  return { state, data, requests, walletCalls, transactions, receiptsRead, fetcher, provider };
 }
 
 const rejectsCode = (code: string) => (error: unknown) => error instanceof DataError && error.code === code;
@@ -135,7 +139,7 @@ test('connect requests injected accounts and switches to the env chain', async (
   assert.equal(f.state.chainId, settings.vaultChainId);
   assert(f.walletCalls.some(c => c.method === 'wallet_switchEthereumChain'));
   assert.equal(f.data.isMock, false);
-  assert.equal(f.data.isRunMock, true);
+  assert.equal(f.data.isRunMock, false);
 });
 test('overview preserves bigint amounts and reads redemption assets rather than assuming 1:1', async () => {
   const f = fixture();
@@ -251,21 +255,12 @@ test('missing injected wallet produces a named error without falling back to a m
   assert.equal(data.isMock, false);
 });
 
-test('Try the API stays simulated even when wallet, chain and key routes are live', async () => {
-  const f = fixture();
-  const before = await f.data.overview(ADDRESS);
-  const count = f.requests.length;
-  const models = await f.data.models();
-  const events: string[] = [];
-  const result = await f.data.run({ key: 'inf_fixture', model: models[0], prompt: 'fixture prompt', maxTokens: 32 }, event => events.push(event.kind));
-  assert.equal(f.requests.length, count, 'simulated inference must not contact a chain or relay');
-  assert.equal(f.walletCalls.length, 0);
-  assert.match(result.text, /mock reply/);
-  assert(result.simulatedDebit !== undefined && result.simulatedDebit <= result.reservation);
-  assert.equal(result.receipt.source, 'signed_usage');
-  assert.equal(typeof result.receipt.promptTokens, 'number');
-  assert(events.includes('attested') && events.includes('encrypted') && events.includes('text'));
-  assert.deepEqual(await f.data.overview(ADDRESS), before, 'a mock run must not debit live credits or principal');
+test('live inference uses the relay without simulated attestation, response or debit', async () => {
+  const f=fixture(),before=await f.data.overview(ADDRESS),models=await f.data.models(),events:string[]=[];
+  const result=await f.data.run({key:'inf_fixture',model:models[0],prompt:'fixture prompt',maxTokens:32},event=>events.push(event.kind));
+  assert.equal(models[0].id,'fixture/live');assert.equal(result.text,'Fixture upstream reply');assert.equal(result.receipt.inferenceId,'fixture-inference');
+  assert.equal(result.attestation,undefined);assert.equal(result.reply,undefined);assert.equal(result.simulatedDebit,undefined);assert.deepEqual(events,['text']);assert.equal(f.walletCalls.length,0);
+  assert.deepEqual(await f.data.overview(ADDRESS),before,'only the real keeper/connector can change live credits');
 });
 
 
@@ -278,7 +273,7 @@ test('the exported data factory selects the labelled fallback or live implementa
     const selectedModule = './index.ts?configured-live-test';
     const selected = await import(selectedModule);
     assert.equal(selected.data.isMock, false);
-    assert.equal(selected.data.isRunMock, true);
+    assert.equal(selected.data.isRunMock, false);
   } finally { Object.assign(config, saved); }
 });
 
@@ -471,4 +466,28 @@ test('native Intents signature encoding accepts wallet recovery ids and rejects 
   }
   assert.throws(() => intentSignature(`0x${'12'.repeat(64)}`), rejectsCode('wallet_signature'));
   assert.throws(() => intentSignature(`0x${'12'.repeat(64)}25`), rejectsCode('wallet_signature'));
+});
+
+
+test('top-up is hidden when unconfigured or for a NEAR session, without reads or wallet calls',async()=>{
+  const f=fixture(),before=f.requests.length;
+  assert.equal(await f.data.topUpAccount(ADDRESS),null);
+  const configured=createLiveData({...settings,topUpAddress:TOPUP},{fetch:f.fetcher,ethereum:f.provider});
+  assert.equal(await configured.topUpAccount({kind:'near',accountId:'alice.near',user:'near:mainnet:alice.near'}),null);
+  assert.equal(f.requests.length,before);assert.equal(f.walletCalls.length,0);
+});
+test('top-up reads bought total/minimum and validates amounts before signing',async()=>{
+  const f=fixture(),data=createLiveData({...settings,topUpAddress:TOPUP},{fetch:f.fetcher,ethereum:f.provider});
+  const read=await data.topUpAccount(ADDRESS);assert.equal(read?.paid,2_000_000n);assert.equal(read?.minimum,1_000_000n);
+  for(const amount of [0n,999999n])await assert.rejects(data.topUp(ADDRESS,amount),rejectsCode('amount'));
+  await assert.rejects(data.topUp(ADDRESS,f.state.wallet+1n),rejectsCode('balance'));assert.equal(f.walletCalls.length,0);
+});
+test('top-up approves exactly then pays self, confirms both, and stops if approval reverts',async()=>{
+  const f=fixture(),data=createLiveData({...settings,topUpAddress:TOPUP},{fetch:f.fetcher,ethereum:f.provider});
+  await data.topUp(ADDRESS,1_500_000n);
+  const approve=decodeFunctionData({abi:usdcAbi,data:f.transactions[0].data}),pay=decodeFunctionData({abi:topUpAbi,data:f.transactions[1].data});
+  assert.equal(approve.functionName,'approve');assert.deepEqual(approve.args,[getAddress(TOPUP),1_500_000n]);assert.equal(pay.functionName,'pay');assert.deepEqual(pay.args,[1_500_000n,getAddress(ADDRESS)]);assert.equal(f.receiptsRead.length,2);
+  const rejected=fixture();rejected.state.reverted=true;const blocked=createLiveData({...settings,topUpAddress:TOPUP},{fetch:rejected.fetcher,ethereum:rejected.provider});
+  await assert.rejects(blocked.topUp(ADDRESS,1_000_000n),rejectsCode('transaction_reverted'));assert.equal(rejected.transactions.length,1);
+  const allowed=fixture();allowed.state.allowance=2_000_000n;await createLiveData({...settings,topUpAddress:TOPUP},{fetch:allowed.fetcher,ethereum:allowed.provider}).topUp(ADDRESS,1_000_000n);assert.equal(allowed.transactions.length,1);assert.equal(decodeFunctionData({abi:topUpAbi,data:allowed.transactions[0].data}).functionName,'pay');
 });

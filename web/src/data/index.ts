@@ -5,6 +5,7 @@ import { createMockData } from './mock.ts';
 
 const settings = liveConfig();
 export const data = settings ? createLiveData(settings) : createMockData();
+export { PURCHASE_NOTICE } from './types.ts';
 export { DataError } from './errors.ts';
 export type * from './types.ts';
 

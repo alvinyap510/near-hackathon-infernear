@@ -1,9 +1,9 @@
 import { useRef, type KeyboardEvent } from 'react';
-import type { Address } from '../data/index.ts';
 import { shortHex } from '../data/money.ts';
-import { SealGlyph } from './ui.tsx';
+import { SealGlyph, ChainBadge } from './ui.tsx';
 
 export const TABS = [
+  { id: 'vaults', label: 'Vaults' },
   { id: 'account', label: 'Account' },
   { id: 'keys', label: 'API keys' },
   { id: 'try', label: 'Try the API' },
@@ -28,8 +28,12 @@ export function Header({
   tab,
   onTab,
   onConnect,
+  onDisconnect,
+  chainName = 'Base',
 }: {
-  address: Address | null;
+  address: string | null;
+  chainName?: 'Base' | 'NEAR';
+  onDisconnect?: () => void;
   tab: Tab;
   onTab: (t: Tab) => void;
   /** Opens the wallet chooser; without it the header shows "Not connected". */
@@ -53,12 +57,11 @@ export function Header({
         Skip to content
       </a>
       <div className="header-inner">
-        <a className="brand" href="#account" aria-label="InferNear home">
+        <a className="brand" href="#vaults" aria-label="InferNear home">
           <SealGlyph size={18} />
           <span className="brand-word">InferNear</span>
         </a>
-        {address && (
-          <nav className="tabs" aria-label="Dashboard">
+        <nav className="tabs" aria-label="Dashboard">
             {TABS.map((t, i) => (
               <a
                 key={t.id}
@@ -74,17 +77,16 @@ export function Header({
               </a>
             ))}
           </nav>
-        )}
         <div className="wallet">
           {address ? (
             <>
-              <span className="chip net">
-                <span className="net-dot" aria-hidden="true" /> Base
-              </span>
+              <ChainBadge name={chainName} />
               <span className="chip addr" title={address}>
-                <span className="avatar" aria-hidden="true" style={{ ['--h' as string]: parseInt(address.slice(2, 5), 16) % 360 }} />
+                <span className="avatar" aria-hidden="true" style={{ ['--h' as string]: (parseInt(address.slice(2, 5), 16) || 0) % 360 }} />
                 {shortHex(address)}
               </span>
+              {onConnect && <button type="button" className="btn ghost" onClick={onConnect}>Switch wallet</button>}
+              {onDisconnect && <button type="button" className="btn ghost" onClick={onDisconnect}>Disconnect</button>}
             </>
           ) : onConnect ? (
             <button type="button" className="btn primary header-connect" onClick={onConnect}>

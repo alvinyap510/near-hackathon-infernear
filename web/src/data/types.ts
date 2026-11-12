@@ -69,6 +69,9 @@ export type Overview = {
   credits: CreditAccount;
 };
 
+export type TopUpAccount = { minimum: bigint; paid: bigint; paidTotal: bigint; walletBalance: bigint; allowance: bigint; token: Address };
+export const PURCHASE_NOTICE = "This is a purchase, not a deposit. The USDC goes to InferNear and cannot be redeemed.";
+
 export type TxResult = { txHash: string };
 
 /** Single-use EIP-4361 proof, consumed by one key action; never a session. */
@@ -119,7 +122,7 @@ export type ReplyVerification = {
 };
 
 /** The quickstart's call, made from the browser with the user's key. */
-export type RunRequest = { key: string; model: Model; prompt: string; maxTokens: number };
+export type RunRequest = { key: string; model: Model; prompt: string; maxTokens: number; mode?: 'standard' | 'private' };
 
 export type RunEvent =
   | { kind: 'attested'; attestation: Attestation }
@@ -129,8 +132,9 @@ export type RunEvent =
 export type RunResult = {
   text: string;
   completionId: string;
-  attestation: Attestation;
-  reply: ReplyVerification;
+  mode?: 'standard' | 'private';
+  attestation?: Attestation;
+  reply?: ReplyVerification;
   receipt: Receipt;
   /** Worst-case micro-USD reserved at admission, using that call's price snapshot. */
   reservation: bigint;
@@ -150,6 +154,10 @@ export type BridgeQuote = {
   /** `dry: true` quotes carry no deposit address. */
   dry: boolean;
   isMock: boolean;
+  minAmountOut?: bigint;
+  deadline?: string;
+  originToken?: Address;
+  sendDisabledReason?: string;
 };
 
 export type RheaDirection = 'deposit' | 'withdraw';
@@ -172,6 +180,8 @@ export type RheaSwapStatus = { status: string; terminal: boolean; isMock: boolea
 export interface DashboardData {
   readonly isMock: boolean;
   readonly isRunMock: boolean;
+  topUpAccount(session: SessionInput): Promise<TopUpAccount | null>;
+  topUp(session: SessionInput, assets: bigint): Promise<TxResult>;
   connect(): Promise<Address>;
   walletOptions(): Promise<WalletOption[]>;
   connectWallet(id: string): Promise<Session>;

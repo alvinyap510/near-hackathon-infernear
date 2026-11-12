@@ -1,11 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { ErrorNote, Spinner, errorText, tokenAmount } from '../components/ui.tsx';
-import { data, type Address, type BridgeQuote, type Chain } from '../data/index.ts';
+import { AssetBadge, ChainBadge, ErrorNote, Spinner, errorText, tokenAmount } from '../components/ui.tsx';
+import { data, type Session, type BridgeQuote, type Chain } from '../data/index.ts';
 import { parseUsdc, shortHex } from '../data/money.ts';
 
 const USDC = { address: '', symbol: 'USDC', decimals: 6 } as const;
 
-export function Bridge({ address, onDeposit }: { address: Address; onDeposit: () => void }) {
+export function Bridge({ session, onDeposit }: { session: Extract<Session,{kind:'evm'}>; onDeposit: () => void }) {
+  const address=session.address;
   const [chains, setChains] = useState<Chain[]>([]);
   const [from, setFrom] = useState('');
   const [input, setInput] = useState('250');
@@ -17,7 +18,7 @@ export function Bridge({ address, onDeposit }: { address: Address; onDeposit: ()
     void data.bridgeChains().then((list) => {
       setChains(list);
       setFrom(list[0]?.id ?? '');
-    });
+    }).catch(e=>setError(errorText(e)));
   }, []);
 
   const amount = parseUsdc(input);
@@ -70,7 +71,7 @@ export function Bridge({ address, onDeposit }: { address: Address; onDeposit: ()
                 <span className="field-k">Amount</span>
                 <span className={`input-wrap ${input !== '' && amount === null ? 'bad' : ''}`}>
                   <input inputMode="decimal" value={input} onChange={(e) => { setInput(e.target.value); setQuote(null); }} />
-                  <span className="unit">USDC</span>
+                  <span className="unit"><AssetBadge symbol="USDC"/></span>
                 </span>
               </label>
             </div>
@@ -78,7 +79,7 @@ export function Bridge({ address, onDeposit }: { address: Address; onDeposit: ()
               <span className="field-k">To, on Base</span>
               <span className="input-wrap readonly">
                 <code>{address}</code>
-                <span className="unit">you</span>
+                <span className="unit"><ChainBadge name="Base"/></span>
               </span>
             </div>
             <button type="submit" className="btn primary block" disabled={busy || !from || amount === null || amount === 0n}>
@@ -92,13 +93,13 @@ export function Bridge({ address, onDeposit }: { address: Address; onDeposit: ()
             <div className="quote" role="status">
               <dl className="kv">
                 <div>
-                  <dt>You send</dt>
+                  <dt>You send <AssetBadge symbol="USDC"/></dt>
                   <dd>
-                    {tokenAmount(quote.amountIn, USDC)} on {chainName(quote.fromChain)}
+                    {tokenAmount(quote.amountIn, USDC)} <ChainBadge name={chainName(quote.fromChain)}/>
                   </dd>
                 </div>
                 <div>
-                  <dt>You receive</dt>
+                  <dt>You receive <ChainBadge name="Base"/></dt>
                   <dd>
                     <strong>≈ {tokenAmount(quote.amountOut, USDC)}</strong> on Base
                   </dd>
@@ -114,8 +115,10 @@ export function Bridge({ address, onDeposit }: { address: Address; onDeposit: ()
                   <dd>about {quote.etaSeconds} s</dd>
                 </div>
               </dl>
+              <button type="button" className="btn outline block" disabled>Send USDC · not available here yet</button>
+              <p className="fineprint">{quote.sendDisabledReason??'Funding is disabled in this release; no funds have moved.'}</p>
               {quote.dry && (
-                <p className="fineprint">{quote.isMock ? 'Mock dry-run quote: amounts and timing are simulated; no funds can be sent.' : 'Dry-run quote: it shows the price but issues no deposit address, so nothing can be sent yet.'}</p>
+                <p className="fineprint">{quote.isMock ? 'Mock dry-run quote: amounts and timing are simulated; no funds can be sent.' : 'Live 1Click dry quote: price and timing come from 1Click. No deposit address was requested and no funds can be sent from this panel.'}</p>
               )}
             </div>
           )}
