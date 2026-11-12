@@ -60,7 +60,7 @@ A fourth shape, staking with claimable rewards, is built and tested (`StakingRew
 Prerequisites: Node 24.22.1+, Foundry (Forge 1.5.1), rustup Rust 1.97.1 with the `wasm32-unknown-unknown` target, a C/C++ toolchain and CMake. Each step needs network access once to install dependencies.
 
 ```sh
-# API relay: gateway + keeper (41 tests, then an end-to-end demo on fixtures)
+# API relay: gateway + keeper (42 tests, then an end-to-end demo on fixtures)
 cd relay && npm ci --ignore-scripts && npm test && npm run demo && cd ..
 
 # Dashboard (36 tests, production build); `npm run dev` serves it on mock data
@@ -111,12 +111,13 @@ All installed through package managers at pinned versions; no templates or pre-e
 | Component | Libraries |
 |---|---|
 | Base vaults | OpenZeppelin Contracts 5.4, Aave v3 origin 3.6, Aave address book, forge-std (tests) |
-| NEAR contracts | near-sdk and near-contract-standards 5.30; near-workspaces, proptest and tokio (tests) |
+| NEAR contracts | near-sdk 5.30; near-contract-standards, near-workspaces, proptest and tokio (tests) |
 | Relay and NEAR scripts | viem, near-api-js; TypeScript (type checks) |
 | Dashboard | React 19, viem, @scure/base, Vite, Fontsource fonts (Hanken Grotesk, Martian Mono, Instrument Serif) |
+| Deployment | Docker images `node:24.22.1-bookworm-slim` and `cloudflare/cloudflared:2026.10.7` |
 | Live SDK probe (optional) | NEAR AI's official [inference SDK](https://github.com/nearai/inference-sdk), installed outside the repo |
 
-External services used at runtime: NEAR AI Cloud, NEAR Intents 1Click, Rhea Lend, Aave v3, Pendle, Chainlink price feeds, and Base and NEAR RPC endpoints.
+External services used at runtime: NEAR AI Cloud, NEAR Intents 1Click, Rhea Lend, Aave v3, Pendle, Chainlink price feeds, and Base and NEAR RPC endpoints. The documented deployment adds a Cloudflare Tunnel in front of the relay and Vercel for the dashboard.
 
 ## Prior art
 
