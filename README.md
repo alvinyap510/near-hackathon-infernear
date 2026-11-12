@@ -27,6 +27,67 @@ Built at the NEAR HACKATHON (1–14 Nov 2026).
 
 Each vault has a deposit cap of about $10,000 (10,000 USDC, 5 ETH of principal, 10,000 USD of PT principal, 10,000 USDC) and a small cushion donated at deployment that absorbs rounding.
 
+## NEAR Intents: every chain's yield, routed to NEAR AI
+
+**This is the point of InferNear.** NEAR AI Cloud's private models are paid for on NEAR, but most people's assets and wallets are somewhere else. InferNear uses **NEAR Intents (the 1Click API)** as the rail between the two, so a user on another chain funds private inference without ever holding a NEAR account, a NEAR key or NEAR tokens.
+
+```mermaid
+flowchart LR
+  subgraph USER["Where the user already is"]
+    O["USDC on another chain"]
+    W["EVM wallet on Base"]
+  end
+  I{{"NEAR Intents (1Click)"}}
+  subgraph NEARSIDE["NEAR"]
+    RV["Rhea USDC vault"]
+    L["Credit ledger"]
+    AI["NEAR AI Cloud: private TEE models"]
+    T["InferNear treasury"]
+  end
+  BV["Base vaults"]
+  O -->|"1. bring USDC to Base"| I
+  I --> W
+  W -->|"2. deposit, signed with the EVM wallet"| I
+  I --> RV
+  RV -->|"3. exit to the user's own Base address"| I
+  W --> BV
+  BV -->|"yield only"| L
+  RV -->|"yield only"| L
+  L -->|"credits pay for calls"| AI
+  BV -.->|"4. collected yield"| I
+  I -.-> T
+```
+
+| # | What NEAR Intents carries | How | Where in this repo | Status on 12 Nov 2026 |
+|---|---|---|---|---|
+| 1 | USDC from another chain to the user's own Base address, ready to deposit | 1Click quote, then one transfer on the origin chain | `web/src/screens/Bridge.tsx` | Console screen is built; its quote is still a labelled simulation |
+| 2 | Base USDC into the Rhea USDC vault **on NEAR** | 1Click delivers native USDC to the vault with `ft_transfer_call`, carrying `{"user":"eip155:8453:<address>"}` so the vault records the principal under the user's EVM address | `web/src/data/rhea.ts`, `contracts/near/rhea-vault/src/lib.rs` (`ft_on_transfer`) | Built and tested on fixtures; the live route returns quotes (dry run below); no funded deposit yet, and the vault is paused |
+| 3 | The user's principal back from NEAR to their own Base address | The user signs a withdrawal with their EVM wallet (ERC-191); the vault pays out through `intents.near` to that same address, and a second signed intent moves it to Base. The relay submits both, so the user pays no NEAR gas | `contracts/near/rhea-vault/src/lib.rs` (`request_withdraw`), `relay/src/gateway/signed.ts` (`/rhea/withdraw`, `/intents/execute`) | Built and tested on fixtures; not yet run with funds |
+| 4 | InferNear's collected yield from Base to its treasury on NEAR | The keeper asks 1Click for a quote and sends the yield token to the deposit address once it is worth bridging | `relay/src/adapters/evm.ts` (`bridgeToken`) | Built and tested; switched off in this deployment (`ONECLICK_TOKENS=[]`) |
+
+What that buys the user:
+
+- **No NEAR account anywhere.** An EVM signature is the only thing a Base user ever produces: for deposits, for withdrawals from the NEAR vault, and for API keys.
+- **Principal comes home.** Exits from the NEAR vault can only be paid to the EVM address that owns the position; the relay cannot redirect them.
+- **One credit balance.** Yield from every vault, on Base or on NEAR, lands on the same NEAR ledger and is spent on NEAR AI Cloud.
+
+Check the live route yourself. This asks NEAR Intents for a dry-run quote of 2 USDC from Base into the vault; it needs no key and sends nothing (it is a call to an outside service, so it can be unavailable; the address is InferNear's public yield recipient, standing in for a user's):
+
+```sh
+curl -s https://1click.chaindefuser.com/v0/quote -H 'content-type: application/json' -d '{
+  "dry": true, "swapType": "EXACT_INPUT", "slippageTolerance": 100,
+  "originAsset": "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+  "destinationAsset": "nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
+  "depositType": "ORIGIN_CHAIN", "recipientType": "DESTINATION_CHAIN", "refundType": "ORIGIN_CHAIN",
+  "amount": "2000000", "recipient": "rhea.infernear-ai.near",
+  "refundTo": "0xdf26ee9d5428ca51a7f9fa26c88bad8367423654",
+  "customRecipientMsg": "{\"user\":\"eip155:8453:0xdf26ee9d5428ca51a7f9fa26c88bad8367423654\"}",
+  "deadline": "2026-12-31T00:00:00.000Z"
+}'
+```
+
+On 12 Nov 2026 it quoted about 1.9997 USDC delivered in about 35 seconds. The offline tests that pin this behaviour are in `web/src/data/live.test.ts` (route binding, funded quote, signed withdrawal and exit), `relay/test/signed.test.ts` (the relay refuses anything but the user's own signed request) and `contracts/near/rhea-vault/src/tests.rs`.
+
 ## How it works
 
 ```mermaid
@@ -79,16 +140,16 @@ A fourth shape, staking with claimable rewards, is built and tested (`StakingRew
 Prerequisites: Node 24.22.1+, Foundry (Forge 1.5.1), rustup Rust 1.97.1 with the `wasm32-unknown-unknown` target, a C/C++ toolchain and CMake. Each step needs network access once to install dependencies.
 
 ```sh
-# API relay: gateway + keeper (49 tests, then an end-to-end demo on fixtures)
+# API relay: gateway + keeper (63 tests, then an end-to-end demo on fixtures)
 cd relay && npm ci --ignore-scripts && npm test && npm run demo && cd ..
 
-# Dashboard (37 tests, production build); `npm run dev` serves it on mock data unless the live `VITE_*` settings are filled in
+# Dashboard (45 tests, production build); `npm run dev` serves it on mock data unless the live `VITE_*` settings are filled in
 cd web && npm ci --ignore-scripts && npm test && npm run build && cd ..
 
-# Base vaults (77 offline tests, including invariant fuzzing)
+# Base vaults and the credit top-up contract (85 offline tests, including invariant fuzzing)
 cd contracts/evm && npm ci --ignore-scripts && forge build && forge test --offline && cd ../..
 
-# NEAR credit ledger and Rhea vault (51 tests)
+# NEAR credit ledger and Rhea vault (58 tests)
 cd contracts/near && cargo fetch --locked && cargo test --locked --workspace && cd ../..
 ```
 
