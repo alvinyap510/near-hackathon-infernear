@@ -2,12 +2,14 @@ use crate::*;
 use near_sdk::serde::de::DeserializeOwned;
 use std::collections::BTreeMap;
 
-const TRANSFER_GAS: u64 = 40;
+const TRANSFER_GAS: u64 = 40; // EVM Intents transfer-call, including receiver/resolver.
+const PLAIN_TRANSFER_GAS: u64 = 20;
+const WITHDRAW_GAS: u64 = 40;
 const RESOLVE_GAS: u64 = 20;
 const RESOLVE_RECORD_GAS: u64 = 8;
 const LOCAL_GAS: u64 = 20;
 const SEND_OVERHEAD_GAS: u64 = 8; // Receipt creation and joining, per send.
-const SUPPLY_GAS: u64 = 60;
+const SUPPLY_GAS: u64 = 40;
 // after_send must fund the supply transfer-call, its resolver and receipt creation.
 const SUPPLY_RESERVE_GAS: u64 = SUPPLY_GAS + RESOLVE_GAS + 2 * SEND_OVERHEAD_GAS;
 
@@ -92,11 +94,11 @@ impl RheaUsdcVault {
         }
         if self.cycle.withdraw > 0 {
             self.cycle.phase = 2;
-            let callback_gas = if self.can_supply() { 168 } else { 160 };
+            let callback_gas = if self.can_supply() { 136 } else { 156 };
             PromiseOrValue::Promise(call(&self.rhea,"simple_withdraw",near_sdk::serde_json::json!({
                 "token_id":self.usdc,"amount_with_inner_decimal":U128(self.cycle.withdraw.checked_mul(INTERNAL_SCALE).expect("validated Rhea units")),
                 "recipient_id":env::current_account_id()
-            }),1,60).then(self_callback("after_withdraw",callback_gas)))
+            }),1,WITHDRAW_GAS).then(self_callback("after_withdraw",callback_gas)))
         } else {
             self.send_or_supply()
         }
@@ -230,9 +232,16 @@ impl RheaUsdcVault {
                     0,
                 )
             };
+        // Principal queues use the 40 Tgas worst case even for a cheaper plain
+        // transfer. A no-queue plan can only send one 20 Tgas treasury transfer.
+        let send_gas = if self.can_supply() {
+            PLAIN_TRANSFER_GAS
+        } else {
+            TRANSFER_GAS
+        };
         let mut slots = (free_gas
             .saturating_sub(Gas::from_tgas(resolve_gas + local_gas + supply_reserve).as_gas())
-            / Gas::from_tgas(TRANSFER_GAS + record_gas + send_overhead).as_gas())
+            / Gas::from_tgas(send_gas + record_gas + send_overhead).as_gas())
             as usize;
         // Both principal queues must progress even under continuous exit traffic.
         let return_slot = usize::from(self.cycle.returns > 0);
@@ -286,7 +295,7 @@ impl RheaUsdcVault {
                     amount: out,
                     claim: node.amount,
                 });
-                promises.push(self.intents_transfer(&node.user, out));
+                promises.push(self.user_transfer(&node.user, out));
                 slots -= 1;
                 emit(
                     "cash_sent",
@@ -320,7 +329,7 @@ impl RheaUsdcVault {
                 amount: node.amount,
                 claim: 0,
             });
-            promises.push(self.intents_transfer(&node.user, node.amount));
+            promises.push(self.user_transfer(&node.user, node.amount));
             slots -= 1;
             emit(
                 "cash_sent",
@@ -345,7 +354,7 @@ impl RheaUsdcVault {
                 "ft_transfer",
                 near_sdk::serde_json::json!({"receiver_id":self.treasury,"amount":U128(paid)}),
                 1,
-                TRANSFER_GAS,
+                PLAIN_TRANSFER_GAS,
             ));
             emit(
                 "cash_sent",
@@ -373,14 +382,24 @@ impl RheaUsdcVault {
         self.cycle.sent[self.cycle.sent_len as usize] = sent;
         self.cycle.sent_len += 1;
     }
-    fn intents_transfer(&self, user: &str, amount: u128) -> Promise {
-        call(
-            &self.usdc,
-            "ft_transfer_call",
-            near_sdk::serde_json::json!({"receiver_id":self.intents,"amount":U128(amount),"msg":owner_address(user)}),
-            1,
-            TRANSFER_GAS,
-        )
+    fn user_transfer(&self, user: &str, amount: u128) -> Promise {
+        if let Some(account) = near_account(user) {
+            call(
+                &self.usdc,
+                "ft_transfer",
+                near_sdk::serde_json::json!({"receiver_id":account,"amount":U128(amount)}),
+                1,
+                PLAIN_TRANSFER_GAS,
+            )
+        } else {
+            call(
+                &self.usdc,
+                "ft_transfer_call",
+                near_sdk::serde_json::json!({"receiver_id":self.intents,"amount":U128(amount),"msg":owner_address(user)}),
+                1,
+                TRANSFER_GAS,
+            )
+        }
     }
     pub(crate) fn resolve_sends(&mut self) -> PromiseOrValue<bool> {
         if !self.busy || self.cycle.phase != 3 {
@@ -388,7 +407,17 @@ impl RheaUsdcVault {
         }
         for i in 0..self.cycle.sent_len as usize {
             let sent = self.cycle.sent[i];
-            let used = if sent.kind == TREASURY {
+            let node = match sent.kind {
+                RETURN => self.incoming.nodes.get(&sent.node),
+                EXIT => self.outgoing.nodes.remove(&sent.node),
+                TREASURY => None,
+                _ => unreachable!("private cycle record"),
+            };
+            let plain_transfer = sent.kind == TREASURY
+                || node
+                    .as_ref()
+                    .is_some_and(|node| near_account(&node.user).is_some());
+            let used = if plain_transfer {
                 if success(i as u64) { sent.amount } else { 0 }
             } else {
                 result::<U128>(i as u64).map_or(0, |used| used.0.min(sent.amount))
@@ -398,11 +427,7 @@ impl RheaUsdcVault {
             let mut user_id = None;
             let kind = match sent.kind {
                 RETURN => {
-                    let node = self
-                        .incoming
-                        .nodes
-                        .get(&sent.node)
-                        .expect("reserved return storage");
+                    let node = node.expect("reserved return storage");
                     user_id = Some(node.user.clone());
                     if refund > 0 {
                         self.totals.pending_in = self
@@ -426,11 +451,7 @@ impl RheaUsdcVault {
                     "return"
                 }
                 EXIT => {
-                    let node = self
-                        .outgoing
-                        .nodes
-                        .remove(&sent.node)
-                        .expect("reserved exit storage");
+                    let node = node.expect("reserved exit storage");
                     user_id = Some(node.user.clone());
                     self.totals.idle = self
                         .totals

@@ -11,13 +11,23 @@ use std::{
 };
 
 fn context(caller: &str, gas: u64, results: Vec<PromiseResult>, balance: NearToken) {
+    context_with_deposit(caller, gas, results, balance, 0);
+}
+fn context_with_deposit(
+    caller: &str,
+    gas: u64,
+    results: Vec<PromiseResult>,
+    balance: NearToken,
+    deposit: u128,
+) {
     let mut c = VMContextBuilder::new();
     c.current_account_id("vault.near".parse().unwrap())
         .predecessor_account_id(caller.parse().unwrap())
         .account_balance(balance)
         .storage_usage(env::storage_usage())
         .block_timestamp(10_000_000_000)
-        .prepaid_gas(Gas::from_tgas(gas));
+        .prepaid_gas(Gas::from_tgas(gas))
+        .attached_deposit(NearToken::from_yoctonear(deposit));
     testing_env!(
         c.build(),
         near_sdk::test_vm_config(),
@@ -40,6 +50,17 @@ fn rejected(f: impl FnOnce()) {
 }
 fn user(i: u64) -> String {
     format!("eip155:8453:0x{i:040x}")
+}
+fn mixed_user(i: u64) -> String {
+    if i.is_multiple_of(2) {
+        format!("near:mainnet:account{i}.near")
+    } else {
+        user(i)
+    }
+}
+fn native_withdraw(vault: &mut RheaUsdcVault, account: &str, amount: u128, deposit: u128) {
+    context_with_deposit(account, 300, vec![], NearToken::from_near(1000), deposit);
+    vault.withdraw(U128(amount));
 }
 fn vectors() -> Value {
     near_sdk::serde_json::from_str(include_str!("../test-vectors/withdrawals.json")).unwrap()
@@ -73,6 +94,7 @@ struct Model {
     liquidity: u128,
     treasury: u128,
     intents: BTreeMap<String, u128>,
+    near_paid: BTreeMap<String, u128>,
     withdraw_ok: bool,
     supply_used: u128,
     delivery_used: u128,
@@ -100,6 +122,7 @@ impl Model {
             liquidity: 1_000_000_000_000,
             treasury: 0,
             intents: BTreeMap::new(),
+            near_paid: BTreeMap::new(),
             withdraw_ok: true,
             supply_used: 10_000,
             delivery_used: 10_000,
@@ -110,7 +133,7 @@ impl Model {
     fn accept(&mut self, user: &str, amount: u128) {
         caller("usdc.near");
         let returned = self.vault.ft_on_transfer(
-            "router.near".parse().unwrap(),
+            near_account(user).unwrap_or_else(|| "router.near".parse().unwrap()),
             U128(amount),
             json!({"user":user}).to_string(),
         );
@@ -203,10 +226,20 @@ impl Model {
                             self.vault.outgoing.nodes.get(&sent.node)
                         }
                         .unwrap();
-                        let used = sent.amount * self.delivery_used / 10_000;
+                        let direct = near_account(&node.user).is_some();
+                        let used = if direct {
+                            sent.amount
+                        } else {
+                            sent.amount * self.delivery_used / 10_000
+                        };
                         self.cash -= used;
-                        *self.intents.entry(node.user).or_default() += used;
-                        results.push(ok(json!(used.to_string())));
+                        if direct {
+                            *self.near_paid.entry(node.user).or_default() += used;
+                            results.push(PromiseResult::Successful(vec![]));
+                        } else {
+                            *self.intents.entry(node.user).or_default() += used;
+                            results.push(ok(json!(used.to_string())));
+                        }
                     }
                 }
                 callback(self.callback_gas, results);
@@ -765,16 +798,23 @@ proptest::proptest! {
     #[test]
     fn cash_and_scaled_yield_conservation_across_cycles(gains in proptest::collection::vec(0u128..1000,1..16)) {
         let mut m=Model::new(7,1_000_000_000);
-        for i in 1..=3 {m.accept(&user(i),1_000_000);}
+        for i in 1..=3 {m.accept(&mixed_user(i),1_000_000);}
         m.cycle();let mut cumulative_gain=0u128;
         for gain in gains {
             m.supplied+=gain;cumulative_gain+=gain;m.cycle();
             m.cash_invariant();scaled_invariant(&m);
             proptest::prop_assert_eq!(m.treasury,cumulative_gain);
             proptest::prop_assert!(m.supplied+m.vault.totals.idle>=m.vault.totals.principal);
-            let credits:u128=(1..=3).map(|i|m.vault.position(user(i)).yield_credited.0).sum();
+            let credits:u128=(1..=3).map(|i|m.vault.position(mixed_user(i)).yield_credited.0).sum();
             proptest::prop_assert!(credits<=m.vault.totals.paid);
         }
+        for i in 1..=3 { m.claim(&mixed_user(i), 500_000); }
+        m.delivery_used=6000;
+        while !m.vault.outgoing.first(1).is_empty() { m.cycle(); }
+        m.cash_invariant();scaled_invariant(&m);
+        let delivered:u128=m.intents.values().chain(m.near_paid.values()).sum();
+        proptest::prop_assert_eq!(m.cash+m.supplied+m.treasury+delivered,3_000_007+cumulative_gain);
+        proptest::prop_assert_eq!(m.near_paid.get(&mixed_user(2)),Some(&500_000));
     }
 }
 
@@ -1122,7 +1162,7 @@ fn fresh_interest_and_newly_activated_deposit_pay_then_supply_in_one_cycle() {
     assert_eq!(m.vault.position(first.clone()).yield_credited, U128(1));
     assert_eq!(m.vault.position(newcomer.clone()).yield_credited, U128(0));
     assert_eq!(m.vault.cycle.phase, 3);
-    assert_eq!(m.callback_gas, 106); // Resolve payment, then fund supply + resolver.
+    assert_eq!(m.callback_gas, 86); // Resolve payment, then fund supply + resolver.
     m.resolve();
     assert_eq!(m.treasury, 1);
     assert_eq!(m.vault.unpaid(), U128(0));
@@ -1196,10 +1236,10 @@ fn treasury_failure_supplies_restored_cash_without_marking_yield_paid() {
     m.start();
     m.measure();
     assert_eq!(m.vault.cycle.phase, 2);
-    assert_eq!(m.callback_gas, 168);
+    assert_eq!(m.callback_gas, 136);
     m.resolve();
     assert_eq!(m.vault.cycle.phase, 3);
-    assert_eq!(m.callback_gas, 106);
+    assert_eq!(m.callback_gas, 86);
     m.send_failed = true;
     m.resolve();
     assert_eq!(m.vault.cycle.phase, 4);
@@ -1207,7 +1247,7 @@ fn treasury_failure_supplies_restored_cash_without_marking_yield_paid() {
     assert_eq!(m.vault.unpaid(), U128(1));
     assert_eq!(m.vault.paid_total(), U128(0));
     let acc = m.vault.totals.acc;
-    callback(106, vec![PromiseResult::Failed]);
+    callback(86, vec![PromiseResult::Failed]);
     assert!(matches!(m.vault.after_send(), PromiseOrValue::Value(false)));
     assert_eq!(m.vault.cycle.supply, 1);
     m.send_failed = false;
@@ -1287,4 +1327,218 @@ fn ten_activations_then_withdraw_pay_and_supply_fit_scheduled_callback_gas() {
     assert_eq!(m.vault.idle(), U128(0));
     assert_eq!(m.supplied, 131_000_000);
     scaled_invariant(&m);
+}
+
+#[test]
+fn user_namespaces_accept_near_named_and_implicit_accounts_only_in_mainnet_namespace() {
+    assert!(valid_user("near:mainnet:alice.near"));
+    assert!(valid_user(&format!("near:mainnet:{}", "a".repeat(64))));
+    assert!(valid_user(&user(1)));
+    for invalid in [
+        "near:testnet:alice.near",
+        "near:mainnet:",
+        "near:mainnet:Alice.near",
+        "near:mainnet:alice..near",
+        "near:mainnet:alice.near:",
+        "near:mainnet:a",
+    ] {
+        assert!(!valid_user(invalid), "{invalid}");
+    }
+    assert!(!valid_evm_user("near:mainnet:alice.near"));
+}
+
+#[test]
+fn near_deposit_binds_owner_to_sender_and_allocates_nothing_on_mismatch() {
+    let mut m = Model::new(0, 1_000_000);
+    caller("usdc.near");
+    assert_eq!(
+        m.vault.ft_on_transfer(
+            "mallory.near".parse().unwrap(),
+            U128(100),
+            json!({"user":"near:mainnet:alice.near"}).to_string()
+        ),
+        U128(100)
+    );
+    assert_eq!(m.vault.holders.len(), 0);
+    assert_eq!(m.vault.totals.pending_in, 0);
+    let implicit = format!("near:mainnet:{}", "a".repeat(64));
+    m.accept(&implicit, 100);
+    m.accept(&user(1), 100); // An arbitrary router still deposits for EVM users.
+    m.cycle();
+    assert_eq!(m.vault.position(implicit.clone()).principal, U128(100));
+    native_withdraw(&mut m.vault, &"a".repeat(64), 50, 1);
+    m.cycle();
+    assert_eq!(m.near_paid[&implicit], 50);
+    m.cash_invariant();
+}
+
+#[test]
+fn near_lifecycle_attributes_yield_and_pays_exit_by_plain_ft_transfer() {
+    let mut m = Model::new(10, 1_000_000);
+    let owner = "near:mainnet:alice.near".to_string();
+    m.accept(&owner, 100);
+    m.cycle();
+    m.supplied += 20;
+    m.cycle();
+    assert_eq!(m.vault.position(owner.clone()).yield_credited, U128(20));
+    assert_eq!(m.treasury, 20);
+    native_withdraw(&mut m.vault, "alice.near", 40, 1);
+    assert_eq!(m.vault.nonce(owner.clone()), 1);
+    let event: Value = near_sdk::serde_json::from_str(
+        get_logs()
+            .last()
+            .unwrap()
+            .strip_prefix("EVENT_JSON:")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        event["data"][0],
+        json!({"user":owner,"amount":"40","nonce":0})
+    );
+    m.start();
+    m.measure();
+    m.resolve();
+    let payout = get_created_receipts()
+        .into_iter()
+        .flat_map(|r| r.actions)
+        .find_map(|action| {
+            if let near_sdk::mock::MockAction::FunctionCallWeight {
+                method_name,
+                args,
+                attached_deposit,
+                prepaid_gas,
+                ..
+            } = action
+                && method_name == b"ft_transfer"
+            {
+                Some((
+                    near_sdk::serde_json::from_slice::<Value>(&args).unwrap(),
+                    attached_deposit,
+                    prepaid_gas,
+                ))
+            } else {
+                None
+            }
+        })
+        .expect("plain USDC payout");
+    assert_eq!(payout.0, json!({"receiver_id":"alice.near","amount":"40"}));
+    assert_eq!(payout.1, NearToken::from_yoctonear(1));
+    assert_eq!(payout.2, Gas::from_tgas(20));
+    m.finish();
+    assert_eq!(m.near_paid[&owner], 40);
+    assert!(m.intents.is_empty());
+    assert_eq!(m.vault.position(owner).principal, U128(60));
+    scaled_invariant(&m);
+}
+
+#[test]
+fn native_withdrawal_requires_one_yocto_position_amount_and_separate_identity() {
+    let mut m = Model::new(0, 1_000_000);
+    let owner = "near:mainnet:alice.near".to_string();
+    m.accept(&owner, 100);
+    m.accept(&user(1), 100);
+    m.cycle();
+    for deposit in [0, 2] {
+        rejected(|| native_withdraw(&mut m.vault, "alice.near", 10, deposit));
+    }
+    for amount in [0, 101] {
+        rejected(|| native_withdraw(&mut m.vault, "alice.near", amount, 1));
+    }
+    rejected(|| native_withdraw(&mut m.vault, "bob.near", 10, 1));
+    let evm_account = format!("0x{:040x}", 1);
+    rejected(|| native_withdraw(&mut m.vault, &evm_account, 10, 1));
+    assert_eq!(m.vault.position(user(1)).principal, U128(100));
+    caller("relay.near");
+    let message = json!({"action":"withdraw","network":"mainnet","vault":"vault.near","user":owner,"amount":"10","nonce":0,"expires_at":1000}).to_string();
+    rejected(|| m.vault.request_withdraw(message, String::new()));
+    assert_eq!(m.vault.nonce(owner.clone()), 0);
+    native_withdraw(&mut m.vault, "alice.near", 80, 1);
+    native_withdraw(&mut m.vault, "alice.near", 30, 1);
+    assert_eq!(m.vault.nonce(owner.clone()), 2);
+    assert_eq!(m.vault.outgoing.first(10).len(), 1);
+    assert_eq!(m.vault.position(owner.clone()).pending_out, Some(U128(30)));
+    m.start();
+    rejected(|| native_withdraw(&mut m.vault, "alice.near", 20, 1));
+    m.measure();
+    m.finish();
+    assert_eq!(m.near_paid[&owner], 30);
+    scaled_invariant(&m);
+}
+
+#[test]
+fn failed_near_exit_restores_principal_and_failed_return_requeues_full_amount() {
+    let mut m = Model::new(0, 100);
+    let owner = "near:mainnet:alice.near".to_string();
+    m.accept(&owner, 100);
+    m.cycle();
+    native_withdraw(&mut m.vault, "alice.near", 40, 1);
+    m.send_failed = true;
+    m.cycle();
+    assert_eq!(m.vault.position(owner.clone()).principal, U128(100));
+    assert_eq!(m.vault.position(owner.clone()).pending_out, None);
+    assert_eq!(m.vault.idle(), U128(40));
+    m.send_failed = false;
+    native_withdraw(&mut m.vault, "alice.near", 40, 1);
+    m.cycle();
+    assert_eq!(m.near_paid[&owner], 40);
+    assert_eq!(m.vault.position(owner.clone()).principal, U128(60));
+    // The remaining cap admits only 40; this whole 50-unit deposit must return.
+    let returned = "near:mainnet:bob.near".to_string();
+    m.accept(&returned, 50);
+    m.send_failed = true;
+    m.cycle();
+    assert_eq!(m.vault.position(returned.clone()).pending_in, U128(50));
+    assert_eq!(m.vault.position(returned.clone()).principal, U128(0));
+    m.send_failed = false;
+    m.cycle();
+    assert_eq!(m.near_paid[&returned], 50);
+    assert_eq!(m.vault.position(returned).pending_in, U128(0));
+    scaled_invariant(&m);
+}
+
+#[test]
+fn legacy_holderless_state_deserializes_and_supplies_cushion_without_migration() {
+    let bytes = include_bytes!("../test-vectors/legacy-idle-state.borsh");
+    let mut m = Model::new(1_000_000, 1_000_000_000);
+    m.vault = near_sdk::borsh::from_slice(bytes).expect("pre-change deployed layout");
+    assert_eq!(near_sdk::borsh::to_vec(&m.vault).unwrap(), bytes);
+    assert_eq!(m.vault.holders.len(), 0);
+    assert_eq!(m.vault.min_deposit, 1_000_000);
+    assert_eq!(m.vault.idle(), U128(1_000_000));
+    assert!(!m.vault.busy());
+    m.cycle();
+    assert_eq!(m.supplied, 1_000_000);
+    assert_eq!(m.vault.idle(), U128(0));
+}
+
+#[test]
+fn measurement_views_have_mainnet_margin_and_root_callback_budget_fits_300_tgas() {
+    let mut m = Model::new(1_000_000, 1_000_000_000);
+    m.start();
+    let calls: Vec<_> = get_created_receipts()
+        .into_iter()
+        .flat_map(|r| r.actions)
+        .filter_map(|action| {
+            if let near_sdk::mock::MockAction::FunctionCallWeight {
+                method_name,
+                prepaid_gas,
+                ..
+            } = action
+            {
+                Some((
+                    String::from_utf8(method_name).unwrap(),
+                    prepaid_gas.as_gas(),
+                ))
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert!(calls.contains(&("get_asset".into(), 20_000_000_000_000)));
+    assert!(calls.contains(&("get_account".into(), 20_000_000_000_000)));
+    assert!(calls.contains(&("after_measure".into(), 225_000_000_000_000)));
+    assert!(env::used_gas() < Gas::from_tgas(300));
+    m.measure();
+    m.finish();
 }

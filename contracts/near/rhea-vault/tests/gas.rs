@@ -28,7 +28,55 @@ async fn invoke(
         "{method} had failed receipts: {:?}",
         outcome.failures()
     );
+    if method == "run" {
+        assert_measurements(&outcome)?;
+    }
     Ok(outcome)
+}
+fn assert_measurements(outcome: &near_workspaces::result::ExecutionFinalResult) -> Result<()> {
+    ensure!(
+        outcome
+            .logs()
+            .iter()
+            .any(|log| log.contains("cycle_measured")),
+        "measure step did not succeed"
+    );
+    for method in ["get_account", "get_asset"] {
+        let (receipt, view) = outcome
+            .receipt_outcomes()
+            .iter()
+            .find_map(|receipt| {
+                receipt
+                    .logs
+                    .iter()
+                    .filter_map(|log| log.strip_prefix("MOCK_VIEW:"))
+                    .find_map(|log| {
+                        let value: Value = near_sdk::serde_json::from_str(log).ok()?;
+                        (value["method"] == method).then_some((receipt, value))
+                    })
+            })
+            .expect("heavy protocol view receipt");
+        ensure!(
+            view["prepaid"] == 20_000_000_000_000u64,
+            "view allowance drifted"
+        );
+        if method == "get_asset" {
+            ensure!(
+                view["bytes"].as_u64().unwrap() >= 1372,
+                "asset fixture smaller than observed mainnet response"
+            );
+            ensure!(
+                receipt.gas_burnt.as_gas() > Gas::from_tgas(5).as_gas(),
+                "fixture would miss the original 5 Tgas bug"
+            );
+        }
+        println!(
+            "view {method}: gas_burnt={}, payload_bytes={}, allowance_tgas=20",
+            receipt.gas_burnt.as_gas(),
+            view["bytes"]
+        );
+    }
+    Ok(())
 }
 async fn fixture(
     worker: &Worker<Sandbox>,
@@ -512,7 +560,7 @@ async fn interest_payment_supplies_new_cash_and_refunds_in_the_same_300_tgas_run
         })
         .expect("treasury resolver");
     println!(
-        "treasury/supply resolver: gas_burnt={}, reserved_tgas=106",
+        "treasury/supply resolver: gas_burnt={}, reserved_tgas=86",
         resolver.gas_burnt.as_gas()
     );
     let _ = invoke(
@@ -527,5 +575,229 @@ async fn interest_payment_supplies_new_cash_and_refunds_in_the_same_300_tgas_run
     ensure!(token_balance(&token, unregistered.id()).await? == 20_000_000);
     ensure!(failing.view("unpaid").await?.json::<String>()? == "0");
     assert_cash(&failing, &token, &failed_users).await?;
+    Ok(())
+}
+
+async fn run_with_one_token_failure(
+    root: &Account,
+    vault: &Contract,
+    token: &Contract,
+) -> Result<near_workspaces::result::ExecutionFinalResult> {
+    let outcome = root
+        .call(vault.id(), "run")
+        .args_json(json!({}))
+        .gas(Gas::from_tgas(300))
+        .transact()
+        .await?;
+    ensure!(outcome.is_success(), "resolver did not finish");
+    ensure!(
+        outcome.failures().len() == 1 && outcome.failures()[0].executor_id == *token.id(),
+        "unexpected failure: {:?}",
+        outcome.failures()
+    );
+    assert_measurements(&outcome)?;
+    Ok(outcome)
+}
+
+#[tokio::test]
+async fn mainnet_sized_views_and_near_wallet_deposits_withdrawals_and_refunds() -> Result<()> {
+    let worker = near_workspaces::sandbox().await?;
+    let root = worker.root_account()?;
+    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target");
+    let wasm =
+        std::fs::read(base.join("wasm32-unknown-unknown/release/infernear_rhea_vault.wasm"))?;
+    let mock = std::fs::read(
+        base.join("mock/wasm32-unknown-unknown/release/infernear_rhea_test_mock.wasm"),
+    )?;
+    let token = fixture(&worker, &mock, "token", None).await?;
+    let rhea = fixture(&worker, &mock, "rhea", Some(token.id())).await?;
+    let intents = fixture(&worker, &mock, "intents", Some(token.id())).await?;
+    let treasury = worker.dev_create_account().await?;
+    let alice = worker.dev_create_account().await?;
+    let carol = worker.dev_create_account().await?;
+    let bob = worker.dev_create_account().await?;
+    let id: AccountId = "vault.near".parse()?;
+    let key = SecretKey::from_seed(KeyType::ED25519, "synthetic-native-vault");
+    let mut details = AccountDetailsPatch::default();
+    details.balance = Some(NearToken::from_near(100));
+    worker
+        .patch(&id)
+        .account(details)
+        .access_key(key.public_key(), AccessKey::full_access())
+        .code(&wasm)
+        .transact()
+        .await?;
+    let vault = Contract::from_secret_key(id, key, &worker);
+    init_vault(&root, &vault, &token, &rhea, &intents, &treasury, 2_000_000).await?;
+    let users: Vec<String> = [&alice, &carol, &bob]
+        .iter()
+        .map(|a| format!("near:mainnet:{}", a.id()))
+        .collect();
+    let data: Value =
+        near_sdk::serde_json::from_str(include_str!("../test-vectors/withdrawals.json"))?;
+    let signed = data["vectors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["name"] == "v27")
+        .unwrap();
+    let message: Value = near_sdk::serde_json::from_str(signed["message"].as_str().unwrap())?;
+    let evm_user = message["user"].as_str().unwrap().to_string();
+    let evm_claim = message["amount"].as_str().unwrap().parse::<u128>()?;
+    let mut all_users = users.clone();
+    all_users.push(evm_user.clone());
+    for (account, amount) in [
+        (&root, 1_000_000u128),
+        (&alice, 3_000_000),
+        (&carol, 1_000_000),
+        (&bob, 2_000_000),
+    ] {
+        let _ = invoke(
+            &root,
+            &token,
+            "mint",
+            json!({"account_id":account.id(),"amount":amount.to_string()}),
+            0,
+        )
+        .await?;
+    }
+    // A full response really costs more than the old 5 Tgas allowance.
+    let failed_view = root
+        .call(rhea.id(), "get_asset")
+        .args_json(json!({"token_id":token.id()}))
+        .gas(Gas::from_tgas(5))
+        .transact()
+        .await?;
+    ensure!(
+        failed_view.is_failure(),
+        "5 Tgas unexpectedly handled the heavy asset view"
+    );
+    println!(
+        "old 5 Tgas asset view: failed as expected, gas_burnt={}",
+        failed_view.total_gas_burnt.as_gas()
+    );
+    // Root cannot credit Alice through a native-user deposit; FT resolver refunds it.
+    deposit(&root, &token, &vault, &users[0]).await?;
+    ensure!(token_balance(&token, root.id()).await? == 1_000_000);
+    ensure!(
+        vault
+            .view("holders")
+            .args_json(json!({"from":0,"limit":10}))
+            .await?
+            .json::<Vec<String>>()?
+            .is_empty()
+    );
+    deposit(&alice, &token, &vault, &users[0]).await?;
+    deposit(&root, &token, &vault, &evm_user).await?;
+    let outcome = invoke(&root, &vault, "run", json!({}), 0).await?;
+    report_gas("native + EVM activation with heavy empty views", &outcome);
+    assert_cash(&vault, &token, &all_users).await?;
+    accrue(&root, &token, &rhea, &vault, 100_000).await?;
+    let outcome = invoke(&root, &vault, "run", json!({}), 0).await?;
+    report_gas(
+        "mixed holders interest payment with heavy populated views",
+        &outcome,
+    );
+    for user in [&users[0], &evm_user] {
+        ensure!(
+            vault
+                .view("position")
+                .args_json(json!({"user":user}))
+                .await?
+                .json::<Value>()?["yield_credited"]
+                == "50000"
+        );
+    }
+    let outcome = invoke(&alice, &vault, "withdraw", json!({"amount":"400000"}), 1).await?;
+    report_gas("native withdraw request", &outcome);
+    let _ = invoke(
+        &root,
+        &vault,
+        "request_withdraw",
+        json!({"message":signed["message"],"signature":signed["signature"]}),
+        0,
+    )
+    .await?;
+    let outcome = invoke(&root, &vault, "run", json!({}), 0).await?;
+    report_gas("mixed EVM transfer-call + native plain exit", &outcome);
+    ensure!(token_balance(&token, alice.id()).await? == 2_400_000);
+    ensure!(token_balance(&token, intents.id()).await? == evm_claim);
+    ensure!(
+        vault
+            .view("position")
+            .args_json(json!({"user":users[0]}))
+            .await?
+            .json::<Value>()?["principal"]
+            == "600000"
+    );
+    assert_cash(&vault, &token, &all_users).await?;
+
+    deposit(&carol, &token, &vault, &users[1]).await?;
+    let _ = invoke(&root, &vault, "run", json!({}), 0).await?;
+    let _ = invoke(
+        &root,
+        &token,
+        "unregister_empty",
+        json!({"account_id":carol.id()}),
+        0,
+    )
+    .await?;
+    let _ = invoke(&carol, &vault, "withdraw", json!({"amount":"1000000"}), 1).await?;
+    let outcome = run_with_one_token_failure(&root, &vault, &token).await?;
+    report_gas("failed native payout restores principal", &outcome);
+    let position: Value = vault
+        .view("position")
+        .args_json(json!({"user":users[1]}))
+        .await?
+        .json()?;
+    ensure!(position["principal"] == "1000000" && position["pending_out"].is_null());
+    ensure!(vault.view("idle").await?.json::<String>()? == "1000000");
+    assert_cash(&vault, &token, &all_users).await?;
+    let _ = invoke(
+        &root,
+        &token,
+        "register",
+        json!({"account_id":carol.id()}),
+        0,
+    )
+    .await?;
+    let _ = invoke(&carol, &vault, "withdraw", json!({"amount":"1000000"}), 1).await?;
+    let outcome = invoke(&root, &vault, "run", json!({}), 0).await?;
+    report_gas("native payout retry from retained idle", &outcome);
+    ensure!(token_balance(&token, carol.id()).await? == 1_000_000);
+
+    deposit_amount(&bob, &token, &vault, &users[2], 2_000_000).await?;
+    let _ = invoke(
+        &root,
+        &token,
+        "unregister_empty",
+        json!({"account_id":bob.id()}),
+        0,
+    )
+    .await?;
+    let outcome = run_with_one_token_failure(&root, &vault, &token).await?;
+    report_gas("failed native cap return retains pending cash", &outcome);
+    ensure!(
+        vault
+            .view("position")
+            .args_json(json!({"user":users[2]}))
+            .await?
+            .json::<Value>()?["pending_in"]
+            == "2000000"
+    );
+    assert_cash(&vault, &token, &all_users).await?;
+    let _ = invoke(&root, &token, "register", json!({"account_id":bob.id()}), 0).await?;
+    let outcome = invoke(&root, &vault, "run", json!({}), 0).await?;
+    report_gas("native cap return retry", &outcome);
+    ensure!(token_balance(&token, bob.id()).await? == 2_000_000);
+    ensure!(
+        vault
+            .view("position")
+            .args_json(json!({"user":users[2]}))
+            .await?
+            .json::<Value>()?["pending_in"]
+            == "0"
+    );
+    assert_cash(&vault, &token, &all_users).await?;
     Ok(())
 }

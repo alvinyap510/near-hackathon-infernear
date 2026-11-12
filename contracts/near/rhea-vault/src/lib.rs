@@ -6,7 +6,7 @@ mod engine;
 mod queue;
 mod state;
 
-use auth::{Withdrawal, owner_address, valid_user};
+use auth::{NEAR_USER_PREFIX, Withdrawal, near_account, owner_address, valid_evm_user, valid_user};
 use near_sdk::{
     AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseOrValue,
     collections::{LookupMap, Vector},
@@ -71,7 +71,6 @@ impl RheaUsdcVault {
     }
 
     pub fn ft_on_transfer(&mut self, sender_id: AccountId, amount: U128, msg: String) -> U128 {
-        let _ = sender_id;
         #[derive(near_sdk::serde::Deserialize)]
         #[serde(crate = "near_sdk::serde")]
         struct Deposit {
@@ -86,7 +85,7 @@ impl RheaUsdcVault {
         let Ok(Deposit { user }) = near_sdk::serde_json::from_str(&msg) else {
             return amount;
         };
-        if !valid_user(&user) {
+        if !valid_user(&user) || near_account(&user).is_some_and(|owner| owner != sender_id) {
             return amount;
         }
         let Some(pending) = self.totals.pending_in.checked_add(amount.0) else {
@@ -162,7 +161,7 @@ impl RheaUsdcVault {
                 && request.vault == env::current_account_id(),
             "wrong withdrawal domain"
         );
-        require!(valid_user(&request.user), "invalid user");
+        require!(valid_evm_user(&request.user), "invalid EVM user");
         require!(
             request.expires_at > env::block_timestamp() / 1_000_000_000,
             "withdrawal expired"
@@ -171,33 +170,47 @@ impl RheaUsdcVault {
             auth::recover(&message, &signature).as_deref() == Some(owner_address(&request.user)),
             "invalid withdrawal signature"
         );
-        let mut user = self.users.get(&request.user).expect("unknown user");
+        let user = self.users.get(&request.user).expect("unknown user");
         require!(request.nonce == user.nonce, "wrong nonce");
+        self.queue_withdrawal(request.user, request.amount, user);
+    }
+
+    #[payable]
+    pub fn withdraw(&mut self, amount: U128) {
+        near_sdk::assert_one_yocto();
+        require!(!self.busy, "vault busy");
+        let user_id = format!("{NEAR_USER_PREFIX}{}", env::predecessor_account_id());
+        let user = self.users.get(&user_id).expect("unknown user");
+        self.queue_withdrawal(user_id, amount, user);
+    }
+
+    fn queue_withdrawal(&mut self, user_id: String, amount: U128, mut user: User) {
         require!(
-            request.amount.0 > 0 && request.amount.0 <= user.principal,
+            amount.0 > 0 && amount.0 <= user.principal,
             "invalid withdrawal amount"
         );
-        user.nonce = user.nonce.checked_add(1).expect("nonce overflow");
+        let nonce = user.nonce;
+        user.nonce = nonce.checked_add(1).expect("nonce overflow");
         let node = if let Some(previous) = user.pending_out {
             let mut node = self
                 .outgoing
                 .nodes
                 .get(&previous.node)
                 .expect("missing pending request");
-            node.amount = request.amount.0;
+            node.amount = amount.0;
             self.outgoing.nodes.insert(&previous.node, &node);
             previous.node
         } else {
-            self.outgoing.append(request.user.clone(), request.amount.0)
+            self.outgoing.append(user_id.clone(), amount.0)
         };
         user.pending_out = Some(PendingOut {
-            amount: request.amount.0,
+            amount: amount.0,
             node,
         });
-        self.users.insert(&request.user, &user);
+        self.users.insert(&user_id, &user);
         emit(
             "withdraw_requested",
-            near_sdk::serde_json::json!({"user":request.user,"amount":request.amount,"nonce":request.nonce}),
+            near_sdk::serde_json::json!({"user":user_id,"amount":amount,"nonce":nonce}),
         );
     }
 
@@ -217,16 +230,16 @@ impl RheaUsdcVault {
             "get_account",
             near_sdk::serde_json::json!({"account_id":env::current_account_id()}),
             0,
-            5,
+            20,
         )
         .and(call(
             &self.rhea,
             "get_asset",
             near_sdk::serde_json::json!({"token_id":self.usdc}),
             0,
-            5,
+            20,
         ))
-        .then(self_callback("after_measure", 255))
+        .then(self_callback("after_measure", 225))
     }
 
     #[private]

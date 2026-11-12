@@ -1,0 +1,67 @@
+{
+  "token_id": "mock-usdc.test.near",
+  "supplied": {
+    "shares": "10838567968362233903317444",
+    "balance": "12554241318673922952288552"
+  },
+  "borrowed": {
+    "shares": "8601974083900710043214851",
+    "balance": "10836004320007706118831066"
+  },
+  "margin_debt": {
+    "shares": "0",
+    "balance": "0"
+  },
+  "margin_pending_debt": "0",
+  "margin_position": "0",
+  "reserved": "200002388111842272668747",
+  "prot_fee": "672994604193599068728",
+  "beneficiary_fees": {
+    "fees.test.near": "16521373803764374055835"
+  },
+  "uahpi": "42948783399248463",
+  "last_update_timestamp": "1794478421444118778",
+  "config": {
+    "reserve_ratio": 2500,
+    "beneficiaries": {
+      "fees.test.near": 10000
+    },
+    "target_utilization": 8000,
+    "target_utilization_rate": "1000000000001847694955734069",
+    "max_utilization_rate": "1000000000012857214234867166",
+    "holding_position_fee_rate": "1000000000000000000000000000",
+    "volatility_ratio": 9500,
+    "extra_decimals": 12,
+    "can_deposit": true,
+    "can_withdraw": true,
+    "can_use_as_collateral": true,
+    "can_borrow": true,
+    "net_tvl_multiplier": 10000,
+    "max_change_rate": null,
+    "supplied_limit": "60000000000000000000000000",
+    "borrowed_limit": "25000000000000000000000000",
+    "min_borrowed_amount": "1000000000"
+  },
+  "lostfound_shares": "0",
+  "supply_apr": "0.100485435396468792399511703",
+  "borrow_apr": "0.15522553242865331087588204",
+  "farms": [
+    {
+      "farm_id": {
+        "TokenNetBalance": "mock-usdc.test.near"
+      },
+      "rewards": {
+        "mock-reward.test.near": {
+          "reward_per_day": "100000000000000000000000",
+          "remaining_rewards": "1000000000000000000000000000",
+          "boosted_shares": "1000000000000000000000000000"
+        },
+        "another-mock-reward.test.near": {
+          "reward_per_day": "100000000000000000000000",
+          "remaining_rewards": "1000000000000000000000000000",
+          "boosted_shares": "1000000000000000000000000000"
+        }
+      }
+    }
+  ]
+}

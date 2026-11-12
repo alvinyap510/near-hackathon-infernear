@@ -47,6 +47,10 @@ impl Mock {
             self.token.internal_register_account(&account_id);
         }
     }
+    pub fn unregister_empty(&mut self, account_id: AccountId) {
+        assert_eq!(self.token.ft_balance_of(account_id.clone()).0, 0);
+        self.token.accounts.remove(&account_id);
+    }
     pub fn mint(&mut self, account_id: AccountId, amount: U128) {
         self.register(account_id.clone());
         self.token.internal_deposit(&account_id, amount.0);
@@ -58,14 +62,45 @@ impl Mock {
         self.total += amount.0;
     }
     pub fn get_account(&self, account_id: AccountId) -> near_sdk::serde_json::Value {
-        near_sdk::serde_json::json!({"supplied":[{"token_id":self.usdc,"balance":(self.balances.get(&account_id.to_string()).unwrap_or(0)*1_000_000_000_000u128).to_string()}]})
+        let balance = self.balances.get(&account_id.to_string()).unwrap_or(0);
+        let account = near_sdk::serde_json::json!({
+            "account_id":account_id,
+            "supplied":if balance == 0 { vec![] } else { vec![near_sdk::serde_json::json!({"token_id":self.usdc,"shares":(balance*1_000_000_000_000u128).to_string(),"balance":(balance*1_000_000_000_000u128).to_string(),"apr":"0.100485435396468792399511703"})] },
+            "collateral":[],"borrowed":[],
+            "farms":if balance == 0 { vec![] } else { vec![near_sdk::serde_json::json!({"farm_id":{"TokenNetBalance":self.usdc},"rewards":{"mock-reward.test.near":{"boosted_shares":"1000000000000000000000000000","unclaimed_amount":"1000000000000000000000000","last_reward_per_share":"1000000000000000000000000000"}}})] },
+            "has_non_farmed_assets":false,"booster_staking":null,"booster_stakings":{}
+        });
+        self.view_work("get_account", &account, if balance == 0 { 3 } else { 6 });
+        account
     }
     pub fn get_asset(&self, token_id: AccountId) -> near_sdk::serde_json::Value {
         assert_eq!(token_id, self.usdc);
         let borrowed = self
             .total
             .saturating_sub(self.liquidity.unwrap_or(self.total));
-        near_sdk::serde_json::json!({"supplied":{"balance":(self.total*1_000_000_000_000u128).to_string()},"borrowed":{"balance":(borrowed*1_000_000_000_000u128).to_string()},"reserved":"0","prot_fee":"0","margin_debt":{"balance":"0"},"margin_pending_debt":"0"})
+        let mut asset: near_sdk::serde_json::Value =
+            near_sdk::serde_json::from_str(include_str!("asset-view.json")).unwrap();
+        asset["token_id"] = near_sdk::serde_json::json!(self.usdc);
+        asset["supplied"] = near_sdk::serde_json::json!({"shares":(self.total*1_000_000_000_000u128).to_string(),"balance":(self.total*1_000_000_000_000u128).to_string()});
+        asset["borrowed"] = near_sdk::serde_json::json!({"shares":(borrowed*1_000_000_000_000u128).to_string(),"balance":(borrowed*1_000_000_000_000u128).to_string()});
+        for field in ["reserved", "prot_fee", "margin_pending_debt"] {
+            asset[field] = near_sdk::serde_json::json!("0");
+        }
+        asset["farms"][0]["farm_id"]["TokenNetBalance"] = near_sdk::serde_json::json!(self.usdc);
+        self.view_work("get_asset", &asset, 6);
+        asset
+    }
+    fn view_work(&self, method: &str, value: &near_sdk::serde_json::Value, tgas: u64) {
+        // Local-only emulation of Rhea computation, in addition to realistic
+        // config/farm serialization. A tiny constant response missed the 5 Tgas bug.
+        let bytes = near_sdk::serde_json::to_vec(value).unwrap();
+        while env::used_gas() < Gas::from_tgas(tgas) {
+            let _ = env::sha256(&bytes);
+        }
+        env::log_str(&format!(
+            "MOCK_VIEW:{}",
+            near_sdk::serde_json::json!({"method":method,"bytes":bytes.len(),"prepaid":env::prepaid_gas().as_gas()})
+        ));
     }
     pub fn received(&self, user: String) -> U128 {
         U128(self.balances.get(&user).unwrap_or(0))

@@ -14,13 +14,23 @@ pub struct Withdrawal {
     pub expires_at: u64,
 }
 
-pub fn valid_user(user: &str) -> bool {
+pub fn valid_evm_user(user: &str) -> bool {
     user.strip_prefix(USER_PREFIX).is_some_and(|address| {
         address.len() == 40
             && address
                 .bytes()
                 .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
     })
+}
+
+pub const NEAR_USER_PREFIX: &str = "near:mainnet:";
+
+pub fn near_account(user: &str) -> Option<AccountId> {
+    user.strip_prefix(NEAR_USER_PREFIX)?.parse().ok()
+}
+
+pub fn valid_user(user: &str) -> bool {
+    valid_evm_user(user) || near_account(user).is_some()
 }
 
 pub fn owner_address(user: &str) -> &str {
