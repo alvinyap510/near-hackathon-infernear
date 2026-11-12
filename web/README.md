@@ -1,6 +1,6 @@
 # InferNear console
 
-React/TypeScript console: public **Vaults**, **Account**, **API keys**, **Try the API**, and **From another chain**. Complete public configuration selects live wallets/RPC/relay calls; incomplete configuration selects the clearly labelled mock. Root deploys the build separately; this task performed no deployment or funded call.
+React/TypeScript console: public **Vaults**, **Account**, **API keys**, **Try the API**, and **From another chain**. Complete public configuration selects live wallets/RPC/relay calls; incomplete configuration selects the clearly labelled mock. Nothing here deploys or makes a funded call; the build is deployed separately (see [deploy/README.md](../deploy/README.md)).
 
 ## Install and verify
 
@@ -61,7 +61,7 @@ The box shows the owner's total bought. Credits appear after Base finality (abou
 
 A completion with null/empty answer text still displays its completion/inference ids, reported usage and debit, with a no-visible-answer explanation. Reasoning-only output is not discarded as an error. A successful response with a known inference header also keeps its billing display if answer JSON or the body completion id is missing; no completion id is invented. Standard usage is reported, not signature-verified. The legacy receipt source `signed_usage` denotes the usage-metered path, not browser verification of plain responses. Missing usage is labelled as a reservation charge. The first quickstart uses the official `openai` package; private SDK examples are second.
 
-**Private is code-only in live mode.** It offers the SDK quickstart with `verifyResponse`, gateway provenance policy and the explicit application-proxy TLS setting. There is no live browser Run button, fake ciphertext, fake attestation or substituted reply. npm SDK **0.3.0** was evaluated only in a temporary probe directory. Its browser entry passed a free `verify(model)` preflight under Node through the public relay. Actual browser validation was blocked: no in-app browser was available and computer use denied Chrome access. No paid completion was attempted, so a verified browser completion is not claimed. Mock private calls retain the existing Verified panel with simulation labels.
+**Private is code-only in live mode.** It offers the SDK quickstart with `verifyResponse`, gateway provenance policy and the explicit application-proxy TLS setting. There is no live browser Run button, fake ciphertext, fake attestation or substituted reply. npm SDK **0.3.0** was evaluated only in a temporary probe directory. Its browser entry passed a free `verify(model)` preflight under Node through the public relay. It has not been run in a real browser and no paid completion was attempted, so a verified browser completion is not claimed. Mock private calls retain the existing Verified panel with simulation labels.
 
 ## From another chain
 
@@ -69,12 +69,12 @@ This panel reads 1Click `/v0/tokens`, selecting six-decimal USDC entries for Eth
 
 Previews POST `/v0/quote` with `dry: true`. Asset/route fields, recipient/refund address, input amount and deadline are checked. A free live Ethereum→Base quote returned HTTP 201, matching route fields and no deposit address.
 
-**Funding is disabled in this release**, clearly labelled in the panel. No non-dry quote, origin-chain switch, token transfer, funded-swap polling or Base switch-back is performed here. That multi-chain signing/confirmation/recovery path was not validated with real wallets in this pass. The existing EVM Rhea bridge flow is separate and remains implemented. Mock quotes remain labelled.
+**Funding is disabled in this release**, clearly labelled in the panel. No non-dry quote, origin-chain switch, token transfer, funded-swap polling or Base switch-back is performed here. That multi-chain signing/confirmation/recovery path has not been validated with real wallets. The existing EVM Rhea bridge flow is separate and remains implemented. Mock quotes remain labelled.
 
 ## UI and verification limits
 
-New screens reuse existing `card`, `vault-form`, `confirm`, `loss-note`, `seg-control`, `needs-key` and `fineprint` classes, with ChainBadge/AssetBadge. No stylesheet or design component changed except the permitted Shell extension for public tabs, NEAR labels and switch/disconnect controls. The old Connect screen was removed.
+New screens reuse existing `card`, `vault-form`, `confirm`, `loss-note`, `seg-control`, `needs-key` and `fineprint` classes, with ChainBadge/AssetBadge. The Shell carries the public tabs, NEAR labels and switch/disconnect controls. The old Connect screen was removed.
 
-Tests cover purchase validation, hidden state, approve→pay ordering/reverts, receipt uncertainty and persistent retries, missing-hash/storage failures, disconnect/account/provider changes during signing flows, native/EVM paused and deficit deposits, session-secret cleanup, no-visible-text billing, reservation parity, model mapping, plain chat/id/usage/402 handling, private fallback, bridge discovery/quote binding, mock conservation, and existing wallet/session/vault/key behavior. Real wallet popups, redirects, signatures, purchases, deposits, withdrawals and paid inference still require manual verification. Visual browser verification was unavailable.
+Tests cover purchase validation, hidden state, approve→pay ordering/reverts, receipt uncertainty and persistent retries, missing-hash/storage failures, disconnect/account/provider changes during signing flows, native/EVM paused and deficit deposits, session-secret cleanup, no-visible-text billing, reservation parity, model mapping, plain chat/id/usage/402 handling, private fallback, bridge discovery/quote binding, mock conservation, and existing wallet/session/vault/key behavior. Real wallet popups, redirects, signatures, purchases, deposits, withdrawals and paid inference still require manual verification. The built console was checked in headless Chrome without a wallet (Vaults tab, wallet dialog, model list in Try the API).
 
-No application dependency was added in phase 2; the design seat's `@web3icons/react@4.1.24` addition was retained. The private inference SDK is not bundled. Existing wallet dependency audit findings and transitive `js-sha256` direct-eval warnings remain documented, not suppressed.
+Logos come from `@web3icons/react` 4.1.24. The private inference SDK is not bundled. Existing wallet dependency audit findings and transitive `js-sha256` direct-eval warnings remain documented, not suppressed.
