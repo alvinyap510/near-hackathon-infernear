@@ -756,11 +756,12 @@ svg {
 }
 
 /* Three lines sit below the particle stream (34% down, its dots reach about 46%) and left of
-   the 3D mark, so on desktop the size follows both the viewport width and height. The looser
-   line height keeps the comma after YIELD clear of the line below. */
+   the 3D mark, so on desktop the size follows both the viewport width and height; on short
+   screens the stream's faint lower edge may pass behind the eyebrow. The looser line height
+   keeps the comma after YIELD clear of the line below. */
 .hero .mega {
   margin-top: 22px;
-  font-size: clamp(40px, min(6.6vw, 16vh - 66px), 100px);
+  font-size: clamp(40px, min(6.6vw, 7.5vh + 19px, 13vh - 26px), 100px);
   line-height: 0.92;
 }
 
@@ -875,7 +876,6 @@ svg {
 .sec {
   position: relative;
   padding: 150px 0;
-  scroll-margin-top: var(--hud);
 }
 
 .light {
@@ -1557,8 +1557,10 @@ svg {
   z-index: 2;
   display: grid;
   justify-items: center;
+  align-self: stretch;
+  align-content: center;
   gap: 4px;
-  padding: 32px 36px 30px;
+  padding: 32px 28px 30px;
   border-radius: 6px;
   background: var(--night);
   color: var(--snow);
@@ -1629,7 +1631,7 @@ svg {
 
 /* NEAR AI Cloud, where the prompt is opened inside the TEE: ringed in mint while it is. */
 .tee-cloud {
-  gap: 16px;
+  gap: 12px;
   padding: 22px 22px 20px;
   box-shadow: 0 0 0 calc(var(--glow, 0) * 2px) var(--mint-ink);
   transition: box-shadow 0.4s var(--ease);
@@ -1644,6 +1646,10 @@ svg {
 .tc-head > div {
   display: grid;
   gap: 4px;
+}
+
+.tee-cloud .te-proof {
+  margin-top: 4px;
 }
 
 .tc-logo {
@@ -1733,7 +1739,7 @@ svg {
 
 @media (max-width: 1100px) {
   .tee {
-    grid-template-columns: minmax(0, 1fr) minmax(28px, 0.3fr) auto minmax(28px, 0.3fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(56px, 0.5fr) auto minmax(56px, 0.5fr) minmax(0, 1fr);
   }
 }
 
@@ -2465,6 +2471,7 @@ svg {
 
 .outro {
   position: relative;
+  min-height: 100svh;
   padding: 160px 0 40px;
   overflow: hidden;
   background: var(--night);
@@ -2558,6 +2565,17 @@ svg {
     display: none;
   }
 
+  /* The 3D mark comes close to the stream labels here: each takes two short lines. */
+  .stream-k {
+    top: calc(34% - 52px);
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .stream-out {
+    align-items: flex-end;
+  }
+
   .hud-top .btn {
     margin-left: auto;
   }
@@ -2649,7 +2667,11 @@ svg {
   }
 
   .hero {
-    padding-bottom: 76px;
+    padding-bottom: 48px;
+  }
+
+  .console-tabs button {
+    padding: 0 9px;
   }
 
   .hero-fallback {
@@ -2659,7 +2681,7 @@ svg {
   }
 
   .stream-k {
-    top: calc(30% - 30px);
+    top: calc(30% - 46px);
     font-size: 9.5px;
   }
 
@@ -2721,6 +2743,7 @@ svg {
 
   .ledger-drip {
     --x: calc(78px + 12px + 64px);
+    --fall: 73px;
   }
 
   .ledger-row .n {
@@ -2957,8 +2980,6 @@ svg {
   flex-direction: column;
   justify-content: center;
   min-height: 100vh;
-  /* A slide fills the viewport from its very top, so an anchor jump leaves no room for the header. */
-  scroll-margin-top: 0;
   padding: calc(var(--hud) + 32px) 0 56px;
 }
 
@@ -3134,7 +3155,17 @@ svg {
 /* Short laptop screens: a little less air so each slide still fits. */
 @media (max-height: 860px) {
   .deck .sec {
-    padding: calc(var(--hud) + 18px) 0 40px;
+    padding: calc(var(--hud) + 12px) 0 40px;
+  }
+
+  .deck .lede {
+    margin-top: 12px;
+  }
+
+  .deck .addrs tbody th,
+  .deck .addrs td {
+    padding-top: 9px;
+    padding-bottom: 9px;
   }
 
   .deck .h2 {
@@ -3154,7 +3185,7 @@ svg {
   .deck .i-steps,
   .deck .tee,
   .deck .addrs {
-    margin-top: 24px;
+    margin-top: 18px;
   }
 
   .deck .rules {
