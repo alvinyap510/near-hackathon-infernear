@@ -49,15 +49,18 @@ Restart loses in-memory jobs and nonces. Broadcast transactions may still land; 
 
 ## Keeper behavior
 
-`EVM_VAULTS` is a JSON array of entries with an explicit `kind`. Set deployed vault addresses; these are not token addresses. `VAULT_START_BLOCK` includes the earliest deployment. Entry schemas:
+`EVM_VAULTS` is a JSON array of entries with an explicit `kind`. Set deployed vault addresses; these are not token addresses. `VAULT_START_BLOCK` must be at or before the earliest deployment among all entries, the top-up contract included. Entry schemas:
 
 ```json
 [
   {"kind":"aave","address":"<deployed AaveUsdcVault>"},
   {"kind":"rate","address":"<deployed RateVault>","feed":"0xd7818272B9e248357d13057AAb0B417aF31E817d","heartbeat":1200},
-  {"kind":"pendle","address":"<deployed PendlePtVault>","market":"0x6c23193128f7907a3570234a6f6f1c2932f1e84b","oracle":"0x5542be50420E88dd7D5B4a3D488FA6ED82F6DAc2"}
+  {"kind":"pendle","address":"<deployed PendlePtVault>","market":"0x6c23193128f7907a3570234a6f6f1c2932f1e84b","oracle":"0x5542be50420E88dd7D5B4a3D488FA6ED82F6DAc2"},
+  {"kind":"topup","address":"<deployed CreditTopUp>"}
 ]
 ```
+
+A `topup` entry is the credit top-up contract, not a vault. Its beneficiaries come from its `Paid` events and their credits from `paid(beneficiary)` at the same finalized block, posted at `1e18` (1 USDC base unit = 1 micro-USD) under `paidTotal()`. Nothing is ever unpaid and the keeper never sends it a transaction.
 
 **Reads are free; transactions are sent only for work.** Each minute the keeper reads every vault and sends at most one transaction per vault, and only when one of these holds: an EVM vault's `skim()`, simulated through Multicall3 at the latest block, would pay out yield worth at least `KEEPER_MIN_YIELD_MICRO_USD`; the Rhea vault has queued deposits or exits, attributed yield awaiting payout, cash it holds but has not supplied, or the same amount of unrealized yield; or a vault's finalized cumulative entries differ from what the connector already holds (`vault(id).posted_total`). If the same work is still there after a transaction (including one that failed), the keeper waits 1, 2, 4... minutes, at most 6 hours, before sending again; growing amounts do not count as new work, only a shrinking queue or a landed post does. A skim simulation that reverts sends nothing and does not hold back posting. Set the threshold at or above the cost of one skim plus one post so collecting yield never costs more than it earns.
 

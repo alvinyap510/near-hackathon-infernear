@@ -1,6 +1,6 @@
 import { reportError, type Connector, type Report } from '../types.ts';
 
-export type VaultKind = 'aave' | 'rate' | 'pendle' | 'rhea';
+export type VaultKind = 'aave' | 'rate' | 'pendle' | 'rhea' | 'topup';
 // `work` names why a transaction is needed, decided from free reads; absent means none is.
 export type VaultSnapshot = { block: bigint; unpaid: bigint; paid: bigint; rate: bigint; busy?: boolean; entries: [string, bigint][]; work?: string | null };
 export interface VaultPort {
@@ -17,6 +17,9 @@ export class RateUnavailable extends Error {
   reason: string;
   constructor(reason: string) { super(reason); this.reason = reason; }
 }
+
+// Entries per post_credits call: about 110 bytes each at most, well inside NEAR's 16 KiB log limit.
+const POST_BATCH = 100;
 
 export class Keeper {
   private vaults: VaultPort[];
@@ -53,7 +56,13 @@ export class Keeper {
           const total = snapshot.entries.reduce((sum, [, amount]) => sum + amount, 0n);
           // A rejected post waits 1, 2, 4... minutes whatever the amounts become; the delay ends once a post lands.
           if (total === (await this.connector.posted(vault.id)).total) this.sent.delete(`post:${vault.id}`);
-          else if (await this.send(`post:${vault.id}`, 'post', () => this.connector.postCredits(vault.id, snapshot.paid, snapshot.rate, snapshot.block, snapshot.entries))) {
+          else if (await this.send(`post:${vault.id}`, 'post', async () => {
+            // The connector logs every entry it is given and NEAR caps a transaction's logs at 16 KiB,
+            // so a long holder list is posted in batches. Entries are cumulative: a batch that already
+            // landed is a no-op if the rest are retried.
+            for (let from = 0; from < snapshot.entries.length; from += POST_BATCH)
+              await this.connector.postCredits(vault.id, snapshot.paid, snapshot.rate, snapshot.block, snapshot.entries.slice(from, from + POST_BATCH));
+          })) {
             this.sent.delete(`post:${vault.id}`);
             this.report('credits_posted', { vault: vault.id, kind: vault.kind, paid_cum: String(snapshot.paid), rate: String(snapshot.rate), source_block: String(snapshot.block), holders: snapshot.entries.length });
           }
