@@ -50,7 +50,6 @@ const rail = $('.rail-mark');
 const idxN = $('#idx-n');
 const idxName = $('#idx-name');
 const hero = $('.hero');
-const drifts = $$('[data-drift]');
 let hero3d = null;
 let queued = false;
 
@@ -83,12 +82,6 @@ function onScroll() {
   hero.style.setProperty('--hp', hp.toFixed(4));
   hero3d?.setScroll(hp);
 
-  if (motion) {
-    for (const d of drifts) {
-      const r = d.getBoundingClientRect();
-      if (r.bottom > 0 && r.top < innerHeight) d.style.transform = `translate3d(${((r.top - innerHeight) * 0.4).toFixed(1)}px,0,0)`;
-    }
-  }
 }
 const requestScroll = () => {
   if (!queued) {
@@ -109,7 +102,7 @@ for (const h of $$('[data-split]')) {
     .map((w, i) => `<span class="w" aria-hidden="true"><span class="wi" style="--i:${i}">${w}</span></span>`)
     .join(' ');
 }
-for (const group of $$('.vaults, .stack, .rules, .facts, .flow')) {
+for (const group of $$('.vaults, .rules, .facts, .flow, .i-steps')) {
   [...group.children].forEach((el, i) => el.style.setProperty('--d', `${i * 90}ms`));
 }
 const revealer = new IntersectionObserver(
@@ -123,7 +116,7 @@ const revealer = new IntersectionObserver(
   },
   { rootMargin: '0px 0px -12% 0px', threshold: 0.12 },
 );
-for (const el of $$('[data-reveal], [data-split], .vault, .stack li, .outro')) revealer.observe(el);
+for (const el of $$('[data-reveal], [data-split], .vault, .outro')) revealer.observe(el);
 
 /* ---------- 001: illustrative ledger ---------- */
 
@@ -270,6 +263,67 @@ if (motion) {
     if (!tee.classList.contains('in')) return;
     c = (c + dt / 7) % 1;
     teeAt(c, t * 1000);
+  });
+}
+
+/* ---------- 005: NEAR Intents, lines measured from the boxes they join ---------- */
+
+const railBox = $('#rail');
+const railSvg = $('#rail-lines');
+const coinsBox = $('#coins');
+let railPaths = [];
+function railLines() {
+  if (!railBox || getComputedStyle(railSvg).display === 'none') return;
+  const box = railBox.getBoundingClientRect();
+  const W = box.width;
+  const H = box.height;
+  railSvg.setAttribute('viewBox', `0 0 ${W.toFixed(1)} ${H.toFixed(1)}`);
+  const at = (el, side) => {
+    const r = el.getBoundingClientRect();
+    return [(side === 'r' ? r.right : r.left) - box.left, r.top + r.height / 2 - box.top];
+  };
+  const curve = ([x1, y1], [x2, y2]) => {
+    const dx = (x2 - x1) * 0.5;
+    return `M${x1.toFixed(1)} ${y1.toFixed(1)}C${(x1 + dx).toFixed(1)} ${y1.toFixed(1)} ${(x2 - dx).toFixed(1)} ${y2.toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}`;
+  };
+  const hub = $('.hub-mark', railBox);
+  const ai = $('.r-ai', railBox);
+  const groups = $$('.r-group', railBox);
+  const lines = [];
+  for (const li of $$('.r-chains li', railBox)) lines.push({ d: curve(at($('.icon', li), 'r'), at(hub, 'l')), cls: 'l-in', coin: 'usdc' });
+  for (const g of groups) lines.push({ d: curve(at(hub, 'r'), at(g, 'l')), cls: 'l-in', coin: 'usdc' });
+  for (const g of groups) lines.push({ d: curve(at(g, 'r'), at(ai, 'l')), cls: 'l-yield', coin: 'yield' });
+  railSvg.innerHTML = lines.map((l, i) => `<path class="${l.cls}" d="${l.d}" pathLength="1" style="--i:${i}"/>`).join('');
+  railPaths = [...railSvg.querySelectorAll('path')].map((p, i) => ({ p, len: p.getTotalLength(), coin: lines[i].coin }));
+  if (!coinsBox.children.length) {
+    coinsBox.innerHTML = railPaths.map((r) => (r.coin === 'usdc' ? '<i data-icon="usdc"></i>' : '<span class="yd"></span>')).join('');
+    placeIcons(coinsBox);
+  }
+}
+railLines();
+addEventListener('resize', railLines, { passive: true });
+document.fonts?.ready.then(railLines);
+if (motion && railBox) {
+  let t = 0;
+  animate(railBox, (dt) => {
+    if (!railBox.classList.contains('in') || !railPaths.length) return;
+    t += dt;
+    let lit = 0;
+    let pulse = 0;
+    [...coinsBox.children].forEach((c, i) => {
+      const r = railPaths[i];
+      if (!r) return;
+      const stage = i < 4 ? 0 : i < 6 ? 1 : 2;
+      const u = (t * 0.28 - stage * 0.33 + (i % 4) * 0.07 + 10) % 1;
+      const pt = r.p.getPointAtLength(u * r.len);
+      const half = c.classList.contains('yd') ? 4.5 : 10;
+      c.style.transform = `translate(${(pt.x - half).toFixed(1)}px, ${(pt.y - half).toFixed(1)}px)`;
+      c.style.opacity = t < 1.6 ? '0' : u < 0.04 || u > 0.96 ? '0' : '1';
+      if (stage === 0 && u > 0.9) pulse = Math.max(pulse, (u - 0.9) / 0.1);
+      if (stage === 2 && u > 0.88) lit = 1;
+    });
+    $('.hub-mark', railBox).style.setProperty('--pulse', pulse.toFixed(3));
+    $('.r-ai', railBox).style.setProperty('--lit', String(lit));
   });
 }
 

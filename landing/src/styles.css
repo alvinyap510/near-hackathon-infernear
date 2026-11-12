@@ -922,6 +922,7 @@ svg {
 }
 
 .h2 {
+  text-wrap: balance;
   max-width: 15ch;
   margin-top: 26px;
   font-size: clamp(42px, 6.4vw, 100px);
@@ -1849,77 +1850,258 @@ svg {
   color: var(--snow-2);
 }
 
-/* ---------- 005 NEAR ---------- */
+/* ---------- 005 NEAR Intents ----------
+   A flat left-to-right flow. The lines are measured from the boxes they join (see main.js). */
 
-#near {
-  overflow: hidden;
-  padding-top: 110px;
+.lede {
+  max-width: 40em;
+  margin-top: 22px;
+  font-size: clamp(16px, 1.3vw, 19px);
+  color: var(--ink-2);
 }
 
-.marquee {
-  margin-bottom: 96px;
-  overflow: hidden;
-}
-
-.marquee-row {
-  display: flex;
-  align-items: center;
-  gap: 40px;
-  width: max-content;
-  padding-left: 30vw;
-  will-change: transform;
-}
-
-.marquee-row span {
-  font-size: clamp(56px, 8vw, 128px);
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.05em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  color: transparent;
-  -webkit-text-stroke: 1.5px var(--ink);
-}
-
-.marquee-row span:nth-of-type(2n) {
-  color: var(--ink);
-  -webkit-text-stroke: 0;
-}
-
-.marquee-row i {
-  flex: none;
-  width: 22px;
-  height: 22px;
-  border-radius: 4px;
-  background: var(--mint);
-}
-
-.stack {
+.rail {
+  position: relative;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: 150px minmax(36px, 1fr) 132px minmax(36px, 1fr) minmax(250px, 300px) minmax(36px, 0.8fr) minmax(210px, 240px);
+  align-items: center;
   margin-top: 56px;
 }
 
-.stack li {
+.r-col {
   position: relative;
+  z-index: 2;
+}
+
+.r-k {
+  margin-bottom: 14px;
+  font-family: var(--mono);
+  font-stretch: 87.5%;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.r-chains {
+  grid-column: 1;
+}
+
+.r-chains ul {
   display: grid;
-  gap: 8px;
-  align-content: start;
-  min-height: 190px;
-  padding: 20px;
-  border: 1px solid var(--line);
+  gap: 14px;
+}
+
+.r-chains .r-k {
+  text-align: right;
+}
+
+/* Name first, logo last: the lines leave from the logo's outer edge, never across a name. */
+.r-chains li {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.r-chains .icon {
+  width: 30px;
+  height: 30px;
+}
+
+.r-hub {
+  grid-column: 3;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.hub-mark {
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  margin-bottom: 6px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--snow);
+  box-shadow: 0 0 0 8px var(--paper), 0 0 0 calc(8px + var(--pulse, 0) * 16px) rgba(0, 236, 151, calc(0.4 - var(--pulse, 0) * 0.4));
+}
+
+.hub-mark .icon {
+  width: 40px;
+  height: 40px;
+}
+
+.r-hub b {
+  font-size: 17px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.r-s {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.r-vaults {
+  grid-column: 5;
+  display: grid;
+}
+
+.r-group {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
   border-radius: 4px;
   background: var(--card);
-  transition: transform 0.4s var(--ease), border-color 0.3s;
+  border: 1px solid var(--line);
 }
 
-.stack li:hover {
-  transform: translateY(-4px);
-  border-color: var(--ink);
+.r-group + .r-group {
+  margin-top: 12px;
 }
 
-.stack .k {
+.r-group .chainb {
+  justify-self: start;
+}
+
+.r-group ul {
+  display: grid;
+  gap: 10px;
+}
+
+.r-group li {
+  --tok: 28px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14.5px;
+  font-weight: 700;
+}
+
+.r-ai {
+  grid-column: 7;
+  display: grid;
+  gap: 4px;
+  padding: 24px 22px;
+  border-radius: 6px;
+  background: var(--night);
+  color: var(--snow);
+  box-shadow: 0 0 0 2px var(--mint), 0 0 0 calc(2px + var(--lit, 0) * 10px) rgba(0, 236, 151, calc(0.18 * var(--lit, 0))), 0 40px 70px -40px rgba(20, 21, 25, 0.7);
+  transition: box-shadow 0.4s var(--ease);
+}
+
+.r-mark {
+  width: 52px;
+  height: 52px;
+  margin-bottom: 10px;
+}
+
+.r-mark path {
+  fill: var(--snow);
+}
+
+.r-mark rect {
+  fill: var(--mint);
+}
+
+.r-ai .tn-k {
+  color: var(--snow-2);
+}
+
+.r-ai b {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.r-ai .r-s {
+  color: var(--snow-2);
+}
+
+.rail-lines {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.rail-lines path {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  stroke-opacity: 0.55;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+}
+
+.rail-lines .l-yield {
+  stroke: var(--mint-ink);
+  stroke-width: 2.5;
+  stroke-opacity: 1;
+}
+
+.motion .rail-lines path {
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 1.2s var(--ease) calc(0.25s + var(--i, 0) * 0.12s);
+}
+
+.motion .rail.in .rail-lines path {
+  stroke-dashoffset: 0;
+}
+
+.coins {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.coins .icon {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--paper);
+}
+
+.coins .yd {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--mint);
+  box-shadow: 0 0 0 2px var(--paper);
+}
+
+.i-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 56px;
+}
+
+.i-steps li {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding-top: 14px;
+  border-top: 2px solid var(--ink);
+}
+
+.i-steps b {
   font-family: var(--mono);
   font-stretch: 87.5%;
   font-size: 11px;
@@ -1927,18 +2109,63 @@ svg {
   color: var(--mint-ink);
 }
 
-.stack h3 {
-  margin-top: auto;
-  padding-top: 40px;
-  font-size: clamp(22px, 2vw, 28px);
+.i-steps h3 {
+  font-size: 18px;
   font-weight: 800;
-  line-height: 1.05;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.01em;
 }
 
-.stack p {
-  font-size: 14px;
+.i-steps p {
+  font-size: 14.5px;
   color: var(--ink-2);
+}
+
+@media (max-width: 1240px) {
+  .rail {
+    grid-template-columns: 130px minmax(24px, 1fr) 120px minmax(24px, 1fr) minmax(230px, 260px) minmax(24px, 0.6fr) minmax(180px, 200px);
+  }
+}
+
+@media (max-width: 1000px) {
+  .rail {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 40px;
+  }
+
+  .r-col {
+    grid-column: 1 !important;
+  }
+
+  .r-chains ul {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .r-hub {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .r-col:not(.r-ai)::after {
+    content: '↓';
+    position: absolute;
+    left: 24px;
+    bottom: -34px;
+    font-size: 20px;
+    color: var(--ink-3);
+  }
+
+  .r-hub::after {
+    left: 34px !important;
+  }
+
+  .rail-lines,
+  .coins {
+    display: none;
+  }
+
+  .i-steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* ---------- 006 Proof ---------- */

@@ -44,7 +44,7 @@
         <a href="#vaults" data-nav="vaults"><span>002</span>Vaults</a>
         <a href="#privacy" data-nav="privacy"><span>003</span>Privacy</a>
         <a href="#api" data-nav="api"><span>004</span>API</a>
-        <a href="#near" data-nav="near"><span>005</span>NEAR</a>
+        <a href="#intents" data-nav="intents"><span>005</span>Intents</a>
         <a href="#proof" data-nav="proof"><span>006</span>Proof</a>
       </nav>
       <a class="btn btn-mint btn-sm" href="https://app.infernear.dev"><span class="sq sq-ink" aria-hidden="true"></span>Launch app</a>
@@ -328,23 +328,63 @@ console.log(`Verified ${receipt.signatureKind} reply:`, completion.choices[0].me
         </div>
       </section>
 
-      <!-- 005 NEAR -->
-      <section class="sec light" id="near" data-tone="light" data-index="005" data-name="NEAR" aria-labelledby="near-h">
-        <div class="marquee" aria-hidden="true">
-          <div class="marquee-row" data-drift>
-            <span>NEAR AI Cloud</span><i></i><span>NEAR Intents</span><i></i><span>NEAR contracts</span><i></i><span>Rhea Lend</span><i></i>
-            <span>NEAR AI Cloud</span><i></i><span>NEAR Intents</span><i></i><span>NEAR contracts</span><i></i><span>Rhea Lend</span><i></i>
+      <!-- 005 NEAR Intents -->
+      <section class="sec light" id="intents" data-tone="light" data-index="005" data-name="Intents" aria-labelledby="intents-h">
+        <div class="stage">
+          <div class="wrap">
+            <p class="label" data-reveal><b>005</b> NEAR Intents</p>
+            <h2 id="intents-h" class="h2 h2-wide" data-split>Any chain in. NEAR AI out.</h2>
+            <p class="lede" data-reveal>NEAR Intents is the rail between the chain you're on and NEAR, so you fund private inference without a NEAR account, key or tokens.</p>
+
+            <div class="rail" id="rail" data-reveal>
+              <div class="r-col r-chains">
+                <p class="r-k">USDC on any chain</p>
+                <ul>
+                  <li><span>Base</span><i data-icon="base"></i></li>
+                  <li><span>Ethereum</span><i data-icon="ethereum"></i></li>
+                  <li><span>Arbitrum</span><i data-icon="arbitrum"></i></li>
+                  <li><span>Solana</span><i data-icon="solana"></i></li>
+                </ul>
+              </div>
+              <div class="r-col r-hub">
+                <span class="hub-mark"><i data-icon="near"></i></span>
+                <b>NEAR Intents</b>
+                <span class="r-s">1Click</span>
+              </div>
+              <div class="r-col r-vaults">
+                <p class="r-k">Vaults · principal stays yours</p>
+                <div class="r-group r-group-near">
+                  <span class="chainb"><i data-icon="near"></i>NEAR</span>
+                  <ul><li><span class="tok" title="USDC on NEAR"><i data-icon="usdc" class="tok-coin"></i><i data-icon="near" class="tok-chain"></i></span>Rhea USDC vault</li></ul>
+                </div>
+                <div class="r-group r-group-base">
+                  <span class="chainb"><i data-icon="base"></i>Base</span>
+                  <ul>
+                    <li><span class="tok" title="USDC on Base"><i data-icon="usdc" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span>Aave USDC vault</li>
+                    <li><span class="tok" title="cbETH on Base"><i data-icon="cbeth" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span>cbETH vault</li>
+                    <li><span class="tok" title="Pendle PT-deJAAA on Base"><i data-icon="pendle" class="tok-coin"></i><i data-icon="base" class="tok-chain"></i></span>Pendle PT-deJAAA vault</li>
+                  </ul>
+                </div>
+              </div>
+              <div class="r-col r-ai">
+                <svg class="r-mark" viewBox="4 4 24 24" aria-hidden="true">
+                  <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H12v4H8v16h4v4H5.5A1.5 1.5 0 0 1 4 26.5zM20 4h6.5A1.5 1.5 0 0 1 28 5.5v21a1.5 1.5 0 0 1-1.5 1.5H20v-4h4V8h-4z" />
+                  <rect x="12" y="12" width="8" height="8" rx="1" />
+                </svg>
+                <span class="tn-k">On NEAR</span>
+                <b>NEAR AI Cloud</b>
+                <span class="r-s">one credit balance pays for private inference</span>
+              </div>
+              <svg class="rail-lines" id="rail-lines" aria-hidden="true"></svg>
+              <div class="coins" id="coins" aria-hidden="true"></div>
+            </div>
+
+            <ol class="i-steps" data-reveal>
+              <li><b>01</b><h3>Any chain to your vault</h3><p>1Click brings USDC to your own Base address, or into the Rhea vault on NEAR.</p></li>
+              <li><b>02</b><h3>Signed with your EVM wallet</h3><p>Deposits, exits and API keys. No NEAR account anywhere.</p></li>
+              <li><b>03</b><h3>One credit balance</h3><p>Yield from every vault, on Base or NEAR, lands on one NEAR ledger and pays for NEAR AI Cloud.</p></li>
+            </ol>
           </div>
-        </div>
-        <div class="wrap">
-          <p class="label" data-reveal><b>005</b> NEAR</p>
-          <h2 id="near-h" class="h2" data-split>No NEAR account needed. We run that side.</h2>
-          <ul class="stack">
-            <li data-reveal><span class="k">01</span><h3>NEAR AI Cloud</h3><p>Attested TEE models</p></li>
-            <li data-reveal><span class="k">02</span><h3>NEAR Intents</h3><p>Base USDC in and out</p></li>
-            <li data-reveal><span class="k">03</span><h3>NEAR contracts</h3><p>Credit ledger · Rhea vault</p></li>
-            <li data-reveal><span class="k">04</span><h3>Rhea Lend</h3><p>Lending yield</p></li>
-          </ul>
         </div>
       </section>
 
