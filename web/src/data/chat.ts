@@ -28,13 +28,21 @@ export function createChatData(relayUrl:string,fetcher:typeof fetch){
       const body=JSON.stringify({model:request.model.id,messages:[{role:'user',content:request.prompt}],max_tokens:request.maxTokens});
       const reservation=tokenCost(new TextEncoder().encode(body).length+1024,request.maxTokens,request.model.inPriceNano,request.model.outPriceNano);
       const response=await fetcher(`${url}/v1/chat/completions`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${request.key}`},body});
-      const value=await responseBody(response);
-      if(typeof value.id!=='string'||typeof value.choices?.[0]?.message?.content!=='string')throw new DataError('completion','The relay returned no text completion.');
-      const text=value.choices[0].message.content,usage=value.usage;
+      const headerId=response.headers.get('Inference-Id');
+      let value:any;
+      try{value=await responseBody(response);}catch(error){
+        // A 2xx with an inference id can already be charged even if its JSON is unusable.
+        if(!response.ok||!headerId)throw error;
+        value={};
+      }
+      const completionId=typeof value?.id==='string'?value.id:'';
+      if(!completionId&&!headerId)throw new DataError('completion','The relay returned no completion id. Check credits before retrying.');
+      const content=value?.choices?.[0]?.message?.content;
+      const text=typeof content==='string'?content:'',usage=value?.usage;
       const hasUsage=usage&&[usage.prompt_tokens,usage.completion_tokens].every(n=>Number.isSafeInteger(n)&&n>=0);
-      const inferenceId=response.headers.get('Inference-Id')||await completionInferenceId(value.id);
-      onEvent({kind:'text',delta:text});
-      return{mode:'standard',text,completionId:value.id,reservation,receipt:{inferenceId,chatId:value.id,model:request.model.id,
+      const inferenceId=headerId||await completionInferenceId(completionId);
+      if(text)onEvent({kind:'text',delta:text});
+      return{mode:'standard',text,completionId,reservation,receipt:{inferenceId,chatId:completionId,model:request.model.id,
         promptTokens:hasUsage?usage.prompt_tokens:new TextEncoder().encode(body).length+1024,completionTokens:hasUsage?usage.completion_tokens:request.maxTokens,
         inPriceNano:request.model.inPriceNano,outPriceNano:request.model.outPriceNano,source:hasUsage?'signed_usage':'reservation'}};
     },
