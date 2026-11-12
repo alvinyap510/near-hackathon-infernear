@@ -10,7 +10,7 @@ Prerequisites: Node.js/npm and Foundry (verified with Forge 1.5.1). From the mon
 
 ```sh
 cd contracts/evm
-PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci --ignore-scripts
+npm ci --ignore-scripts
 forge build
 forge fmt --check
 env -u FORK_RPC_URL -u RATE_FORK_RPC_URL -u PENDLE_FORK_RPC_URL forge test --offline

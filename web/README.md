@@ -7,7 +7,7 @@ The account dashboard for the InferNear endpoint. **Account** shows one aggregat
 Node 22.18 or newer. From this folder:
 
 ```sh
-PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci --ignore-scripts
+npm ci --ignore-scripts
 npm run dev
 npm run build
 npm test
