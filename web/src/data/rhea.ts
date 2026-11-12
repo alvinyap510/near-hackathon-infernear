@@ -27,6 +27,9 @@ type Ports = {
   relay<T>(path: string, body?: unknown): Promise<T>;
 };
 
+// The deployed Rhea vault's immutable minimum deposit, in USDC base units.
+const RHEA_MIN_DEPOSIT = 1_000_000n;
+
 export function createRheaData(settings: LiveConfig, ports: Ports) {
   const user = (address: Address) => `eip155:${settings.vaultChainId}:${address.toLowerCase()}`;
   const nearAsset = `nep141:${settings.nearUsdcAccount}`;
@@ -66,7 +69,9 @@ export function createRheaData(settings: LiveConfig, ports: Ports) {
     rheaQuote: (address: Address, assets: bigint, direction: RheaDirection) => quote(address, assets, direction, true),
     async rheaDeposit(address: Address, assets: bigint): Promise<RheaTransfer> {
       positive(assets); await ports.ready(address);
+      // The vault returns anything below its 1 USDC minimum, after the bridge has taken its costs.
       const funded = await quote(address, assets, 'deposit', false);
+      if (funded.minAmountOut < RHEA_MIN_DEPOSIT) throw new DataError('amount', 'After bridge costs this would arrive below the vault\'s 1 USDC minimum. Send a little more.');
       if (!/^0x[0-9a-fA-F]{40}$/.test(funded.depositAddress!)) throw new DataError('quote', 'Expected a Base deposit address.');
       const result = await ports.transfer(address, funded.depositAddress as Address, funded.amountIn);
       return { ...result, quote: funded };
