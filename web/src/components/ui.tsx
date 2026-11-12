@@ -44,12 +44,16 @@ export function ErrorNote({ error }: { error: string | null }) {
   );
 }
 
+/** The InferNear mark: an "i" and an "N" sharing one stem, the dot and diagonal in signal green. */
 export function SealGlyph({ size = 22 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" className="seal-glyph">
       <rect width="32" height="32" rx="8" fill="var(--seal)" />
-      <circle cx="16" cy="16" r="8.5" fill="none" stroke="var(--signal)" strokeWidth="2.5" />
-      <circle cx="16" cy="16" r="3" fill="var(--signal)" />
+      <g transform="translate(0 0.9)">
+        <path d="M8.5 13h3.2v11H8.5zM20.3 8h3.2v16h-3.2z" fill="var(--seal-ink)" />
+        <path d="M8.5 13h3.9l11.1 11h-3.9z" fill="var(--signal)" />
+        <circle cx="10.1" cy="8.4" r="2.2" fill="var(--signal)" />
+      </g>
     </svg>
   );
 }
