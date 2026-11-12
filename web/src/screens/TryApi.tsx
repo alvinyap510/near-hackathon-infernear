@@ -96,7 +96,16 @@ export function TryApi({ apiKey, onChanged, onKeys }: { apiKey: string | null; o
             <CopyButton text={code} tone="seal" />
           </div>
           <pre className="code" tabIndex={0} aria-label={`${lang === 'js' ? 'JavaScript' : 'Python'} quickstart`}>
-            <code>{code}</code>
+            <code>
+              {/* Long lines wrap with a hanging indent under their own indentation, so the
+                  whole snippet is visible without sideways scrolling; the text is unchanged. */}
+              {code.replace(/\n$/, '').split('\n').map((line, i) => (
+                <span key={i} className="code-line" style={{ ['--indent' as string]: line.length - line.trimStart().length }}>
+                  {line || ' '}
+                  {'\n'}
+                </span>
+              ))}
+            </code>
           </pre>
           <p className="codecard-foot">
             SDK pinned at <code>{SDK_PIN.repo}@{SDK_PIN.commit.slice(0, 7)}</code>, the E2EE v3 build. The relay refuses older

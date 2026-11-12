@@ -27,6 +27,8 @@ export function Keys({
   const [error, setError] = useState<string | null>(null);
   const [revoked, setRevoked] = useState<{ epoch: number; tx: string } | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
+  // A proof is consumed by the action it authorised; step 01 still counts as done.
+  const used = !proof && (issued !== null || revoked !== null);
 
   const act = async (kind: 'sign' | 'create' | 'revoke', fn: () => Promise<void>) => {
     setBusy(kind);
@@ -81,11 +83,11 @@ export function Keys({
 
       <div className="split keys-split">
         <ol className="steps rise d1">
-          <li className={`step ${proof ? 'done' : issued ? '' : 'current'}`}>
+          <li className={`step ${proof || used ? 'done' : 'current'}`}>
             <span className="step-n" aria-hidden="true">01</span>
             <div className="step-body">
               <h2 className="step-title">
-                <Check state={proof ? 'ok' : 'idle'} /> Sign with Ethereum
+                <Check state={proof || used ? 'ok' : 'idle'} /> Sign with Ethereum
               </h2>
               <p className="step-text">Your wallet signs a standard EIP-4361 message. No transaction, no gas.</p>
               {challenge && (
@@ -98,6 +100,19 @@ export function Keys({
                 <p className="success" role="status">
                   Wallet proof ready · single-use
                 </p>
+              ) : used ? (
+                <div className="step-used">
+                  <p className="success" role="status">
+                    Signed · used for {issued ? 'this key' : 'the revoke'}
+                  </p>
+                  <p className="step-text">
+                    Each proof covers one action. Creating or revoking again asks your wallet for a fresh signature.
+                  </p>
+                  <button type="button" className="btn ghost" onClick={signProof} disabled={busy !== null}>
+                    {busy === 'sign' ? <Spinner /> : null}
+                    {busy === 'sign' ? 'Sign in your wallet…' : 'Sign a fresh proof now'}
+                  </button>
+                </div>
               ) : (
                 <button type="button" className="btn primary" onClick={signProof} disabled={busy !== null}>
                   {busy === 'sign' ? <Spinner /> : null}
