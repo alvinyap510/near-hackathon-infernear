@@ -143,39 +143,26 @@ const addLog = (text, sign) => {
 addLog('yield posted · keeper', 1);
 addLog('call debited · per inference ID', -1);
 if (motion) {
-  // Every 4.8 s a drop of yield forms under the principal and lands in credits at 1.45 s
-  // (the CSS drip timeline); a call is debited 2.4 s after that.
-  const CYCLE = 4.8;
-  const LAND = 1.45;
-  let t = CYCLE;
-  let landed = true;
-  let debited = true;
-  const restart = (cls) => {
-    ledger.classList.remove(cls);
-    void ledger.offsetWidth;
-    ledger.classList.add(cls);
-  };
-  animate(ledger, (dt) => {
-    value += dt * 0.0000137;
-    t += dt;
-    if (t >= CYCLE) {
-      t = 0;
-      landed = debited = false;
-      restart('drip');
-    }
-    if (!landed && t >= LAND) {
-      landed = true;
-      value += 0.0004;
+  // Each ripple starts as its drop lands (see .ledger-drip in the CSS): credits tick up a little
+  // per drop, and the log keeps its calm pace, one line about every 2.4 s.
+  let drops = 0;
+  const land = (e) => {
+    if (e.animationName !== 'ripple') return;
+    drops++;
+    value += 0.00004;
+    if (drops % 12 === 6) {
       addLog('yield posted · keeper', 1);
-      restart('bump');
-    }
-    if (!debited && t >= LAND + 2.4) {
-      debited = true;
+      ledger.classList.remove('bump');
+      void ledger.offsetWidth;
+      ledger.classList.add('bump');
+    } else if (drops % 12 === 0) {
       value = Math.max(0, value - 0.00018);
       addLog('call debited · per inference ID', -1);
     }
     credits.textContent = fmt(value);
-  });
+  };
+  ledger.addEventListener('animationstart', land);
+  ledger.addEventListener('animationiteration', land);
 }
 
 /* ---------- 002: a dot runs along each yield shape ---------- */

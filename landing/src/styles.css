@@ -1119,8 +1119,10 @@ svg {
   stroke-width: 1.6;
 }
 
-/* Yield drips off the principal into the credits figure below; main.js restarts the drip at
-   each posting. Without motion the drop just hangs under the principal. */
+/* Yield drips steadily off the principal into the credits figure below. Four drops, each with its
+   own ripple, repeat on slightly different cycles from a few px apart, so about 2.5 land a second
+   in an irregular rhythm; main.js ticks credits as each ripple starts. Without motion one drop
+   just hangs under the principal. */
 .ledger-drip {
   --x: calc(96px + 12px + 64px);
   --fall: 78px;
@@ -1129,14 +1131,42 @@ svg {
   margin-bottom: -2px;
 }
 
-.drop {
+.drop,
+.ripple {
+  --D: 1.6s;
+  --d: 0s;
+  --dx: 0px;
   position: absolute;
+  left: calc(var(--x) + var(--dx));
+}
+
+.drop:nth-of-type(2),
+.ripple:nth-of-type(2) {
+  --D: 1.7s;
+  --d: 0.37s;
+  --dx: 11px;
+}
+
+.drop:nth-of-type(3),
+.ripple:nth-of-type(3) {
+  --D: 1.55s;
+  --d: 0.81s;
+  --dx: -9px;
+}
+
+.drop:nth-of-type(4),
+.ripple:nth-of-type(4) {
+  --D: 1.65s;
+  --d: 1.18s;
+  --dx: 4px;
+}
+
+.drop {
   top: 0;
-  left: var(--x);
-  width: 14px;
+  width: 8px;
   height: auto;
   aspect-ratio: 3 / 4;
-  margin-left: -7px;
+  margin-left: -4px;
   overflow: visible;
   transform-origin: 50% 0;
 }
@@ -1144,69 +1174,81 @@ svg {
 .drop path {
   fill: var(--mint);
   stroke: var(--mint-ink);
-  stroke-width: 1.2;
+  stroke-width: 1.4;
+}
+
+.drop ~ .drop {
+  display: none;
 }
 
 .ripple {
-  position: absolute;
   top: var(--fall);
-  left: var(--x);
-  width: 36px;
-  height: 9px;
-  margin: -4.5px 0 0 -18px;
-  border: 1.5px solid var(--mint-ink);
+  width: 20px;
+  height: 5px;
+  margin: -2.5px 0 0 -10px;
+  border: 1.2px solid var(--mint-ink);
   border-radius: 50%;
   opacity: 0;
 }
 
-.motion .ledger.drip .drop {
-  animation: drip 2.2s both;
+.motion .ledger-drip .drop {
+  display: block;
+  opacity: 0;
 }
 
-.motion .ledger.drip .ripple {
-  animation: ripple 0.7s ease-out 1.45s;
+.motion .ledger.in .drop {
+  animation: drip var(--D) var(--d) infinite backwards;
 }
 
-/* Forms and swells (0-48%), lets go and falls faster and faster (48-66%), splashes. */
+/* Each ripple's cycle starts as its drop lands, 52% into the drop's cycle. */
+.motion .ledger.in .ripple {
+  animation: ripple var(--D) calc(var(--d) + var(--D) * 0.52) infinite;
+}
+
+/* Forms and swells (0-32%, about 0.5 s), lets go and falls faster and faster (32-52%, about
+   0.33 s), splashes, then waits for its next turn. */
 @keyframes drip {
   0% {
     opacity: 0;
-    transform: scale(0.2, 0.12);
+    transform: scale(0.2, 0.15);
     animation-timing-function: cubic-bezier(0.3, 0, 0.4, 1);
   }
 
-  10% {
+  6% {
     opacity: 1;
   }
 
-  40% {
+  28% {
     transform: scale(0.9);
   }
 
-  48% {
+  32% {
+    opacity: 1;
     transform: scale(0.95, 1.2);
     animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45);
   }
 
-  66% {
+  52% {
     opacity: 1;
-    transform: translateY(calc(var(--fall) - 22px)) scale(0.85, 1.2);
+    transform: translateY(calc(var(--fall) - 12px)) scale(0.85, 1.15);
   }
 
-  70%,
+  55%,
   100% {
     opacity: 0;
-    transform: translateY(calc(var(--fall) - 9px)) scale(1.5, 0.3);
+    transform: translateY(calc(var(--fall) - 5px)) scale(1.6, 0.3);
   }
 }
 
 @keyframes ripple {
-  from {
-    opacity: 0.9;
+  0% {
+    opacity: 0.8;
     transform: scale(0.3);
+    animation-timing-function: ease-out;
   }
 
-  to {
+  28%,
+  100% {
     opacity: 0;
     transform: scale(1.6);
   }
