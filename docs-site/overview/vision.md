@@ -32,7 +32,9 @@ The vaults are built around four shapes of yield, so that the asset you already 
 | A growing balance | Lending USDC on Aave |
 | Appreciation with a cap | A Pendle principal token rising to face value |
 | Appreciation with no cap | A liquid staking token such as cbETH |
-| Staking with claimable rewards | Built and tested, not yet deployed |
+| Staking with claimable rewards | A staking pool that pays out reward tokens (built and tested, not yet deployed) |
+
+<YieldShapes />
 
 ### Proof, not promises
 

@@ -46,7 +46,7 @@ debit(user: String, amount_micro: U128, receipt: Receipt)
 Called by the gateway.
 
 * **Idempotent** by `receipt.inference_id`. Repeating a debit is a successful no-op.
-* Otherwise requires `spent + amount ≤ credited`, then stores the amount under the inference id.
+* Otherwise requires `spent + amount ≤ credited`, then stores the amount under the inference ID.
 
 Emits `debit` with the receipt.
 
@@ -96,9 +96,9 @@ Receipt {
 
 * `spent ≤ credited`, per user, always.
 * For each vault, `posted_total ≤ paid_cum`: the yield posted for users, in the yield token's own units, never exceeds the yield total reported for the vault.
-* One debit per inference id.
+* One debit per inference ID.
 * Fractions of a micro-USD are never dropped: the per-user, per-vault remainder is carried at scale 1e18.
 
 ## Storage
 
-Each debit stores one inference id and one amount, permanently. The contract pays for that storage from its own balance, so the operator has to keep it funded. When the free balance cannot cover about ten more debits, the gateway refuses credit-paid calls with `503 ledger_storage_low`.
+Each debit stores one inference ID and one amount, permanently. The contract pays for that storage from its own balance, so the operator has to keep it funded. When the free balance cannot cover about ten more debits, the gateway refuses credit-paid calls with `503 ledger_storage_low`.

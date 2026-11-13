@@ -24,6 +24,7 @@ npm run preview
 | `specs/` | Units and identifiers, the ledger, the vaults, the gateway, the keeper, wallet proofs |
 | `reference/` | Live deployments, verification, known limits, FAQ |
 | `.vitepress/config.ts` | Navigation, sidebar, search |
+| `.vitepress/theme/` | The InferNear theme (palette, fonts, tables, code, callouts) and the animated SVG diagrams, as Vue components placed in the pages with one tag each. They hold still for readers who ask for reduced motion |
 | `public/` | Logo and favicon |
 
 The pages restate what the root README, `docs/interfaces.md` and the component READMEs say. When those change, change the page too.

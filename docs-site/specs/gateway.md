@@ -11,13 +11,15 @@ The gateway is the part of the relay that serves the API. It authenticates API c
 
 ## The life of a chat request
 
+<GatewaySteps />
+
 1. **Authenticate.** Check the key's signature and expiry before reading the body, then its key epoch against the ledger.
 2. **Validate.** Model served, `max_tokens` within the cap, `n` equal to 1, text input, body within 1 MiB.
 3. **Pick the mode.** Any of the SDK's encryption headers selects private mode, and then the complete set must be present. Otherwise the request is standard.
 4. **Admit.** Use a free trial call if the wallet has one. Otherwise reserve credit (below). At most four requests per user are in flight.
 5. **Forward.** The upstream authorization is replaced with InferNear's. In private mode the request bytes are forwarded unchanged. In both modes the response bytes, including stream framing, are passed through unchanged.
 6. **Meter.** Read the usage from a copy of the response.
-7. **Settle.** Charge the usage on the ledger under the inference id.
+7. **Settle.** Charge the usage on the ledger under the inference ID.
 
 ## Modes
 
@@ -50,7 +52,7 @@ Available headroom is the ledger's balance minus all live reservations, using th
 charge = min(ceil(usage priced at the snapshot prices), reservation)
 ```
 
-* The inference id is the `Inference-Id` response header, or UUIDv5 of the body's completion id when the header is absent.
+* The inference ID is the `Inference-Id` response header, or UUIDv5 of the body's completion id when the header is absent.
 * A completed reply with missing or malformed usage is charged the full reservation, with `source: "reservation"` on the receipt.
 * A partial stream that produced a completion id is charged, even if the transport fails afterwards.
 
@@ -63,7 +65,7 @@ A call is not charged when there is no successful completion: a non-2xx upstream
 * A debit keeps its reservation until it is broadcast.
 * The gateway re-reads `debited_amount` every second and resends an unconfirmed debit after a doubling delay: 2 s, 4 s, up to 10 minutes.
 * After twelve unconfirmed sends (about an hour) it stops, releases the amount and records the charge as an operator loss.
-* Retries reuse the same inference id, and the ledger accepts each id once, so a call cannot be charged twice.
+* Retries reuse the same inference ID, and the ledger accepts each id once, so a call cannot be charged twice.
 
 ## Free trial calls
 
