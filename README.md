@@ -114,7 +114,7 @@ flowchart LR
 ```
 
 1. **Deposit on your chain.** Each vault is an ERC-4626 vault with no owner, admin, upgrade or pause. You can redeem your principal at any time; only the surplus above principal is paid to InferNear.
-2. **Yield becomes credits.** The keeper reads each holder's attributed yield at a finalized block, prices it in USD, and posts it to the NEAR connector. Credits can only come from posted yield: `spent ≤ credited` per user, enforced on chain.
+2. **Yield becomes credits.** The keeper reads each holder's attributed yield at a finalized block, prices it in USD, and posts it to the NEAR connector. Credits come only from what the keeper posts, which is realized yield and finalized USDC purchases through the top-up contract: `spent ≤ credited` per user, enforced on chain.
 3. **Call the API.** Sign in with your wallet to create an API key: an EVM wallet (EIP-4361) or Meteor Wallet on NEAR (NEP-413). Then point an OpenAI client or NEAR AI's SDK at InferNear's endpoint. The gateway charges the model's reported `usage` against your credits. Each wallet gets 5 free trial calls, funded by InferNear, before credits are needed. You can pick a handle for your account and link a second wallet to it, EVM or NEAR, so one identity and one API key cover both.
 
 ### Two ways to call the API
@@ -191,7 +191,7 @@ Each component's README has the full verification set: Base fork tests against r
 These are enforced in the contracts and tested in the contract and relay suites:
 
 1. Principal is never spendable as credits.
-2. Credits spent ≤ yield realized, per user, always.
+2. Credits spent ≤ credits posted (yield realized, plus any USDC purchased), per user, always.
 3. Principal + unspent realized yield + unrealized yield = position value, in integer base units within documented rounding.
 4. You can always withdraw your principal, minus documented protocol exit costs and pro-rata strategy losses.
 
