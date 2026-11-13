@@ -363,7 +363,10 @@ a {
   top: calc(100% + 8px);
   right: 0;
   z-index: 20;
-  width: min(300px, calc(100vw - 32px));
+  width: min(320px, calc(100vw - 32px));
+  max-height: calc(100vh - 84px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 6px;
   border: 1px solid var(--line);
   border-radius: var(--r);
@@ -458,6 +461,395 @@ a {
 .acct-item.danger:hover,
 .acct-item.danger:focus-visible {
   background: var(--danger-wash);
+}
+
+.acct-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+  background: none;
+}
+
+.acct-handle {
+  font-family: var(--sans);
+  font-stretch: normal;
+  font-size: 13.5px;
+  font-weight: 650;
+}
+
+.acct-name {
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.acct-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+
+.acct-sub .acct-who-id {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+/* First connection: a one-line pointer to the handle form, under the account button. */
+.acct-hint {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  padding: 3px 4px 3px 12px;
+  border-radius: 10px;
+  background: var(--ink);
+  color: var(--surface);
+  box-shadow: var(--shadow-lift);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.acct-hint::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  right: 22px;
+  width: 9px;
+  height: 9px;
+  background: var(--ink);
+  transform: rotate(45deg);
+}
+
+.acct-hint-open,
+.acct-hint-x {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.acct-hint-open {
+  padding: 5px 0;
+  font-weight: 600;
+}
+
+.acct-hint-x {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--dark-ink-2);
+  font-size: 16px;
+}
+
+.acct-hint-x:hover {
+  color: var(--surface);
+}
+
+/* The account section of the dropdown (AccountPanel, place = menu). */
+.ap {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 2px 2px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ap-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 0 8px;
+}
+
+.ap-k {
+  font-family: var(--mono);
+  font-stretch: 87.5%;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.ap-head .btn-copy {
+  height: 26px;
+  padding: 0 9px;
+  font-size: 11.5px;
+}
+
+.ap-wallets {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ap-wallets li {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.ap-wallets li.on {
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.ap-wkind {
+  font-family: var(--mono);
+  font-stretch: 87.5%;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.ap-wid {
+  overflow: hidden;
+  font-family: var(--mono);
+  font-stretch: 87.5%;
+  font-size: 12.5px;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ap-on {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--signal-ink);
+}
+
+.ap-on::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 0 2px var(--signal-wash);
+}
+
+.ap-fine {
+  margin: 0;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+
+.ap-actions {
+  display: grid;
+}
+
+.ap-actions .ap-fine {
+  padding: 2px 10px 0;
+}
+
+.ap .error {
+  margin: 0 4px;
+}
+
+/* No account yet: a compact call to action that opens the form in place. */
+.ap-cta {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--signal-ink) 22%, transparent);
+  border-radius: var(--r-sm);
+  background: var(--signal-wash);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ap-cta:hover {
+  border-color: color-mix(in srgb, var(--signal-ink) 45%, transparent);
+}
+
+.ap-cta-plus {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--signal);
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.ap-cta-text {
+  display: grid;
+  gap: 2px;
+}
+
+.ap-cta-text b {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ap-cta-text span {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.ap-form {
+  display: grid;
+  gap: 8px;
+  padding: 6px 8px 2px;
+}
+
+.ap-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-stretch: 87.5%;
+  font-size: 14px;
+}
+
+.ap-input:focus {
+  outline: none;
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px rgba(20, 21, 25, 0.08);
+}
+
+.ap-input[aria-invalid='true'] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-wash);
+}
+
+.ap-rule {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+
+.ap-rule.bad {
+  color: var(--danger);
+}
+
+.ap-wide {
+  width: 100%;
+  height: 40px;
+  font-size: 14px;
+}
+
+.ap-signin {
+  justify-self: start;
+  font-size: 13px;
+}
+
+/* A pending link: impossible to miss, in the dropdown and in the strip under the header. */
+.ap-callout {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--signal-ink) 25%, transparent);
+  border-radius: var(--r-sm);
+  background: var(--signal-wash);
+}
+
+.ap-callout-h {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.ap-callout-s {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+.ap-glyph {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  fill: none;
+  stroke: var(--signal-ink);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ap-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.btn.ap-small {
+  height: 34px;
+  padding: 0 14px;
+  font-size: 13.5px;
+}
+
+.link-banner {
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--signal) 13%, var(--surface));
+}
+
+.link-banner-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 8px 28px;
+}
+
+.link-banner-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.link-banner-error {
+  font-size: 12.5px;
+  color: var(--danger);
+}
+
+.link-banner .btn.ap-small {
+  height: 30px;
+  font-size: 13px;
 }
 
 /* ---------- Page ---------- */
@@ -2671,6 +3063,22 @@ textarea:focus {
 
   .acct-id {
     display: none;
+  }
+
+  .acct-hint {
+    white-space: normal;
+    width: max-content;
+    max-width: calc(100vw - 32px);
+  }
+
+  .link-banner-inner {
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    padding: 8px 16px;
+  }
+
+  .link-banner-text {
+    flex-basis: calc(100% - 26px);
   }
 
   .acct-btn {

@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent } from 'react';
+import { useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { AccountMenu } from './AccountMenu.tsx';
 import { canonicalSeed } from './avatar.ts';
 import { SealGlyph } from './ui.tsx';
@@ -32,10 +32,19 @@ export function Header({
   onDisconnect,
   chainName = 'Base',
   accountSeed: storedSeed,
+  handle,
+  promptHandle,
+  accountPanel,
 }: {
   address: string | null;
   /** The account's fixed avatar seed (its UID), once the connected wallet is known to be in an account. */
   accountSeed?: string;
+  /** The account's handle, shown as the name on the account button and in its panel. */
+  handle?: string;
+  /** The connected wallet has no account yet: point it at the handle form once. */
+  promptHandle?: boolean;
+  /** The account section, for the dropdown (`menu`) and for the pending-link strip under the header (`banner`). */
+  accountPanel?: (place: 'menu' | 'banner', close: () => void) => ReactNode;
   chainName?: 'Base' | 'NEAR';
   onDisconnect?: () => void;
   tab: Tab;
@@ -86,7 +95,10 @@ export function Header({
           </nav>
         <div className="wallet">
           {address && accountSeed ? (
-            <AccountMenu seed={accountSeed} id={address} kind={chainName === 'NEAR' ? 'near' : 'evm'} onSwitch={onConnect} onLogout={onDisconnect} />
+            <AccountMenu seed={accountSeed} id={address} kind={chainName === 'NEAR' ? 'near' : 'evm'} handle={handle} hint={promptHandle}
+              onSwitch={onConnect} onLogout={onDisconnect}>
+              {accountPanel && ((close) => accountPanel('menu', close))}
+            </AccountMenu>
           ) : onConnect ? (
             <button type="button" className="btn primary header-connect" onClick={onConnect}>
               <span className="btn-dot" aria-hidden="true" />
@@ -97,6 +109,7 @@ export function Header({
           )}
         </div>
       </div>
+      {address && accountPanel?.('banner', () => {})}
     </header>
   );
 }
