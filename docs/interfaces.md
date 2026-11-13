@@ -141,6 +141,30 @@ Verify ed25519 over SHA256 of the NEP-413 Borsh payload: `u32_le(2147484061) || 
 
 Success uses `near:mainnet:<account_id>` in the existing API-key payload and connector ledger. Responses and key epoch/expiry rules are unchanged. Revocation shares the daily operator-paid transaction count with EVM revocations and the other sponsored routes.
 
+### Accounts: handle, UID and linked wallets
+
+An account is identified by its **UID** and **handle**, not by a wallet. The registry lives in the relay (`RELAY_DATA_DIR`, one JSON file); it is not on chain, and the credit ledger is unchanged: balances stay per wallet id on the connector. Without `RELAY_DATA_DIR` every route below answers `404 accounts_disabled`.
+
+```json
+{"uid":"acc_<32 hex>","handle":"alice","wallets":["eip155:8453:0x…","near:mainnet:bob.near"],"avatar_seed":"acc_<32 hex>","created_at":1794500000}
+```
+
+`uid` is generated at creation and never changes; `avatar_seed` equals it. `handle` matches `^[a-z0-9][a-z0-9_-]{1,18}[a-z0-9]$`, is unique, and a short reserved list is refused. An account holds 1 to 4 wallets, in the order they were added; a wallet belongs to at most one account.
+
+Every route takes the same wallet proof as `POST /keys` (EIP-4361 `{ message, signature }` or the NEP-413 `near` envelope), with a fresh nonce. **The proof's statement names the action**, as the EIP-4361 statement or the `statement` field of the NEAR canonical JSON, and a proof signed for one action is refused for every other. `/keys` and `/keys/revoke` require `Authorize one InferNear API key action.`
+
+| Route | Body besides the proof | Statement | Result |
+|---|---|---|---|
+| `POST /accounts/me` | | `Sign in to InferNear.` | `200 { "account": Account \| null }` |
+| `POST /accounts` | `handle` | `Create InferNear account "<handle>".` | `201 { "account" }`; `400 invalid_handle`; `409 handle_taken`; `409 account_exists` with the caller's `account`; `503 accounts_full` |
+| `POST /accounts/link/start` | `handle` | `Add a wallet to InferNear account "<handle>".`, signed by a wallet already in it | `200 { "ticket": "ilt_…", "expires_at" }`; `404 no_account`; `409 too_many_wallets` |
+| `POST /accounts/link` | `ticket` | `Link this wallet to InferNear account "<handle>".`, signed by the wallet being added | `200 { "account" }`; `401 invalid_ticket`; `409 wallet_linked`; `409 too_many_wallets` |
+| `POST /accounts/unlink` | `handle` | `Unlink this wallet from InferNear account "<handle>".`, signed by the wallet leaving | `200 { "account" }`; `404 no_account`; `409 last_wallet` |
+
+Linking therefore needs two signatures: the ticket carries the consent of a wallet already in the account (relay-signed, ten minutes, one use), and the new wallet signs its own proof. All account routes share the 30/minute per-IP bucket and send no transaction.
+
+`POST /keys` adds `"account": Account | null` to its response, and a key issued to a linked wallet records the account's UID. Such a key can be charged to **any wallet currently linked to that account**: its own wallet first, then the others in order. One call is charged to exactly one wallet (the ledger takes one debit per inference), so two wallets that each hold too little are not added together. The registry is read at every call: a wallet that has left the account stops being charged at once. Free trial calls are counted per account for a linked wallet, and what the wallet had used before joining moves in with it. Revoking from a wallet ends the keys that wallet issued.
+
 ### API routes (OpenAI format)
 
 | Route | Auth | Credits | Notes |

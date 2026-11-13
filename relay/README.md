@@ -122,6 +122,16 @@ The script checks JS and Python JSON/streaming calls, v3 headers, anonymous boot
 Encrypted streaming returned usable usage, so streaming stays enabled. V3 does not prevent an active relay from learning via length, timing and token-count oracles; complete confidentiality against an active relay is not claimed. The probe covers private mode only; standard mode, added afterwards, is covered by the offline tests.
 
 
+## Accounts and linked wallets
+
+With `RELAY_DATA_DIR` set, a user can pick a handle and link up to four wallets (EVM or NEAR) into one account, identified by a permanent UID. Routes, statements and the two-signature link flow are in [interfaces.md](../docs/interfaces.md#accounts-handle-uid-and-linked-wallets).
+
+- **Where it lives:** one JSON file, `accounts.json`, in that directory, rewritten whole and atomically on every change. It holds handles, UIDs and wallet ids: no secrets and no balances. It is the first thing this relay stores on disk.
+- **What it changes:** a key issued to a linked wallet can be charged to any wallet of its account (its own first; one wallet per call), and free trial calls are counted per account. The NEAR ledger still keeps one balance per wallet.
+- **If the file is lost or damaged:** handles and links are gone and users create them again; every wallet keeps its own balance on the ledger. A file that cannot be read is moved aside (`accounts.json.corrupt-<time>`) and the relay starts with no accounts rather than not starting.
+- **Limits, and the risk each one names:** four wallets per account (each admission reads the ledger once per linked wallet) and 10,000 accounts (anyone with a wallet can create one).
+- **Trust:** the registry is the relay's word, like prices and yield attribution. It decides which wallets a key may charge; it cannot create credits or move principal.
+
 ## NEAR-wallet API keys
 
 `POST /keys` and `/keys/revoke` accept NEP-413 alongside the unchanged SIWE path. The exact envelope, canonical message and responses are in [interfaces.md](../docs/interfaces.md#near-wallet-key-proofs-nep-413). The signed message is `JSON.stringify({ statement: "Authorize one InferNear API key action.", account_id, nonce: relayNonce, expires_at })`, in that field order. Expiry is an integer Unix timestamp no more than five minutes ahead. The account is signed as well as checked against the envelope to prevent shared-key account substitution.
