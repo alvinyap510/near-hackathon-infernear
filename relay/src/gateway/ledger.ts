@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingHttpHeaders } from 'node:http';
 import { Auth, type KeyPayload } from './auth.ts';
+import { FreeCalls, type FreeHold } from './free-calls.ts';
 import { inferenceId, Meter } from './meter.ts';
 import { Upstream, endToEndHeaders, type Model } from './upstream.ts';
 import { HttpError, InsufficientCredit, Mutex, costMicro, min, reportError, type Account, type Connector, type Receipt, type Report } from '../types.ts';
 
 type User = { lock: Mutex; floor?: bigint; epoch: number; pendingEpoch?: number; active: number; reservations: Map<string, bigint> };
 // `body` is what goes upstream: the client's exact bytes when encrypted, the normalised JSON in standard mode.
-export type Reservation = { token: string; user: string; amount: bigint; model: Model; inputBound: number; maxTokens: number; streaming: boolean; body: Buffer; encrypted: boolean };
+export type Reservation = { token: string; user: string; amount: bigint; model: Model; inputBound: number; maxTokens: number; streaming: boolean; body: Buffer; encrypted: boolean; free?: FreeHold };
 type Job = { reservation: Reservation; amount: bigint; receipt: Receipt; stage: 'metered' | 'broadcast'; running: boolean; sends: number; next: number };
 
 // Tokens a chat template may add to a plain request beyond its own bytes (role markers, tool-use
@@ -25,9 +26,11 @@ export class Gateway {
   private broadcasted = new Set<string>();
   private now: () => number;
   private retryMs: number;
-  constructor(options: { auth: Auth; upstream: Upstream; connector: Connector; maxTokens: number; report: Report; now?: () => number; retryMs?: number }) {
+  private free: FreeCalls;
+  constructor(options: { auth: Auth; upstream: Upstream; connector: Connector; maxTokens: number; report: Report; now?: () => number; retryMs?: number; freeCallsPerUser?: number; freeCallsPerDay?: number }) {
     this.auth = options.auth; this.upstream = options.upstream; this.connector = options.connector;
     this.cap = options.maxTokens; this.report = options.report; this.now = options.now ?? Date.now; this.retryMs = options.retryMs ?? 2000;
+    this.free = new FreeCalls(options.freeCallsPerUser ?? 0, options.freeCallsPerDay ?? 0, this.now);
   }
   // A debit stores about 0.001 NEAR of state on the connector. Once its free balance cannot cover
   // more, every debit would fail after the inference was served and its gas would be wasted, so
@@ -120,7 +123,6 @@ export class Gateway {
         body.messages.some((m: any) => !m || (m.content !== null && m.content !== undefined &&
           typeof m.content !== 'string' && (!Array.isArray(m.content) || m.content.some((p: any) => p?.type !== 'text')))))
       invalid('Only text chat and encrypted tool definitions/calls are served');
-    if (await this.storageLow()) throw new HttpError(503, 'ledger_storage_low', 'The credit ledger is out of storage; the operator must top it up');
     const model = (await this.upstream.models()).find(m => m.id === body.model);
     if (!model) throw new HttpError(404, 'model_not_found', 'Model is not a canonical attested TEE text model');
     const upstreamBody = encrypted ? raw : Buffer.from(JSON.stringify(body));
@@ -134,6 +136,14 @@ export class Gateway {
       const account = await this.connector.account(key.user);
       this.observe(state, account); this.checkEpoch(key, state);
       if (state.active >= 4) throw new HttpError(429, 'concurrency_limit', 'At most four requests in flight per user');
+      const free = this.free.hold(key.user);
+      if (free) {
+        state.active += 1;
+        return { token: randomUUID(), user: key.user, amount, model, inputBound, maxTokens: body.max_tokens,
+          streaming: body.stream === true, body: upstreamBody, encrypted, free };
+      }
+      // A free call never writes the ledger, so storage and headroom matter only from here on.
+      if (await this.storageLow()) throw new HttpError(503, 'ledger_storage_low', 'The credit ledger is out of storage; the operator must top it up');
       const committed = account.spent > state.floor! ? account.spent : state.floor!;
       const reserved = [...state.reservations.values()].reduce((a, b) => a + b, 0n);
       if (amount > account.credited - committed - reserved) throw new HttpError(402, 'insufficient_credit', 'Insufficient available credits');
@@ -145,14 +155,15 @@ export class Gateway {
   async complete(reservation: Reservation, status: number, headerId: string | undefined, meter: Meter): Promise<void> {
     const state = this.user(reservation.user);
     await state.lock.run(async () => {
-      state.active -= 1;
       const id = status >= 200 && status < 300 ? headerId || (meter.chatId ? inferenceId(meter.chatId) : '') : '';
+      if (reservation.free) this.free.settle(reservation.free, Boolean(id));
+      state.active -= 1;
       if (!id) {
         state.reservations.delete(reservation.token);
         this.report('inference_loss', { user: reservation.user, reason: 'no_completion' });
         return;
       }
-      if (this.jobs.has(id) || this.broadcasted.has(id)) {
+      if (!reservation.free && (this.jobs.has(id) || this.broadcasted.has(id))) {
         state.reservations.delete(reservation.token);
         return;
       }
@@ -161,11 +172,23 @@ export class Gateway {
       const receipt: Receipt = { inference_id: id, chat_id: meter.chatId, model: reservation.model.id,
         prompt_tokens: usage?.prompt_tokens ?? reservation.inputBound, completion_tokens: usage?.completion_tokens ?? reservation.maxTokens,
         in_price_nano: String(reservation.model.inNano), out_price_nano: String(reservation.model.outNano), source: usage ? 'signed_usage' : 'reservation' };
+      if (reservation.free) {
+        this.report('free_call', { user: reservation.user, inference_id: id, amount_micro: String(amount), source: receipt.source });
+        return;
+      }
       // Settlement needs the reservation's numbers, not the request: do not keep prompts while a debit is pending.
       this.jobs.set(id, { reservation: { ...reservation, body: Buffer.alloc(0) }, amount, receipt, stage: 'metered', running: false, sends: 0, next: 0 });
     });
     // Confirmation is independent of delivery; raw responses do not wait on NEAR.
-    void this.retryDebits();
+    if (!reservation.free) void this.retryDebits();
+  }
+  async freeCalls(header: string | undefined) {
+    const key = await this.authenticate(header);
+    return this.user(key.user).lock.run(async () => this.free.status(key.user));
+  }
+  billingHeaders(reservation: Reservation): Record<string, string> {
+    return reservation.free ? { 'x-infernear-billing': 'free', 'x-infernear-free-remaining': String(this.free.status(reservation.user).remaining) }
+      : { 'x-infernear-billing': 'credits' };
   }
   async retryDebits(): Promise<void> {
     await Promise.all([...this.jobs.values()].map(job => this.retry(job)));

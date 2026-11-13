@@ -50,7 +50,7 @@ test('JSON forwarding preserves hashes and headers, snapshots prices and caps me
   assert.equal(upstream.headers['accept-encoding'], 'identity');
   for (const [name, value] of Object.entries(e2ee)) assert.equal(upstream.headers[name], value);
   assert.equal(response.headers.get('inference-id'), 'fixture-inference');
-  assert.equal(response.headers.get('access-control-expose-headers'), 'Inference-Id');
+  assert.equal(response.headers.get('access-control-expose-headers'), 'Inference-Id, X-InferNear-Billing, X-InferNear-Free-Remaining');
   await settle(h.gateway);
   assert.equal(h.connector.amounts.get('fixture-inference'), 13n);
   assert.equal(h.connector.receipts.get('fixture-inference')!.source, 'signed_usage');

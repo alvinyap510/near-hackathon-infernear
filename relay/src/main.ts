@@ -3,6 +3,7 @@ import type { Hex } from 'viem';
 import { nearConnector } from './adapters/near.ts';
 import { evmPorts, type EvmVaultConfig, type BridgeToken } from './adapters/evm.ts';
 import { Auth } from './gateway/auth.ts';
+import { freeCallLimit } from './gateway/free-calls.ts';
 import { Gateway } from './gateway/ledger.ts';
 import { createRelayServer } from './gateway/server.ts';
 import { SignedRequests } from './gateway/signed.ts';
@@ -14,6 +15,8 @@ const required = (key: string): string => { const value = process.env[key]; if (
 const integer = (key: string): number => { const value = Number(required(key)); if (!Number.isSafeInteger(value) || value < 1) throw new Error(`Invalid ${key}`); return value; };
 const report: Report = (event, details) => console.log(JSON.stringify({ event, ...details }));
 async function main() {
+  const freeCallsPerUser = freeCallLimit(process.env.RELAY_FREE_CALLS_PER_USER, 'RELAY_FREE_CALLS_PER_USER');
+  const freeCallsPerDay = freeCallLimit(process.env.RELAY_FREE_CALLS_PER_DAY, 'RELAY_FREE_CALLS_PER_DAY');
   const publicUrl = required('RELAY_PUBLIC_URL');
   const chainId = integer('BASE_CHAIN_ID');
   const rheaVault = required('RHEA_VAULT_ACCOUNT'), intents = required('NEAR_INTENTS_ACCOUNT');
@@ -23,7 +26,7 @@ async function main() {
     gatewayAccount: required('NEAR_GATEWAY_ACCOUNT'), gatewayKey: required('NEAR_GATEWAY_PRIVATE_KEY'), keeperAccount: required('NEAR_KEEPER_ACCOUNT'), keeperKey: required('NEAR_KEEPER_PRIVATE_KEY'), relayAccount: required('NEAR_RELAY_ACCOUNT'), relayKey: required('NEAR_RELAY_PRIVATE_KEY'), rheaVault, intents,
     rheaLend: required('NEAR_RHEA_ACCOUNT'), usdc: required('NEAR_USDC_ACCOUNT'), rheaCushion: BigInt(required('NEAR_RHEA_CUSHION')), minYieldMicro });
   const gateway = new Gateway({ auth: new Auth(required('API_KEY_SECRET'), required('RELAY_WEB_ORIGIN'), chainId), upstream: new Upstream(required('NEAR_AI_BASE_URL'), required('NEAR_AI_API_KEY'), Date.now, integer('RELAY_UPSTREAM_TIMEOUT_MS')),
-    connector, maxTokens: integer('RELAY_MAX_TOKENS'), report });
+    connector, maxTokens: integer('RELAY_MAX_TOKENS'), report, freeCallsPerUser, freeCallsPerDay });
   const ports = evmPorts({ rpc: required('BASE_RPC_URL'), chainId, key: required('TREASURY_EVM_PRIVATE_KEY') as Hex,
     vaults: JSON.parse(required('EVM_VAULTS')) as EvmVaultConfig[], fromBlock: BigInt(required('VAULT_START_BLOCK')),
     oneClickUrl: required('ONECLICK_API_URL'), oneClickToken: process.env.ONECLICK_API_TOKEN, bridgeTokens: JSON.parse(required('ONECLICK_TOKENS')) as BridgeToken[], destinationAsset: required('ONECLICK_DESTINATION_ASSET'),

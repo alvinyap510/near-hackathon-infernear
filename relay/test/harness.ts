@@ -23,12 +23,15 @@ export class FakeConnector implements Connector {
   landThenThrow = false;
   hiddenDebits = 0;
   debitCalls = 0;
+  accountCalls = 0;
+  debitReads = 0;
+  storageCalls = 0;
   bumpWait?: Promise<void>;
   postCalls = 0;
   posts: { vault: string; paid: bigint; rate: bigint; sourceBlock: bigint; entries: [string, bigint][] }[] = [];
   seed(user = USER, credit = 1_000_000n) { this.accounts.set(user, { credited: credit, spent: 0n, available: credit, key_epoch: 0 }); }
-  async account(user: string): Promise<Account> { return { ...(this.accountOverride ?? this.accounts.get(user) ?? { credited: 0n, spent: 0n, available: 0n, key_epoch: 0 }) }; }
-  async debitedAmount(id: string) { if (this.hiddenDebits > 0) { this.hiddenDebits--; return null; } return this.amounts.get(id) ?? null; }
+  async account(user: string): Promise<Account> { this.accountCalls++; return { ...(this.accountOverride ?? this.accounts.get(user) ?? { credited: 0n, spent: 0n, available: 0n, key_epoch: 0 }) }; }
+  async debitedAmount(id: string) { this.debitReads++; if (this.hiddenDebits > 0) { this.hiddenDebits--; return null; } return this.amounts.get(id) ?? null; }
   async debit(user: string, amount: bigint, receipt: Receipt) {
     this.debitCalls++;
     if (this.beforeFailures-- > 0) throw new Error('fixture RPC failure before broadcast');
@@ -66,10 +69,10 @@ export class FakeConnector implements Connector {
     this.vaults.set(vault, next);
   }
   async posted(vault: string) { const state = this.vaults.get(vault); return { paid: state?.paid ?? 0n, total: [...(state?.posted.values() ?? [])].reduce((sum, amount) => sum + amount, 0n) }; }
-  async storageBalance() { return { amount: '1000000000000000000000000', storage_usage: 1000 }; }
+  async storageBalance() { this.storageCalls++; return { amount: '1000000000000000000000000', storage_usage: 1000 }; }
 }
 
-export async function harness(options: { nearKey?: NearKeyLookup; now?: () => number; seed?: boolean; deadlineMs?: number; signedOperations?: Omit<SignedOperations, 'withdrawable'> & Partial<SignedOperations>; clientIpHeader?: string; retryMs?: number; sponsoredPerDay?: number } = {}) {
+export async function harness(options: { nearKey?: NearKeyLookup; now?: () => number; seed?: boolean; deadlineMs?: number; signedOperations?: Omit<SignedOperations, 'withdrawable'> & Partial<SignedOperations>; clientIpHeader?: string; retryMs?: number; sponsoredPerDay?: number; maxTokens?: number; freeCallsPerUser?: number; freeCallsPerDay?: number } = {}) {
   const connector = new FakeConnector();
   if (options.seed !== false) connector.seed();
   const events: { event: string; details: Record<string, unknown> }[] = [];
@@ -105,7 +108,7 @@ export async function harness(options: { nearKey?: NearKeyLookup; now?: () => nu
   const upstreamPort = (upstreamServer.address() as import('node:net').AddressInfo).port;
   const publicUrl = 'http://relay.test';
   const auth = new Auth('fixture-test-secret', publicUrl, 8453, options.now, options.nearKey);
-  const gateway = new Gateway({ auth, connector, upstream: new Upstream(`http://127.0.0.1:${upstreamPort}/v1`, 'fixture-upstream-key', options.now, options.deadlineMs), maxTokens: 100, report: (event, details) => events.push({ event, details }), now: options.now, retryMs: options.retryMs ?? 0 });
+  const gateway = new Gateway({ auth, connector, upstream: new Upstream(`http://127.0.0.1:${upstreamPort}/v1`, 'fixture-upstream-key', options.now, options.deadlineMs), maxTokens: options.maxTokens ?? 100, freeCallsPerUser: options.freeCallsPerUser, freeCallsPerDay: options.freeCallsPerDay, report: (event, details) => events.push({ event, details }), now: options.now, retryMs: options.retryMs ?? 0 });
   const server = createRelayServer(gateway, { publicUrl, now: options.now, report: (event, details) => events.push({ event, details }), allowedOrigin: 'https://dashboard.test', clientIpHeader: options.clientIpHeader, sponsoredPerDay: options.sponsoredPerDay,
     signedRequests: options.signedOperations ? new SignedRequests({ async withdrawable() { return { principal: 10n ** 12n, nonce: 0 }; }, ...options.signedOperations }, { vault: 'vault.near', intents: 'intents.near', chainId: 8453 }, options.now) : undefined });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));

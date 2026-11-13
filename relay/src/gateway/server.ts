@@ -69,7 +69,7 @@ export function createRelayServer(gateway: Gateway, options: { publicUrl: string
     res.setHeader('access-control-allow-origin', options.allowedOrigin ?? origin);
     res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
     res.setHeader('access-control-allow-headers', 'Authorization, Content-Type, X-Signing-Algo, X-Client-Pub-Key, X-Model-Pub-Key, X-Encryption-Version, X-Encrypt-All-Fields, x-no-aliasing');
-    res.setHeader('access-control-expose-headers', 'Inference-Id');
+    res.setHeader('access-control-expose-headers', 'Inference-Id, X-InferNear-Billing, X-InferNear-Free-Remaining');
     try {
       const url = new URL(req.url ?? '/', origin);
       const path = url.pathname;
@@ -84,6 +84,9 @@ export function createRelayServer(gateway: Gateway, options: { publicUrl: string
         if (path === '/keys') { json(res, 200, await gateway.issue(user)); return; }
         sponsor();
         json(res, 200, await gateway.revoke(user)); return;
+      }
+      if (req.method === 'GET' && path === '/v1/free-calls') {
+        json(res, 200, await gateway.freeCalls(req.headers.authorization)); return;
       }
       if (req.method === 'GET' && path === '/v1/models') {
         json(res, 200, { object: 'list', data: (await gateway.upstream.models()).map(model => model.public) }); return;
@@ -115,7 +118,7 @@ export function createRelayServer(gateway: Gateway, options: { publicUrl: string
           const upstream = await gateway.upstream.request('/chat/completions' + url.search, 'POST', req.headers, reservation.body);
           status = upstream.statusCode ?? 502;
           id = typeof upstream.headers['inference-id'] === 'string' ? upstream.headers['inference-id'] : undefined;
-          res.writeHead(status, endToEndHeaders(upstream.headers));
+          res.writeHead(status, { ...endToEndHeaders(upstream.headers), ...gateway.billingHeaders(reservation) });
           await pipe(upstream, res, bytes => meter.push(bytes));
         } finally {
           try { meter.finish(); }
