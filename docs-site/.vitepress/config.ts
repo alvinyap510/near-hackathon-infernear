@@ -11,6 +11,8 @@ export default defineConfig({
   srcExclude: ['README.md'],
   sitemap: { hostname: 'https://docs.infernear.dev' },
   head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }]],
+  // Code blocks read like the console on the landing page: night blocks in light and dark.
+  markdown: { theme: { light: 'github-dark', dark: 'github-dark' } },
   themeConfig: {
     logo: { light: '/logo-light.svg', dark: '/logo-dark.svg', alt: 'InferNear' },
     siteTitle: false,

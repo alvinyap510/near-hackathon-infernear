@@ -1,0 +1,453 @@
+/* InferNear's look on VitePress's reading layout. The tokens are the landing page's: paper and ink
+   by day, night and snow after dark, mint as the one accent (mint-ink where mint would be too light
+   to read on paper), Hanken Grotesk for text and Martian Mono for code and labels. */
+
+:root {
+  --in-paper: #f3efe6;
+  --in-paper-2: #ebe5d8;
+  --in-card: #fbf9f4;
+  --in-ink: #141519;
+  --in-ink-2: #464950;
+  --in-ink-3: #686b73;
+  --in-line: #d9d1c1;
+  --in-night: #141519;
+  --in-night-2: #1b1c21;
+  --in-night-3: #24262c;
+  --in-night-line: #2e3037;
+  --in-snow: #f4f4f0;
+  --in-snow-2: #a2a5ac;
+  --in-mint: #00ec97;
+  --in-mint-ink: #07714e;
+  --in-amber: #f2b705;
+  --in-red: #b23a1f;
+
+  --vp-font-family-base: 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
+  --vp-font-family-mono: 'Martian Mono Variable', ui-monospace, monospace;
+
+  --vp-c-bg: var(--in-card);
+  --vp-c-bg-alt: var(--in-paper);
+  --vp-c-bg-elv: #ffffff;
+  --vp-c-bg-soft: var(--in-paper);
+  --vp-c-text-1: var(--in-ink);
+  --vp-c-text-2: var(--in-ink-2);
+  --vp-c-text-3: var(--in-ink-3);
+  --vp-c-divider: #e4ddcf;
+  --vp-c-border: var(--in-line);
+  --vp-c-gutter: var(--in-paper-2);
+
+  --vp-c-brand-1: var(--in-mint-ink);
+  --vp-c-brand-2: #0a8a5f;
+  --vp-c-brand-3: var(--in-mint-ink);
+  --vp-c-brand-soft: rgba(0, 236, 151, 0.16);
+
+  --vp-c-default-soft: rgba(20, 21, 25, 0.06);
+  --vp-c-tip-1: var(--in-mint-ink);
+  --vp-c-tip-soft: rgba(0, 236, 151, 0.12);
+  --vp-c-warning-1: #8a6200;
+  --vp-c-warning-soft: rgba(242, 183, 5, 0.14);
+  --vp-c-danger-1: var(--in-red);
+  --vp-c-danger-soft: rgba(178, 58, 31, 0.08);
+
+  --vp-nav-bg-color: rgba(251, 249, 244, 0.86);
+  --vp-sidebar-bg-color: var(--in-paper);
+  --vp-local-nav-bg-color: rgba(251, 249, 244, 0.92);
+
+  /* Code reads like the console on the landing page: night blocks in both themes. */
+  --vp-code-block-bg: var(--in-night);
+  --vp-code-block-color: var(--in-snow);
+  --vp-code-block-divider-color: var(--in-night-line);
+  --vp-code-lang-color: var(--in-snow-2);
+  --vp-code-line-highlight-color: rgba(0, 236, 151, 0.1);
+  --vp-code-line-number-color: #5c5f66;
+  --vp-code-tab-bg: var(--in-night-2);
+  --vp-code-tab-divider: var(--in-night-line);
+  --vp-code-tab-text-color: var(--in-snow-2);
+  --vp-code-tab-hover-text-color: var(--in-snow);
+  --vp-code-tab-active-text-color: var(--in-snow);
+  --vp-code-tab-active-bar-color: var(--in-mint);
+  --vp-code-copy-code-border-color: var(--in-night-line);
+  --vp-code-copy-code-bg: var(--in-night-2);
+  --vp-code-copy-code-hover-border-color: var(--in-snow-2);
+  --vp-code-copy-code-hover-bg: var(--in-night-3);
+  --vp-code-copy-code-active-text: var(--in-snow);
+  --vp-code-color: var(--in-ink);
+  --vp-code-bg: rgba(20, 21, 25, 0.06);
+  --vp-code-font-size: 0.84em;
+
+  --vp-local-search-highlight-bg: var(--in-mint);
+  --vp-local-search-highlight-text: var(--in-ink);
+}
+
+.dark {
+  --vp-c-bg: var(--in-night);
+  --vp-c-bg-alt: #111215;
+  --vp-c-bg-elv: var(--in-night-2);
+  --vp-c-bg-soft: var(--in-night-2);
+  --vp-c-text-1: var(--in-snow);
+  --vp-c-text-2: #c4c6cb;
+  --vp-c-text-3: var(--in-snow-2);
+  --vp-c-divider: #25272d;
+  --vp-c-border: var(--in-night-line);
+  --vp-c-gutter: #0d0e10;
+
+  --vp-c-brand-1: var(--in-mint);
+  --vp-c-brand-2: #3ff5b3;
+  --vp-c-brand-3: var(--in-mint);
+  --vp-c-brand-soft: rgba(0, 236, 151, 0.14);
+
+  --vp-c-default-soft: rgba(244, 244, 240, 0.07);
+  --vp-c-tip-1: var(--in-mint);
+  --vp-c-tip-soft: rgba(0, 236, 151, 0.08);
+  --vp-c-warning-1: #f6c94a;
+  --vp-c-warning-soft: rgba(242, 183, 5, 0.1);
+  --vp-c-danger-1: #f08a6c;
+  --vp-c-danger-soft: rgba(240, 138, 108, 0.09);
+
+  --vp-nav-bg-color: rgba(20, 21, 25, 0.86);
+  --vp-sidebar-bg-color: #111215;
+  --vp-local-nav-bg-color: rgba(20, 21, 25, 0.92);
+
+  --vp-code-block-bg: #0e0f12;
+  --vp-code-tab-bg: #16171b;
+  --vp-code-color: var(--in-snow);
+  --vp-code-bg: rgba(244, 244, 240, 0.08);
+}
+
+/* ---------- Top bar ---------- */
+
+.VPNavBar,
+.VPNavBar.has-sidebar .content-body {
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+}
+
+.VPNavBar .divider-line {
+  background-color: var(--vp-c-divider);
+}
+
+.VPNavBarMenuLink {
+  font-weight: 550;
+}
+
+.VPNavBarMenuLink.active {
+  color: var(--vp-c-text-1);
+}
+
+.DocSearch-Button {
+  border: 1px solid var(--vp-c-border) !important;
+  border-radius: 10px !important;
+  background: var(--vp-c-bg-elv) !important;
+}
+
+.DocSearch-Button:hover {
+  border-color: var(--vp-c-brand-1) !important;
+}
+
+.DocSearch-Button-Key {
+  font-family: var(--vp-font-family-mono) !important;
+  font-stretch: 87.5%;
+  font-size: 11px !important;
+}
+
+/* ---------- Sidebar ---------- */
+
+.VPSidebar {
+  border-right: 1px solid var(--vp-c-divider);
+}
+
+.VPSidebarItem.level-0 > .item > .text,
+.VPSidebarItem.level-0 > .item > h2.text {
+  font-family: var(--vp-font-family-mono);
+  font-stretch: 87.5%;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-3);
+}
+
+.VPSidebarItem.level-1 .text {
+  font-size: 14.5px;
+  font-weight: 500;
+}
+
+.VPSidebarItem.level-1.is-active > .item > .link > .text {
+  color: var(--vp-c-text-1);
+  font-weight: 650;
+}
+
+.VPSidebarItem.level-1.is-active > .item > .indicator {
+  width: 3px;
+  border-radius: 2px;
+  background-color: var(--in-mint);
+}
+
+/* ---------- Outline ---------- */
+
+.VPDocAsideOutline .outline-title {
+  font-family: var(--vp-font-family-mono);
+  font-stretch: 87.5%;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-3);
+}
+
+.VPDocAsideOutline .outline-marker {
+  width: 2px;
+  background-color: var(--in-mint);
+}
+
+.VPDocAsideOutline .outline-link.active {
+  color: var(--vp-c-text-1);
+  font-weight: 600;
+}
+
+/* ---------- Reading ---------- */
+
+.vp-doc {
+  font-size: 16px;
+}
+
+.vp-doc p,
+.vp-doc li {
+  line-height: 1.7;
+}
+
+.vp-doc h1 {
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+}
+
+.vp-doc h2 {
+  margin-top: 56px;
+  padding-top: 28px;
+  border-top: 1px solid var(--vp-c-divider);
+  font-size: 26px;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+}
+
+.vp-doc h3 {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.vp-doc h1 + p strong:only-child {
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+}
+
+.vp-doc .header-anchor {
+  color: var(--vp-c-brand-1);
+}
+
+.vp-doc a {
+  font-weight: 550;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.vp-doc strong {
+  font-weight: 700;
+}
+
+.vp-doc ul > li::marker {
+  color: var(--vp-c-brand-1);
+}
+
+.vp-doc ol > li::marker {
+  font-family: var(--vp-font-family-mono);
+  font-stretch: 87.5%;
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--vp-c-brand-1);
+}
+
+.vp-doc :not(pre) > code {
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-stretch: 87.5%;
+}
+
+/* ---------- Tables ---------- */
+
+.vp-doc table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 12px;
+  overflow: hidden;
+  font-size: 14.5px;
+}
+
+.vp-doc tr {
+  background: transparent;
+  border: 0;
+}
+
+.vp-doc th,
+.vp-doc td {
+  border: 0;
+  border-bottom: 1px solid var(--vp-c-divider);
+  padding: 10px 14px;
+  vertical-align: top;
+  line-height: 1.55;
+}
+
+.vp-doc tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.vp-doc th {
+  background: var(--vp-c-bg-soft);
+  font-family: var(--vp-font-family-mono);
+  font-stretch: 87.5%;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-3);
+}
+
+.vp-doc tr:nth-child(2n) {
+  background: transparent;
+}
+
+.vp-doc tbody tr:hover {
+  background: var(--vp-c-default-soft);
+}
+
+/* Full width from tablet size up; on a phone a wide table scrolls inside its own box. */
+@media (min-width: 768px) {
+  .vp-doc table {
+    display: table;
+    width: 100%;
+  }
+}
+
+/* A table whose header row is empty (a key and value list) drops the header. */
+.vp-doc thead:has(th:empty:first-child + th:empty:last-child) {
+  display: none;
+}
+
+/* ---------- Code ---------- */
+
+.vp-doc div[class*='language-'] {
+  border: 1px solid var(--vp-code-block-divider-color);
+  border-radius: 12px;
+}
+
+.vp-doc div[class*='language-'] code {
+  font-stretch: 87.5%;
+}
+
+.vp-code-group .tabs {
+  border-radius: 12px 12px 0 0;
+  border: 1px solid var(--vp-code-block-divider-color);
+  border-bottom: 0;
+  font-family: var(--vp-font-family-mono);
+  font-stretch: 87.5%;
+}
+
+.vp-code-group .tabs label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.vp-code-group div[class*='language-'] {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+/* ---------- Callouts ---------- */
+
+.vp-doc .custom-block {
+  border: 1px solid transparent;
+  border-left-width: 3px;
+  border-radius: 4px 12px 12px 4px;
+  padding: 14px 18px 4px;
+}
+
+.vp-doc .custom-block .custom-block-title {
+  font-family: var(--vp-font-family-mono);
+  font-stretch: 87.5%;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.vp-doc .custom-block.info {
+  border-color: var(--vp-c-border);
+  border-left-color: var(--in-mint);
+  background: var(--vp-c-bg-soft);
+}
+
+.vp-doc .custom-block.tip {
+  border-color: rgba(0, 236, 151, 0.3);
+  border-left-color: var(--in-mint);
+  background: var(--vp-c-tip-soft);
+}
+
+.vp-doc .custom-block.warning {
+  border-color: rgba(242, 183, 5, 0.35);
+  border-left-color: var(--in-amber);
+  background: var(--vp-c-warning-soft);
+}
+
+.vp-doc .custom-block.danger {
+  border-color: rgba(178, 58, 31, 0.3);
+  border-left-color: var(--vp-c-danger-1);
+  background: var(--vp-c-danger-soft);
+}
+
+/* ---------- Previous and next ---------- */
+
+.VPDocFooter .pager-link {
+  border: 1px solid var(--vp-c-border);
+  border-radius: 12px;
+  background: var(--vp-c-bg-elv);
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.VPDocFooter .pager-link:hover {
+  border-color: var(--vp-c-brand-1);
+}
+
+.VPDocFooter .pager-link .desc {
+  font-family: var(--vp-font-family-mono);
+  font-stretch: 87.5%;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.VPDocFooter .pager-link .title {
+  font-weight: 700;
+  color: var(--vp-c-text-1);
+}
+
+/* ---------- Footer ---------- */
+
+.VPFooter {
+  border-top: 1px solid var(--vp-c-divider);
+}
+
+.VPFooter .message {
+  font-family: var(--vp-font-family-mono);
+  font-stretch: 87.5%;
+  font-size: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .VPDocFooter .pager-link {
+    transition: none;
+  }
+}
