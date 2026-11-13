@@ -114,7 +114,7 @@ flowchart LR
 
 1. **Deposit on your chain.** Each vault is an ERC-4626 vault with no owner, admin, upgrade or pause. You can redeem your principal at any time; only the surplus above principal is paid to InferNear.
 2. **Yield becomes credits.** The keeper reads each holder's attributed yield at a finalized block, prices it in USD, and posts it to the NEAR connector. Credits can only come from posted yield: `spent ≤ credited` per user, enforced on chain.
-3. **Call the API.** Sign in with your wallet to create an API key: an EVM wallet (EIP-4361) or Meteor Wallet on NEAR (NEP-413). Then point an OpenAI client or NEAR AI's SDK at InferNear's endpoint. The gateway charges the model's reported `usage` against your credits.
+3. **Call the API.** Sign in with your wallet to create an API key: an EVM wallet (EIP-4361) or Meteor Wallet on NEAR (NEP-413). Then point an OpenAI client or NEAR AI's SDK at InferNear's endpoint. The gateway charges the model's reported `usage` against your credits. Each wallet gets 5 free trial calls, funded by InferNear, before credits are needed.
 
 ### Two ways to call the API
 
@@ -155,7 +155,7 @@ A fourth shape, staking with claimable rewards, is built and tested (`StakingRew
 Prerequisites: Node 24.22.1+, Foundry (Forge 1.5.1), rustup Rust 1.97.1 with the `wasm32-unknown-unknown` target, a C/C++ toolchain and CMake. Each step needs network access once to install dependencies.
 
 ```sh
-# API relay: gateway + keeper (64 tests, then an end-to-end demo on fixtures)
+# API relay: gateway + keeper (85 tests, then an end-to-end demo on fixtures)
 cd relay && npm ci --ignore-scripts && npm test && npm run demo && cd ..
 
 # Dashboard (85 tests, production build); `npm run dev` serves it on mock data unless the live `VITE_*` settings are filled in
@@ -197,6 +197,8 @@ These are enforced in the contracts and tested in the contract and relay suites:
 The three Base vaults and the credit ledger have no owner, admin, pause or upgrade path. **The Rhea vault on mainnet is the exception: it keeps its deployment key during the hackathon**, so its code can be fixed and the deployment wound down afterwards. Whoever holds that key could replace the vault's code, so treat the Rhea vault as operator-controlled until the key is deleted (the deploy script deletes it by default; `NEAR_RHEA_KEEP_KEY=true` keeps it).
 
 ## Not done yet, and known limits
+
+- **Free trial counts are in relay memory.** Trials are capped at 300 calls a day across wallets; a restart resets both wallet counts and the daily total.
 
 - **Live inference was verified once, by probe.** On 2026-11-12 `npm run spike` in `relay` sent encrypted JS and Python requests, plain and streaming, through the relay to a NEAR AI TEE model; TEE signatures verified and every charge matched NEAR's bill after rounding up to whole micro-USD ([details](relay/README.md#live-sdk-probe--passed-on-2026-11-12)). It needs your own NEAR AI key to reproduce.
 - **The model build check is off.** The SDK still verifies the model's TEE hardware attestation and signatures, but NEAR's check that the model runs NEAR's published proxy build currently rejects NEAR's own deploys, so we leave it out until NEAR fixes it. The gateway build check stays on.

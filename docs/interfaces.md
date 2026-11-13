@@ -145,11 +145,28 @@ Success uses `near:mainnet:<account_id>` in the existing API-key payload and con
 
 | Route | Auth | Credits | Notes |
 |---|---|---|---|
+| `GET /v1/free-calls` | `Bearer inf_…` | no | In-memory trial status; same key/epoch authentication as other authenticated reads |
 | `GET /v1/models` | none | no | NEAR AI TEE chat models only, canonical ids, cached 5 minutes |
 | `GET /v1/model/{model}` | none | no | forwarded to NEAR AI unchanged |
 | `GET /v1/attestation/report` | none | no | forwarded unchanged |
 | `GET /v1/signature/{id}` | none | no | forwarded unchanged |
-| `POST /v1/chat/completions` | `Bearer inf_…` | yes | Standard mode: plain OpenAI request, readable by the relay in transit; `max_tokens` and stream usage are filled in. Private mode: E2EE v3 headers, forwarded byte for byte; needs `max_tokens`, and `stream_options.include_usage: true` on streams. An incomplete E2EE header set is refused. `Inference-Id` response header passed through |
+| `POST /v1/chat/completions` | `Bearer inf_…` | free trial first, otherwise credits | Standard mode: plain OpenAI request, readable by the relay in transit; `max_tokens` and stream usage are filled in. Private mode: E2EE v3 headers, forwarded byte for byte; needs `max_tokens`, and `stream_options.include_usage: true` on streams. An incomplete E2EE header set is refused. `Inference-Id` response header passed through |
+
+### Free trial billing
+
+With `RELAY_FREE_CALLS_PER_USER=5` and `RELAY_FREE_CALLS_PER_DAY=300`, authenticated EVM and NEAR wallets receive five operator-funded trial calls per process lifetime, subject to 300 calls per UTC day across all wallets. Both settings default to 0; either zero disables trials. The normal model/token/body and four-in-flight validations still apply in both modes. Free calls precede credit use and never create or post credits, debit NEAR or reserve credit.
+
+`GET /v1/free-calls` takes `Authorization: Bearer inf_…` and returns:
+
+```json
+{"per_user":5,"used":2,"remaining":3}
+```
+
+`used` counts consumed trials for that wallet. `remaining = min(per_user - used - wallet_holds, daily_limit - today_used - all_holds)`, floored at zero. Disabled response: `{"per_user":0,"used":0,"remaining":0}`. It uses the existing key/epoch authentication and error shape, with no inference, debit or other transaction. Trial records share the existing 10,000-entry in-memory capacity; no consumed record or live hold is evicted, and capacity exhaustion falls through to credit admission for new wallets.
+
+A trial is held at admission and consumed only for a 2xx with a usable inference/completion id, exactly the existing chargeable-completion rule. Forgiveness releases the hold. Midnight UTC resets daily consumed usage, preserves wallet counts and live holds, and late completions consume the new day's budget. All counters are process memory and reset on restart, so the cap is not durable across restarts/replicas.
+
+JSON and SSE chat responses in both modes carry **`X-InferNear-Billing: free`** or **`X-InferNear-Billing: credits`**. Free responses additionally carry **`X-InferNear-Free-Remaining: <n>`**, a quota snapshot after holding this call, capped by the day's unheld/unconsumed allowance. All three names `Inference-Id, X-InferNear-Billing, X-InferNear-Free-Remaining` are in `Access-Control-Expose-Headers`. Upstream response bodies/SSE bytes are unchanged. Without a trial, insufficient credit still returns `402 insufficient_credit`.
 
 The three forwarded read routes allow 30 requests per minute per IP; requests carrying a valid API key skip that limit.
 
