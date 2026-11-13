@@ -31,8 +31,11 @@ export function Header({
   onConnect,
   onDisconnect,
   chainName = 'Base',
+  accountSeed: storedSeed,
 }: {
   address: string | null;
+  /** The account's fixed avatar seed (its UID), once the connected wallet is known to be in an account. */
+  accountSeed?: string;
   chainName?: 'Base' | 'NEAR';
   onDisconnect?: () => void;
   tab: Tab;
@@ -41,9 +44,9 @@ export function Header({
   onConnect?: () => void;
 }) {
   const refs = useRef<(HTMLAnchorElement | null)[]>([]);
-  // The avatar's seed. Today the connected wallet's canonical id; once account handles exist it
-  // becomes the account's stored seed, so the avatar stays fixed across linked wallets.
-  const accountSeed = address ? canonicalSeed(address) : null;
+  // The avatar's seed: the account's stored seed when there is an account, so the avatar stays
+  // fixed across linked wallets; otherwise the connected wallet's canonical id.
+  const accountSeed = address ? storedSeed ?? canonicalSeed(address) : null;
 
   // Arrow keys move between tabs, as in any tab list.
   const onKey = (e: KeyboardEvent, i: number) => {

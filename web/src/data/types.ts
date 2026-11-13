@@ -80,7 +80,12 @@ export type EvmWalletProof = { message: string; signature: `0x${string}` };
 export type NearWalletProof = { near: { account_id: string; public_key: string; signature: string; message: string; nonce: string; recipient: string } };
 export type WalletProof = EvmWalletProof | NearWalletProof;
 
-export type IssuedKey = { key: string; keyEpoch: number; expiresAt: string };
+/** `account` is present when the relay keeps accounts: the issuing wallet's account, or null. */
+export type IssuedKey = { key: string; keyEpoch: number; expiresAt: string; account?: UserAccount | null };
+/** An account is identified by its UID and handle, not by a wallet. `avatarSeed` never changes. */
+export type UserAccount = { uid: string; handle: string; wallets: string[]; avatarSeed: string; createdAt: number };
+/** A wallet already in the account consented to one more wallet joining; valid until `expiresAt` (Unix seconds). */
+export type LinkTicket = { ticket: string; handle: string; expiresAt: number };
 export type Revoked = { keyEpoch: number; txHash: string };
 
 export type Model = {
@@ -218,7 +223,16 @@ export interface DashboardData {
   /** One status read; poll until terminal. SUCCESS for deposits still needs vault activation (pendingIn). */
   rheaStatus(depositAddress: string): Promise<RheaSwapStatus>;
   walletProof(address: Address): Promise<EvmWalletProof>;
-  walletProof(session: Session): Promise<WalletProof>;
+  /** `statement` names the action being signed; omitted, it is the API-key statement. */
+  walletProof(session: Session, statement?: string): Promise<WalletProof>;
+  /** Account routes: each asks the connected wallet for one signature. See data/accounts.ts. */
+  accountMe(session: Session): Promise<UserAccount | null>;
+  createAccount(session: Session, handle: string): Promise<UserAccount>;
+  startLink(session: Session, handle: string): Promise<LinkTicket>;
+  finishLink(session: Session, link: LinkTicket): Promise<UserAccount>;
+  unlinkWallet(session: Session, handle: string): Promise<UserAccount>;
+  /** Available credits (micro-USD) of one wallet id on the NEAR ledger. */
+  walletCredits(user: string): Promise<bigint>;
   createKey(proof: WalletProof): Promise<IssuedKey>;
   revokeAll(proof: WalletProof): Promise<Revoked>;
   models(): Promise<Model[]>;

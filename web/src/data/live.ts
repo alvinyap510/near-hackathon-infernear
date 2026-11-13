@@ -15,6 +15,7 @@ import { evmAddress, emptyPosition } from './session.ts';
 import { STRATEGIES, decimalPercent } from './catalogue.ts';
 import { formatAmount } from './money.ts';
 import { walletProofMessage } from './proof.ts';
+import { accountClient, parseAccount } from './accounts.ts';
 import { LOSS_NOTES, type Address, type DashboardData, type VaultAccount, type Session, type SessionInput, type Overview, type WalletProof, type EvmWalletProof, type CatalogueVault } from './types.ts';
 
 type Dependencies = {
@@ -83,7 +84,7 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
       body: JSON.stringify(proof),
     } : undefined);
     const body = await response.json();
-    if (!response.ok) throw new DataError(body.error?.code ?? `http_${response.status}`, body.error?.message ?? `Relay request failed (${response.status}).`);
+    if (!response.ok) throw new DataError(body.error?.code ?? `http_${response.status}`, body.error?.message ?? `Relay request failed (${response.status}).`, body);
     return body as T;
   };
   const nearView: NearView = async <T>(methodName: string, args: Record<string, unknown>, contract = settings.connectorAccount): Promise<T> => {
@@ -147,17 +148,19 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
     return {user,vaults,vault:{...emptyPosition(),walletUsdc:0n},credits:{credited:amount(credits.credited),spent:amount(credits.spent),available:amount(credits.available),keyEpoch:credits.key_epoch}};
   };
   async function walletProof(address: Address): Promise<EvmWalletProof>;
-  async function walletProof(session: Session): Promise<WalletProof>;
-  async function walletProof(input: SessionInput): Promise<WalletProof> {
+  async function walletProof(session: Session, statement?: string): Promise<WalletProof>;
+  async function walletProof(input: SessionInput, statement?: string): Promise<WalletProof> {
     return guarded(async () => {
-      if (typeof input !== 'string' && input.kind === 'near') return near.walletProof(input);
+      if (typeof input !== 'string' && input.kind === 'near') return near.walletProof(input, statement);
       const check=wallets.operation();
       const address = evmAddress(input), client = await readyWallet(address,check);
       const {nonce} = await relay<{nonce:string}>('/auth/nonce');
-      const message = walletProofMessage(address,nonce,dependencies.origin ?? globalThis.location?.origin ?? settings.relayUrl,chain.id,now());
+      const message = walletProofMessage(address,nonce,dependencies.origin ?? globalThis.location?.origin ?? settings.relayUrl,chain.id,now(),statement);
       check();const signature=await client.signMessage({account:getAddress(address),message});check();return {message,signature};
     });
   }
+
+  const accounts = accountClient({ post: relay, proof: walletProof });
 
   const purchases=createPurchaseJournal(chain.id,settings.topUpAddress,dependencies.purchaseStorage,dependencies.purchaseLock);
   const reconcilePurchase=async(input:SessionInput,locked=false)=>{
@@ -348,9 +351,16 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
     rheaStatus: (...args) => guarded(() => rheaReads.rheaStatus(...args)),
     walletProof,
     createKey: (proof) => guarded(async () => {
-      const result = await relay<{ key: string; key_epoch: number; expires_at: number }>('/keys', proof);
-      return { key: result.key, keyEpoch: result.key_epoch, expiresAt: new Date(result.expires_at * 1000).toISOString() };
+      const result = await relay<{ key: string; key_epoch: number; expires_at: number; account?: unknown }>('/keys', proof);
+      return { key: result.key, keyEpoch: result.key_epoch, expiresAt: new Date(result.expires_at * 1000).toISOString(),
+        ...(result.account === undefined ? {} : { account: result.account === null ? null : parseAccount(result.account) }) };
     }),
+    accountMe: session => guarded(() => accounts.accountMe(session)),
+    createAccount: (session, handle) => guarded(() => accounts.createAccount(session, handle)),
+    startLink: (session, handle) => guarded(() => accounts.startLink(session, handle)),
+    finishLink: (session, link) => guarded(() => accounts.finishLink(session, link)),
+    unlinkWallet: (session, handle) => guarded(() => accounts.unlinkWallet(session, handle)),
+    walletCredits: user => guarded(async () => amount((await nearView<{ available: string }>('account', { user })).available)),
     revokeAll: (proof) => guarded(async () => {
       const result = await relay<{ key_epoch: number; tx_hash: string }>('/keys/revoke', proof);
       return { keyEpoch: result.key_epoch, txHash: result.tx_hash };

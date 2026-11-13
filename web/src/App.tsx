@@ -3,13 +3,17 @@ import { MockRibbon, Header, type Tab, TABS } from './components/Shell.tsx';
 import { WalletDialog } from './components/WalletChooser.tsx';
 import { VaultCatalogue } from './components/VaultCatalogue.tsx';
 import { ConnectPrompt } from './components/ConnectPrompt.tsx';
-import { data, type Session, type WalletOption, type CatalogueVault, type Overview } from './data/index.ts';
+import { AccountPanel } from './components/AccountPanel.tsx';
+import { accountCache, pendingLink } from './data/accounts.ts';
+import { data, type Session, type WalletOption, type CatalogueVault, type Overview, type UserAccount, type LinkTicket, type IssuedKey } from './data/index.ts';
 import { Account } from './screens/Account.tsx';
 import { Bridge } from './screens/Bridge.tsx';
 import { Keys } from './screens/Keys.tsx';
 import { TryApi } from './screens/TryApi.tsx';
 import { initialSessionState, reduceSession, type SessionAction } from './data/session-state.ts';
 import { ErrorNote, Spinner, errorText } from './components/ui.tsx';
+// What this browser remembers about accounts, and a link invitation waiting for its second wallet.
+const cache=accountCache(),links=pendingLink();
 const tabFromHash=():Tab=>{const id=window.location.hash.slice(1);return TABS.some(t=>t.id===id)?id as Tab:'vaults';};
 export function App(){
   const [auth,setAuth]=useState(initialSessionState),current=useRef(auth);
@@ -26,6 +30,13 @@ export function App(){
     setVaults([]);setLoading(true);setOverview(null);setReadError(null);
   },[updateAuth]);
   useEffect(()=>data.subscribeWallet(()=>accept(null)),[accept]);
+  // The account behind the connected wallet. It starts from the browser's memory and is replaced by whatever the relay says.
+  const [account,setAccount]=useState<UserAccount|null>(null),[pending,setPendingState]=useState<LinkTicket|null>(()=>links.get());
+  useEffect(()=>{setAccount(session?cache.read(session.user):null);setPendingState(links.get());},[session?.user]);
+  const onAccount=useCallback((next:UserAccount|null)=>{const user=current.current.session?.user;if(next)cache.write(next);else if(user)cache.forget(user);setAccount(next);},[]);
+  const onUnlinked=useCallback((rest:UserAccount)=>{const user=current.current.session?.user;cache.write(rest,user);setAccount(null);},[]);
+  const setPending=useCallback((link:LinkTicket|null)=>{if(link)links.set(link);else links.clear();setPendingState(link);},[]);
+  const onIssued=useCallback((key:IssuedKey|null,at:number)=>{updateAuth({type:'issued',revision:at,key});if(key&&key.account!==undefined)onAccount(key.account);},[updateAuth,onAccount]);
   const go=useCallback((next:Tab)=>{window.location.hash=next;window.scrollTo({top:0});},[]);
   useEffect(()=>{const onHash=()=>{if(window.location.hash!=='#main')setTab(tabFromHash());};window.addEventListener('hashchange',onHash);return()=>window.removeEventListener('hashchange',onHash);},[]);
   useEffect(()=>{let stopped=false;const started=current.current.revision;void data.restoreSession().then(s=>{if(!stopped&&current.current.revision===started&&s!==null)accept(s);}).catch(e=>{if(!stopped)setWalletError(errorText(e));});return()=>{stopped=true;};},[accept]);
@@ -49,9 +60,9 @@ export function App(){
   else if(!session)content=<ConnectPrompt title={tab==='account'?'Your account':tab==='keys'?'Your API keys':'Bring USDC to Base'} onConnect={openWallet}/>;
   else if(tab==='bridge')content=session.kind==='evm'?<Bridge session={session} onDeposit={()=>go('account')}/>:<ConnectPrompt title="This route needs an EVM wallet" onConnect={openWallet}/>;
   else if(!overview)content=readError?<ErrorNote error={readError}/>:<p className="loading"><Spinner/> Reading your vaults and credits…</p>;
-  else if(tab==='keys')content=<Keys key={revision} session={session} overview={overview} issued={issued} onIssued={key=>updateAuth({type:'issued',revision,key})} onChanged={refresh} onTry={()=>go('try')}/>;
+  else if(tab==='keys')content=<Keys key={revision} session={session} overview={overview} issued={issued} onIssued={key=>onIssued(key,revision)} onChanged={refresh} onTry={()=>go('try')}/>;
   else content=<Account key={revision} session={session} overview={overview} selectedId={selectedId} onSelect={setSelectedId} onChanged={refresh} onBridge={()=>go('bridge')} onConnect={openWallet}/>;
-  return <>{data.isMock&&<MockRibbon/>}<Header address={session?(session.kind==='evm'?session.address:session.accountId):null} chainName={session?.kind==='near'?'NEAR':'Base'} tab={tab} onTab={go} onConnect={openWallet} onDisconnect={()=>void disconnect()}/>
-    <main id="main" className="page">{content}</main><WalletDialog open={dialog} onClose={()=>{if(!busyId)setDialog(false);}} options={options} busyId={busyId} error={walletError} onSelect={id=>void connect(id)}/>
+  return <>{data.isMock&&<MockRibbon/>}<Header accountSeed={account?.avatarSeed} address={session?(session.kind==='evm'?session.address:session.accountId):null} chainName={session?.kind==='near'?'NEAR':'Base'} tab={tab} onTab={go} onConnect={openWallet} onDisconnect={()=>void disconnect()}/>
+    <main id="main" className="page">{tab==='account'&&session&&<div className="screen"><AccountPanel key={session.user} session={session} account={account} pending={pending} onAccount={onAccount} onUnlinked={onUnlinked} onPending={setPending} onSwitchWallet={openWallet}/></div>}{content}</main><WalletDialog open={dialog} onClose={()=>{if(!busyId)setDialog(false);}} options={options} busyId={busyId} error={walletError} onSelect={id=>void connect(id)}/>
     <footer className="footer"><span>InferNear · built at NEAR HACKATHON</span><span>Inference credits from yield or direct purchase · principal stays yours</span></footer></>;
 }

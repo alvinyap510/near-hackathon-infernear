@@ -9,6 +9,7 @@ import { emptyPosition, evmAddress } from './session.ts';
 import { STRATEGIES } from './catalogue.ts';
 import { formatAmount } from './money.ts';
 import { nearProofMessage, nearProofNonce } from './proof.ts';
+import { HANDLE_RULE, validHandle } from './accounts.ts';
 import { LOSS_NOTES } from './types.ts';
 import type {
   Address, Session, SessionInput, WalletProof, EvmWalletProof,
@@ -21,6 +22,7 @@ import type {
   VaultAccount,
   RheaQuote,
   RheaDirection,
+  UserAccount,
 } from './types.ts';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -81,6 +83,7 @@ export function createMockData(): DashboardData {
       ...(i === 3 ? { rhea: { pendingIn: 0n, pendingOut: null, coverage: 10n ** 18n, busy: false, intentsBalance: 0n } } : {}) },
   }));
   const state = { credited: 4_020_000n, spent: 342_118n, keyEpoch: 2, debited: new Map<string, bigint>() };
+  const mockAccounts: UserAccount[] = [];
   const rhea = vaults[3].position;
   const initialNearPosition = structuredClone(rhea);
   const swaps = new Map<string, () => void>();
@@ -277,7 +280,46 @@ export function createMockData(): DashboardData {
         key: `inf_${payload}.${hex(32)}`,
         keyEpoch: account.keyEpoch,
         expiresAt: new Date(exp * 1000).toISOString(),
+        account: mockAccounts.find(a => a.wallets.includes(user)) ?? null,
       };
+    },
+
+    // Labelled mock registry: the relay's rules, kept in this page's memory. No signature is asked for.
+    async accountMe(session) { await sleep(300); return mockAccounts.find(a => a.wallets.includes(session.user)) ?? null; },
+    async createAccount(session, handle) {
+      await sleep(400);
+      const existing = mockAccounts.find(a => a.wallets.includes(session.user));
+      if (existing) return existing;
+      if (!validHandle(handle)) throw new DataError('invalid_handle', `A handle is ${HANDLE_RULE}`);
+      if (mockAccounts.some(a => a.handle === handle)) throw new DataError('handle_taken', 'That handle is taken');
+      const uid = `acc_${hex(16)}`;
+      const created: UserAccount = { uid, handle, wallets: [session.user], avatarSeed: uid, createdAt: Math.floor(Date.now() / 1000) };
+      mockAccounts.push(created); return created;
+    },
+    async startLink(session, handle) {
+      await sleep(300);
+      const own = mockAccounts.find(a => a.handle === handle && a.wallets.includes(session.user));
+      if (!own) throw new DataError('no_account', 'This wallet is not in that account');
+      if (own.wallets.length >= 4) throw new DataError('too_many_wallets', 'An account holds at most 4 wallets');
+      return { ticket: `ilt_mock_${hex(8)}`, handle, expiresAt: Math.floor(Date.now() / 1000) + 600 };
+    },
+    async finishLink(session, link) {
+      await sleep(400);
+      const target = mockAccounts.find(a => a.handle === link.handle);
+      if (!target || link.expiresAt * 1000 <= Date.now()) throw new DataError('invalid_ticket', 'Bad, expired or used link ticket');
+      if (mockAccounts.some(a => a.wallets.includes(session.user))) throw new DataError('wallet_linked', 'That wallet is already in an account');
+      target.wallets = [...target.wallets, session.user]; return target;
+    },
+    async unlinkWallet(session, handle) {
+      await sleep(300);
+      const own = mockAccounts.find(a => a.handle === handle && a.wallets.includes(session.user));
+      if (!own) throw new DataError('no_account', 'This wallet is not in that account');
+      if (own.wallets.length === 1) throw new DataError('last_wallet', 'An account keeps at least one wallet');
+      own.wallets = own.wallets.filter(wallet => wallet !== session.user); return own;
+    },
+    async walletCredits(user) {
+      const record = user.startsWith('near:mainnet:') ? nearAccount(user.slice(13)) : state;
+      return record.credited - record.spent;
     },
 
     async revokeAll(proof) {

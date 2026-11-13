@@ -22,11 +22,11 @@ export function nearSessionData(settings: LiveConfig, ports: { wallets: Wallets;
     return { txHash: result.transaction.hash };
   };
   return {
-    async walletProof(session: NearSession): Promise<NearWalletProof> {
+    async walletProof(session: NearSession, statement?: string): Promise<NearWalletProof> {
       const check=ports.wallets.operation(),wallet = await ports.wallets.nearWallet(session.accountId);check();
       if (!wallet.signMessage) throw new DataError('wallet_proof', 'This wallet does not support NEP-413 message signing.');
       const { nonce } = await ports.relay<{ nonce: string }>('/auth/nonce');
-      const message = nearProofMessage(nonce, session.accountId, ports.now()), bytes = await nearProofNonce(nonce);
+      const message = nearProofMessage(nonce, session.accountId, ports.now(), statement), bytes = await nearProofNonce(nonce);
       const recipient = new URL(ports.origin()).host;
       check();const signed = await wallet.signMessage({ message, nonce: Buffer.from(bytes), recipient });
       check();if (!signed) throw new DataError('wallet_redirect', 'Return from your wallet and request a fresh proof.');

@@ -1,9 +1,12 @@
 /** A failure the UI shows to the user as-is, with a code it can branch on. */
 export class DataError extends Error {
   readonly code: string;
-  constructor(code: string, message: string) {
+  /** The relay's whole error body, when it carries more than the code and message. */
+  readonly body?: unknown;
+  constructor(code: string, message: string, body?: unknown) {
     super(message);
     this.code = code;
+    this.body = body;
   }
 }
 
