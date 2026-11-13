@@ -54,12 +54,13 @@ curl -s https://api.infernear.dev/v1/chat/completions \
 
 ## What the relay changes in your request
 
-Billing needs to know how long the reply may be and how many tokens were used, so the relay fills in two things when they are missing. Nothing else in the body is changed.
+Billing needs one explicit reply limit and the token usage, so the relay normalizes two things. Nothing else in the body is changed.
 
 | Field | What the relay does |
 |---|---|
 | `max_tokens` | If absent, it is set from `max_completion_tokens`, or else to 4,096 |
-| `stream_options.include_usage` | Turned on for streaming requests |
+| `max_completion_tokens` | Removed: the request goes upstream with `max_tokens` only |
+| `stream_options.include_usage` | Set to `true` for streaming requests, even if the request said `false` |
 
 ## What is supported
 
@@ -82,6 +83,6 @@ Billing needs to know how long the reply may be and how many tokens were used, s
 
 * **Give reasoning models room.** With a small `max_tokens` (such as 64), a reasoning model can spend the whole budget thinking and return no visible answer. The call is still charged for the tokens used.
 * **A retry is a new call.** Client idempotency keys are not implemented, so a retried request is a new inference with its own charge.
-* **Check the billing header.** `X-InferNear-Billing` tells you whether a call was `free` or charged to `credits`.
+* **Check the billing header.** `X-InferNear-Billing` tells you whether a call is billed as `free` or to `credits`.
 
 Full details of routes, headers and errors: [API reference](api-reference.md).

@@ -25,8 +25,8 @@ The gateway is the part of the relay that serves the API. It authenticates API c
 |---|---|---|
 | Selected by | no encryption headers | any of the SDK's v3 encryption headers |
 | Body | plain OpenAI JSON | forwarded byte for byte |
-| `max_tokens` | filled in when missing: from `max_completion_tokens`, else the cap | must be present |
-| Streaming usage | `stream_options.include_usage` is turned on | the request must already ask for it |
+| `max_tokens` | filled in when missing: from `max_completion_tokens`, else the cap. `max_completion_tokens` is then removed | must be present |
+| Streaming usage | `stream_options.include_usage` is forced to `true` | the request must already ask for it |
 | Incomplete header set | not applicable | `400`, never a fallback to standard |
 
 ## Reservation

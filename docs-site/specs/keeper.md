@@ -10,7 +10,7 @@ The keeper turns yield and purchases into credits. It reads each vault and the t
 
 ## Reads are free, transactions are for work
 
-Every minute the keeper reads every source. It sends at most one transaction per vault, and only when one of these holds:
+Every minute the keeper reads every source. For each source it can do two things in a round: post credits, and make one vault operation (a `skim()` or a Rhea `run()`). It sends a transaction only when one of these holds:
 
 | Source | A transaction is sent when |
 |---|---|
@@ -47,7 +47,7 @@ The cbETH/USD market feed used here is separate from the cbETH/ETH exchange-rate
 
 ## Posting
 
-Every post is one call:
+Every post is this call, sent in batches of 100 entries per transaction when a vault has many holders:
 
 ```
 post_credits(vault, paid_cum, rate, source_block, entries)

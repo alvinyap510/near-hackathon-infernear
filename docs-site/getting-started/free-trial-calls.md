@@ -12,7 +12,7 @@ Every wallet gets **5 free trial calls**, paid for by InferNear. They let you ch
 | Modes | standard and private |
 | Order | free calls are used first, even if you already have credits |
 
-A trial call is counted only when the model returns a complete reply. A call that fails is not counted.
+A trial call is counted once the model starts a successful reply (a `2xx` response with an inference or completion id), even if the connection is cut off afterwards. A call that is refused, or fails before that point, is not counted.
 
 ## How to tell a call was free
 
@@ -20,9 +20,11 @@ Every chat response carries a billing header:
 
 | Header | Meaning |
 |---|---|
-| `X-InferNear-Billing: free` | This call used a free trial call |
-| `X-InferNear-Billing: credits` | This call was charged to your credits |
+| `X-InferNear-Billing: free` | This call is billed as a free trial call |
+| `X-InferNear-Billing: credits` | This call is billed to your credits |
 | `X-InferNear-Free-Remaining: <n>` | Sent on free calls: how many you have left |
+
+The header says how the call is billed, and it is set when the call is admitted. A call that then fails is not charged. To see what was actually charged, look the call up on the ledger with `debited_amount` (see [How credits work](../credits/how-credits-work.md#check-your-balance)).
 
 ## Check how many you have left
 

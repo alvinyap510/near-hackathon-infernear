@@ -6,7 +6,7 @@ Key routes and account routes take a **wallet proof**: a message signed by the w
 
 * Get a nonce from `GET /auth/nonce`. It is single use and lives 5 minutes.
 * The nonce is consumed by an atomic delete after verification, so two concurrent replays cannot both succeed.
-* **The statement names the action.** A proof signed for one action is refused for every other.
+* **The statement names the action.** A proof signed for one action is refused for every other. The one exception: creating and revoking keys share a statement, so a key proof is accepted by either of those two routes.
 * An invalid, expired or reused proof answers `401 invalid_api_key`. Proof bodies and keys are never logged.
 
 | Action | Statement |

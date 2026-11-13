@@ -40,7 +40,7 @@ Each model in the response carries two price objects:
 
 Credits are counted in **micro-USD** (one millionth of a dollar).
 
-1. **Before the call**, the relay sets aside enough of your credit to cover the largest reply the request allows (`max_tokens`). You need that much available, even though you will usually be charged much less. At the 4,096-token cap this is roughly $0.002 to $0.006, depending on the model.
+1. **Before the call**, the relay sets aside enough of your credit to cover the largest reply the request allows (`max_tokens`). You need that much available, even though you will usually be charged much less. It has two parts. The reply part, at the 4,096-token cap, is roughly $0.002 to $0.006 depending on the model. The request part is added on top: in standard mode the relay assumes the worst case of one input token per byte of your request, plus 1,024, so a very large request sets aside noticeably more.
 2. **After the call**, you are charged for the tokens the model reports using, at the prices in the list, rounded up to a whole micro-USD. The rest of what was set aside is released.
 3. **The charge is recorded on NEAR** under the call's inference ID. See [How credits work](../credits/how-credits-work.md).
 

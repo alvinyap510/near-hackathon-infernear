@@ -42,7 +42,7 @@ The body is an OpenAI chat completion request.
 | Header | Meaning |
 |---|---|
 | `Inference-Id` | The id of this inference. A paid call is recorded on NEAR under it |
-| `X-InferNear-Billing` | `free` (a free trial call) or `credits` |
+| `X-InferNear-Billing` | How this call is billed: `free` (a free trial call) or `credits` |
 | `X-InferNear-Free-Remaining` | On free calls: trial calls left for this wallet |
 
 Browsers can read all three (they are listed in `Access-Control-Expose-Headers`).
@@ -58,7 +58,8 @@ Every error uses OpenAI's error shape:
 | Status | When |
 |---|---|
 | `400` | Unsupported parameters, or an incomplete set of private-mode encryption headers |
-| `401` `invalid_api_key` | The key is wrong, expired or revoked |
+| `401` `invalid_api_key` | The key is wrong or expired |
+| `401` `revoked_api_key` | The key was revoked |
 | `402` `insufficient_credit` | No free trial calls left and not enough credit for this call |
 | `404` | The model is not one InferNear serves |
 | `413` | The request body is larger than 1 MiB |
@@ -91,7 +92,7 @@ A **wallet proof** is one of:
 * **EVM:** `{ "message", "signature" }`, where `message` is a Sign-In with Ethereum (EIP-4361) message for chain 8453 whose domain and URI are the console's origin, carrying the nonce and an expiration time.
 * **NEAR:** a `near` envelope with a NEP-413 signature from a full-access key of the account.
 
-The message's statement names the action, and a proof signed for one action is refused for any other. For both key routes the statement is `Authorize one InferNear API key action.`
+The message's statement names the action, and a proof signed for one action is refused for any other. The two key routes share one statement, `Authorize one InferNear API key action.`, so a key proof is accepted by either of them.
 
 The exact message formats are in [`docs/interfaces.md`](https://github.com/alvinyap510/near-hackathon-infernear/blob/main/docs/interfaces.md) in the repository, and `relay/scripts/live-check.mjs` is a complete working example.
 

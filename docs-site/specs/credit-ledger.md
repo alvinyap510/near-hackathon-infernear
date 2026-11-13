@@ -33,7 +33,7 @@ Called by the keeper. Each entry is `(user, cum)`: the cumulative yield attribut
 1. Store the larger of the stored and the given `paid_cum` for the vault.
 2. For each `(user, vault)`: `delta = cum − posted_cum`, which must not be negative.
 3. `x = remainder + delta × rate`. Add `x / 1e18` micro-USD to the user's credits and keep `x % 1e18` as the new remainder.
-4. Require that the total posted for the vault does not exceed `paid_cum`.
+4. Add `delta` to the vault's `posted_total`, and require `posted_total ≤ paid_cum`. Both are in the yield token's own units, not in micro-USD.
 
 All products and sums are checked `u128` arithmetic. A replay adds nothing, even with a different rate, because `delta` is zero. Emits `post_credits`.
 
@@ -95,7 +95,7 @@ Receipt {
 ## Invariants
 
 * `spent ≤ credited`, per user, always.
-* The credits posted for a vault never exceed that vault's `paid_cum`.
+* For each vault, `posted_total ≤ paid_cum`: the yield posted for users, in the yield token's own units, never exceeds the yield total reported for the vault.
 * One debit per inference id.
 * Fractions of a micro-USD are never dropped: the per-user, per-vault remainder is carried at scale 1e18.
 
