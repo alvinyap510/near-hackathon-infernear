@@ -26,15 +26,15 @@ async function main() {
   const connector = await nearConnector({ rpc: required('NEAR_RPC_URL'), contract: required('NEAR_CONNECTOR_ACCOUNT'),
     gatewayAccount: required('NEAR_GATEWAY_ACCOUNT'), gatewayKey: required('NEAR_GATEWAY_PRIVATE_KEY'), keeperAccount: required('NEAR_KEEPER_ACCOUNT'), keeperKey: required('NEAR_KEEPER_PRIVATE_KEY'), relayAccount: required('NEAR_RELAY_ACCOUNT'), relayKey: required('NEAR_RELAY_PRIVATE_KEY'), rheaVault, intents,
     rheaLend: required('NEAR_RHEA_ACCOUNT'), usdc: required('NEAR_USDC_ACCOUNT'), rheaCushion: BigInt(required('NEAR_RHEA_CUSHION')), minYieldMicro });
+  // Handles and linked wallets are kept only when a data directory is configured.
+  const accounts = process.env.RELAY_DATA_DIR ? await Accounts.open(process.env.RELAY_DATA_DIR, report) : undefined;
   const gateway = new Gateway({ auth: new Auth(required('API_KEY_SECRET'), required('RELAY_WEB_ORIGIN'), chainId), upstream: new Upstream(required('NEAR_AI_BASE_URL'), required('NEAR_AI_API_KEY'), Date.now, integer('RELAY_UPSTREAM_TIMEOUT_MS')),
-    connector, maxTokens: integer('RELAY_MAX_TOKENS'), report, freeCallsPerUser, freeCallsPerDay });
+    connector, maxTokens: integer('RELAY_MAX_TOKENS'), report, freeCallsPerUser, freeCallsPerDay, accounts });
   const ports = evmPorts({ rpc: required('BASE_RPC_URL'), chainId, key: required('TREASURY_EVM_PRIVATE_KEY') as Hex,
     vaults: JSON.parse(required('EVM_VAULTS')) as EvmVaultConfig[], fromBlock: BigInt(required('VAULT_START_BLOCK')),
     oneClickUrl: required('ONECLICK_API_URL'), oneClickToken: process.env.ONECLICK_API_TOKEN, bridgeTokens: JSON.parse(required('ONECLICK_TOKENS')) as BridgeToken[], destinationAsset: required('ONECLICK_DESTINATION_ASSET'),
     recipient: required('TREASURY_NEAR_ACCOUNT'), slippageBps: integer('ONECLICK_SLIPPAGE_BPS'), minYieldMicro });
   const keeper = new Keeper([...ports.vaults, connector.rhea], connector, ports.bridge, report, { balances: () => connector.balances(), minimum: BigInt(required('NEAR_LOW_BALANCE_YOCTO')) });
-  // Handles and linked wallets are kept only when a data directory is configured.
-  const accounts = process.env.RELAY_DATA_DIR ? await Accounts.open(process.env.RELAY_DATA_DIR, report) : undefined;
   // Wait longer than normal inclusion before accepting fresh reservations after restart.
   report('startup_wait', { seconds: 30 });
   await sleep(30_000);

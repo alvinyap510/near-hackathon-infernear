@@ -10,7 +10,7 @@ import { createSiweMessage } from 'viem/siwe';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { Accounts, statements, type Account } from '../src/gateway/accounts.ts';
 import { KEY_STATEMENT } from '../src/gateway/auth.ts';
-import { harness } from './harness.ts';
+import { harness, settle } from './harness.ts';
 
 type Signer = { id: string; proof(nonce: string, statement: string, now: number): Promise<Record<string, unknown>> };
 const evm = (): Signer => {
@@ -32,12 +32,12 @@ const near = (accountId: string): Signer => {
     return { near: { account_id: accountId, public_key: publicKey, signature: sign(null, digest, pair.privateKey).toString('base64'), message, nonce: nonce32.toString('base64'), recipient: 'relay.test' } };
   } };
 };
-async function setup(t: { after(fn: () => unknown): void }, enabled = true) {
+async function setup(t: { after(fn: () => unknown): void }, enabled = true, options: Parameters<typeof harness>[0] = {}) {
   const clock = { now: Date.now() };
   const directory = await mkdtemp(join(tmpdir(), 'infernear-accounts-'));
   const events: string[] = [];
   const accounts = enabled ? await Accounts.open(directory, event => events.push(event), () => clock.now) : undefined;
-  const h = await harness({ now: () => clock.now, nearKey: async () => true, accounts });
+  const h = await harness({ now: () => clock.now, nearKey: async () => true, accounts, ...options });
   t.after(h.close);
   const send = async (path: string, signer: Signer, statement: string, extra: Record<string, unknown> = {}) => {
     const nonce = (await (await fetch(h.base + '/auth/nonce')).json()).nonce as string;
@@ -49,7 +49,7 @@ async function setup(t: { after(fn: () => unknown): void }, enabled = true) {
     const started = await send('/accounts/link/start', member, statements.invite(handle), { handle });
     return send('/accounts/link', joiner, statements.join(handle), { ticket: started.body.ticket });
   };
-  return { h, clock, directory, events, send, create, link };
+  return { h, clock, directory, events, send, create, link, accounts: accounts! };
 }
 
 test('accounts are off without a data directory: routes answer 404 and key issue is unchanged', async t => {
@@ -167,4 +167,61 @@ test('account routes use each nonce once and share the per-IP limit', async t =>
   assert.equal((await post()).status, 200); assert.equal((await post()).status, 401);
   for (let i = 0; i < 28; i++) await post();
   assert.equal((await send('/accounts/me', alice, statements.signIn)).body.error?.code, 'read_rate_limit');
+});
+
+// Spending and free trial calls for an account. Wallets are ids here; the registry is filled directly.
+const A = 'eip155:8453:0x' + 'a'.repeat(40), B = 'near:mainnet:bob.near', C = 'eip155:8453:0x' + 'c'.repeat(40);
+const chat = (base: string, key: string) => fetch(base + '/v1/chat/completions', { method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+  body: JSON.stringify({ model: 'fixture/tee', messages: [{ role: 'user', content: 'Hello' }], max_tokens: 10 }) });
+const done = async (response: Response) => { await response.arrayBuffer(); return [response.status, response.headers.get('x-infernear-billing')]; };
+
+test('a key spends from any wallet linked to its account: its own wallet first, one wallet per call', async t => {
+  const { h, accounts } = await setup(t, true, { seed: false });
+  const account = await accounts.create('alice', A); await accounts.link(account.uid, B);
+  const key = h.auth.issue(A, 0, account.uid).key, spent = (wallet: string) => h.connector.accounts.get(wallet)?.spent ?? 0n;
+  h.connector.seed(B, 1_000_000n);
+  h.respond({ id: 'linked-{n}' });
+  assert.deepEqual(await done(await chat(h.base, key)), [200, 'credits']);
+  await settle(h.gateway, B);
+  assert.deepEqual([spent(A), spent(B)], [0n, 13n]);
+  h.connector.seed(A, 1_000_000n);
+  assert.deepEqual(await done(await chat(h.base, key)), [200, 'credits']);
+  await settle(h.gateway, A);
+  assert.deepEqual([spent(A), spent(B)], [13n, 13n]);
+  // Two wallets that each hold too little are not added together: one call, one debit.
+  const short = await accounts.create('carol', C), D = 'near:mainnet:dave.near'; await accounts.link(short.uid, D);
+  h.connector.seed(C, 5n); h.connector.seed(D, 5n);
+  assert.equal((await chat(h.base, h.auth.issue(C, 0, short.uid).key)).status, 402);
+});
+
+test('a wallet that leaves an account can no longer be charged by it, and a key cannot name an account its wallet is not in', async t => {
+  const { h, accounts } = await setup(t, true, { seed: false });
+  const account = await accounts.create('alice', A); await accounts.link(account.uid, B);
+  h.connector.seed(B, 1_000_000n);
+  const key = h.auth.issue(A, 0, account.uid).key;
+  assert.equal((await chat(h.base, h.auth.issue(C, 0, account.uid).key)).status, 402);
+  await accounts.unlink(B);
+  assert.equal((await chat(h.base, key)).status, 402);
+  assert.equal(h.connector.accounts.get(B)!.spent, 0n); assert.equal(h.connector.debitCalls, 0);
+  // Linked again later, the same key can be charged to it without being reissued.
+  await accounts.link(account.uid, B);
+  h.respond({ id: 'relinked' });
+  assert.deepEqual(await done(await chat(h.base, key)), [200, 'credits']);
+});
+
+test('free trial calls are counted per account: what a wallet used moves in with it, and linking adds none', async t => {
+  const { h, accounts } = await setup(t, true, { seed: false, freeCallsPerUser: 2, freeCallsPerDay: 300 });
+  const left = async (key: string) => (await (await fetch(h.base + '/v1/free-calls', { headers: { authorization: `Bearer ${key}` } })).json()).remaining;
+  h.respond({ id: 'trial-{n}' });
+  const walletKey = h.auth.issue(A, 0).key;
+  assert.deepEqual(await done(await chat(h.base, walletKey)), [200, 'free']);
+  const account = await accounts.create('alice', A);
+  const key = h.auth.issue(A, 0, account.uid).key;
+  assert.equal(await left(key), 1);
+  assert.deepEqual(await done(await chat(h.base, key)), [200, 'free']);
+  await accounts.link(account.uid, B);
+  const second = h.auth.issue(B, 0, account.uid).key;
+  assert.deepEqual([await left(key), await left(second)], [0, 0]);
+  assert.equal((await chat(h.base, second)).status, 402);
+  assert.equal(h.connector.debitCalls, 0);
 });

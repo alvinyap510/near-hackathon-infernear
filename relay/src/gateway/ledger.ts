@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingHttpHeaders } from 'node:http';
 import { Auth, type KeyPayload } from './auth.ts';
+import type { Accounts } from './accounts.ts';
 import { FreeCalls, type FreeHold } from './free-calls.ts';
 import { inferenceId, Meter } from './meter.ts';
 import { Upstream, endToEndHeaders, type Model } from './upstream.ts';
@@ -27,10 +28,27 @@ export class Gateway {
   private now: () => number;
   private retryMs: number;
   private free: FreeCalls;
-  constructor(options: { auth: Auth; upstream: Upstream; connector: Connector; maxTokens: number; report: Report; now?: () => number; retryMs?: number; freeCallsPerUser?: number; freeCallsPerDay?: number }) {
+  private accounts?: Pick<Accounts, 'byId'>;
+  constructor(options: { auth: Auth; upstream: Upstream; connector: Connector; maxTokens: number; report: Report; now?: () => number; retryMs?: number; freeCallsPerUser?: number; freeCallsPerDay?: number; accounts?: Pick<Accounts, 'byId'> }) {
     this.auth = options.auth; this.upstream = options.upstream; this.connector = options.connector;
     this.cap = options.maxTokens; this.report = options.report; this.now = options.now ?? Date.now; this.retryMs = options.retryMs ?? 2000;
     this.free = new FreeCalls(options.freeCallsPerUser ?? 0, options.freeCallsPerDay ?? 0, this.now);
+    this.accounts = options.accounts;
+  }
+  // The account a key speaks for: the one recorded in the key, if its wallet is still in it today.
+  // The registry is read at every call, so a wallet that has left an account stops being charged
+  // for it at once, and a wallet linked later can be charged without a new key.
+  private account(key: KeyPayload) {
+    const account = key.account ? this.accounts?.byId(key.account) : undefined;
+    return account?.wallets.includes(key.user) ? account : undefined;
+  }
+  // Free trial calls are counted per account once the wallet is in one; what the wallet used
+  // before joining moves with it, so linking wallets does not multiply the allowance.
+  private trial(key: KeyPayload): string {
+    const account = this.account(key);
+    if (!account) return key.user;
+    this.free.merge(key.user, account.uid);
+    return account.uid;
   }
   // A debit stores about 0.001 NEAR of state on the connector. Once its free balance cannot cover
   // more, every debit would fail after the inference was served and its gas would be wasted, so
@@ -131,26 +149,34 @@ export class Gateway {
     // adds role markers and tool instructions on top, so it is bounded by its length plus an allowance.
     const inputBound = encrypted ? Math.ceil(upstreamBody.length / 2) : upstreamBody.length + PLAIN_TEMPLATE_TOKENS;
     const amount = costMicro(inputBound, body.max_tokens, model.inNano, model.outNano);
-    const state = this.user(key.user);
-    return state.lock.run(async () => {
-      const account = await this.connector.account(key.user);
-      this.observe(state, account); this.checkEpoch(key, state);
-      if (state.active >= 4) throw new HttpError(429, 'concurrency_limit', 'At most four requests in flight per user');
-      const free = this.free.hold(key.user);
-      if (free) {
-        state.active += 1;
-        return { token: randomUUID(), user: key.user, amount, model, inputBound, maxTokens: body.max_tokens,
-          streaming: body.stream === true, body: upstreamBody, encrypted, free };
-      }
-      // A free call never writes the ledger, so storage and headroom matter only from here on.
-      if (await this.storageLow()) throw new HttpError(503, 'ledger_storage_low', 'The credit ledger is out of storage; the operator must top it up');
-      const committed = account.spent > state.floor! ? account.spent : state.floor!;
-      const reserved = [...state.reservations.values()].reduce((a, b) => a + b, 0n);
-      if (amount > account.credited - committed - reserved) throw new HttpError(402, 'insufficient_credit', 'Insufficient available credits');
-      const token = randomUUID();
-      state.reservations.set(token, amount); state.active += 1;
-      return { token, user: key.user, amount, model, inputBound, maxTokens: body.max_tokens, streaming: body.stream === true, body: upstreamBody, encrypted };
-    });
+    const reservation = { amount, model, inputBound, maxTokens: body.max_tokens, streaming: body.stream === true, body: upstreamBody, encrypted };
+    // The key's own wallet first, then the other wallets of its account, in the order they were
+    // linked. One call is charged to exactly one wallet: the ledger takes one debit per inference.
+    // Each wallet is tried under its own lock, never two locks at once.
+    const wallets = [key.user, ...(this.account(key)?.wallets.filter(wallet => wallet !== key.user) ?? [])];
+    for (const wallet of wallets) {
+      const own = wallet === key.user, state = this.user(wallet);
+      const admitted = await state.lock.run(async (): Promise<Reservation | undefined> => {
+        const account = await this.connector.account(wallet);
+        this.observe(state, account);
+        if (own) this.checkEpoch(key, state);
+        if (state.active >= 4) { if (own) throw new HttpError(429, 'concurrency_limit', 'At most four requests in flight per user'); return undefined; }
+        if (own) {
+          const free = this.free.hold(this.trial(key));
+          if (free) { state.active += 1; return { ...reservation, token: randomUUID(), user: wallet, free }; }
+          // A free call never writes the ledger, so storage and headroom matter only from here on.
+          if (await this.storageLow()) throw new HttpError(503, 'ledger_storage_low', 'The credit ledger is out of storage; the operator must top it up');
+        }
+        const committed = account.spent > state.floor! ? account.spent : state.floor!;
+        const reserved = [...state.reservations.values()].reduce((a, b) => a + b, 0n);
+        if (amount > account.credited - committed - reserved) return undefined;
+        const token = randomUUID();
+        state.reservations.set(token, amount); state.active += 1;
+        return { ...reservation, token, user: wallet };
+      });
+      if (admitted) return admitted;
+    }
+    throw new HttpError(402, 'insufficient_credit', 'Insufficient available credits');
   }
   async complete(reservation: Reservation, status: number, headerId: string | undefined, meter: Meter): Promise<void> {
     const state = this.user(reservation.user);
@@ -184,10 +210,10 @@ export class Gateway {
   }
   async freeCalls(header: string | undefined) {
     const key = await this.authenticate(header);
-    return this.user(key.user).lock.run(async () => this.free.status(key.user));
+    return this.user(key.user).lock.run(async () => this.free.status(this.trial(key)));
   }
   billingHeaders(reservation: Reservation): Record<string, string> {
-    return reservation.free ? { 'x-infernear-billing': 'free', 'x-infernear-free-remaining': String(this.free.status(reservation.user).remaining) }
+    return reservation.free ? { 'x-infernear-billing': 'free', 'x-infernear-free-remaining': String(this.free.status(reservation.free.user).remaining) }
       : { 'x-infernear-billing': 'credits' };
   }
   async retryDebits(): Promise<void> {

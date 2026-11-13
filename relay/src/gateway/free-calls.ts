@@ -39,6 +39,14 @@ export class FreeCalls {
     return { per_user: this.perUser, used: usage?.used ?? 0,
       remaining: capacity ? Math.max(0, Math.min(this.perUser - (usage?.used ?? 0) - (usage?.held ?? 0), this.perDay - this.used - this.held)) : 0 };
   }
+  /** Moves what `from` has used into `into` (a wallet joining an account), capped at the allowance. */
+  merge(from: string, into: string): void {
+    const usage = this.users.get(from);
+    if (!usage || usage.held) return;
+    const target = this.users.get(into) ?? { used: 0, held: 0 };
+    target.used = Math.min(this.perUser, target.used + usage.used);
+    this.users.set(into, target); this.users.delete(from);
+  }
   hold(user: string): FreeHold | undefined {
     if (this.status(user).remaining === 0) return undefined;
     let usage = this.users.get(user);
