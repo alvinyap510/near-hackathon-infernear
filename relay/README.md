@@ -127,7 +127,7 @@ Encrypted streaming returned usable usage, so streaming stays enabled. V3 does n
 With `RELAY_DATA_DIR` set, a user can pick a handle and link up to four wallets (EVM or NEAR) into one account, identified by a permanent UID. Routes, statements and the two-signature link flow are in [interfaces.md](../docs/interfaces.md#accounts-handle-uid-and-linked-wallets).
 
 - **Where it lives:** one JSON file, `accounts.json`, in that directory, rewritten whole and atomically on every change. It holds handles, UIDs and wallet ids: no secrets and no balances. It is the first thing this relay stores on disk.
-- **What it changes:** a key issued to a linked wallet can be charged to any wallet of its account (its own first; one wallet per call), and free trial calls are counted per account. The NEAR ledger still keeps one balance per wallet.
+- **What it changes:** a key can be charged to any wallet in its wallet's account (its own first; one wallet per call). Free trial calls stay per wallet, and the NEAR ledger still keeps one balance per wallet.
 - **If the file is lost or damaged:** handles and links are gone and users create them again; every wallet keeps its own balance on the ledger. A file that cannot be read is moved aside (`accounts.json.corrupt-<time>`) and the relay starts with no accounts rather than not starting.
 - **Limits, and the risk each one names:** four wallets per account (each admission reads the ledger once per linked wallet) and 10,000 accounts (anyone with a wallet can create one).
 - **Trust:** the registry is the relay's word, like prices and yield attribution. It decides which wallets a key may charge; it cannot create credits or move principal.

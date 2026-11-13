@@ -28,27 +28,18 @@ export class Gateway {
   private now: () => number;
   private retryMs: number;
   private free: FreeCalls;
-  private accounts?: Pick<Accounts, 'byId'>;
-  constructor(options: { auth: Auth; upstream: Upstream; connector: Connector; maxTokens: number; report: Report; now?: () => number; retryMs?: number; freeCallsPerUser?: number; freeCallsPerDay?: number; accounts?: Pick<Accounts, 'byId'> }) {
+  private accounts?: Pick<Accounts, 'of'>;
+  constructor(options: { auth: Auth; upstream: Upstream; connector: Connector; maxTokens: number; report: Report; now?: () => number; retryMs?: number; freeCallsPerUser?: number; freeCallsPerDay?: number; accounts?: Pick<Accounts, 'of'> }) {
     this.auth = options.auth; this.upstream = options.upstream; this.connector = options.connector;
     this.cap = options.maxTokens; this.report = options.report; this.now = options.now ?? Date.now; this.retryMs = options.retryMs ?? 2000;
     this.free = new FreeCalls(options.freeCallsPerUser ?? 0, options.freeCallsPerDay ?? 0, this.now);
     this.accounts = options.accounts;
   }
-  // The account a key speaks for: the one recorded in the key, if its wallet is still in it today.
-  // The registry is read at every call, so a wallet that has left an account stops being charged
-  // for it at once, and a wallet linked later can be charged without a new key.
-  private account(key: KeyPayload) {
-    const account = key.account ? this.accounts?.byId(key.account) : undefined;
-    return account?.wallets.includes(key.user) ? account : undefined;
-  }
-  // Free trial calls are counted per account once the wallet is in one; what the wallet used
-  // before joining moves with it, so linking wallets does not multiply the allowance.
-  private trial(key: KeyPayload): string {
-    const account = this.account(key);
-    if (!account) return key.user;
-    this.free.merge(key.user, account.uid);
-    return account.uid;
+  // The other wallets a key may be charged to: those in its wallet's account today. The registry
+  // is read at every call, so a wallet that has left an account stops being charged at once, and
+  // a wallet linked later can be charged without a new key.
+  private linked(wallet: string): string[] {
+    return this.accounts?.of(wallet)?.wallets.filter(other => other !== wallet) ?? [];
   }
   // A debit stores about 0.001 NEAR of state on the connector. Once its free balance cannot cover
   // more, every debit would fail after the inference was served and its gas would be wasted, so
@@ -81,7 +72,7 @@ export class Gateway {
     this.checkEpoch(key, state);
     return key;
   }
-  async issue(user: string, accountUid?: string) {
+  async issue(user: string) {
     const state = this.user(user);
     return state.lock.run(async () => {
       const account = await this.connector.account(user);
@@ -90,7 +81,7 @@ export class Gateway {
         if (account.key_epoch < state.pendingEpoch) throw new HttpError(503, 'revocation_pending', 'Revocation is not confirmed; retry later');
         state.pendingEpoch = undefined;
       }
-      return this.auth.issue(user, state.epoch, accountUid);
+      return this.auth.issue(user, state.epoch);
     });
   }
   async revoke(user: string) {
@@ -153,7 +144,7 @@ export class Gateway {
     // The key's own wallet first, then the other wallets of its account, in the order they were
     // linked. One call is charged to exactly one wallet: the ledger takes one debit per inference.
     // Each wallet is tried under its own lock, never two locks at once.
-    const wallets = [key.user, ...(this.account(key)?.wallets.filter(wallet => wallet !== key.user) ?? [])];
+    const wallets = [key.user, ...this.linked(key.user)];
     for (const wallet of wallets) {
       const own = wallet === key.user, state = this.user(wallet);
       const admitted = await state.lock.run(async (): Promise<Reservation | undefined> => {
@@ -161,12 +152,10 @@ export class Gateway {
         this.observe(state, account);
         if (own) this.checkEpoch(key, state);
         if (state.active >= 4) { if (own) throw new HttpError(429, 'concurrency_limit', 'At most four requests in flight per user'); return undefined; }
-        if (own) {
-          const free = this.free.hold(this.trial(key));
-          if (free) { state.active += 1; return { ...reservation, token: randomUUID(), user: wallet, free }; }
-          // A free call never writes the ledger, so storage and headroom matter only from here on.
-          if (await this.storageLow()) throw new HttpError(503, 'ledger_storage_low', 'The credit ledger is out of storage; the operator must top it up');
-        }
+        const free = own ? this.free.hold(wallet) : undefined;
+        if (free) { state.active += 1; return { ...reservation, token: randomUUID(), user: wallet, free }; }
+        // A free call never writes the ledger, so storage and headroom matter only from here on.
+        if (await this.storageLow()) throw new HttpError(503, 'ledger_storage_low', 'The credit ledger is out of storage; the operator must top it up');
         const committed = account.spent > state.floor! ? account.spent : state.floor!;
         const reserved = [...state.reservations.values()].reduce((a, b) => a + b, 0n);
         if (amount > account.credited - committed - reserved) return undefined;
@@ -210,10 +199,10 @@ export class Gateway {
   }
   async freeCalls(header: string | undefined) {
     const key = await this.authenticate(header);
-    return this.user(key.user).lock.run(async () => this.free.status(this.trial(key)));
+    return this.user(key.user).lock.run(async () => this.free.status(key.user));
   }
   billingHeaders(reservation: Reservation): Record<string, string> {
-    return reservation.free ? { 'x-infernear-billing': 'free', 'x-infernear-free-remaining': String(this.free.status(reservation.free.user).remaining) }
+    return reservation.free ? { 'x-infernear-billing': 'free', 'x-infernear-free-remaining': String(this.free.status(reservation.user).remaining) }
       : { 'x-infernear-billing': 'credits' };
   }
   async retryDebits(): Promise<void> {

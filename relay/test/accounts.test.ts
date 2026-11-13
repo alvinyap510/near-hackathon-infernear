@@ -53,14 +53,13 @@ async function setup(t: { after(fn: () => unknown): void }, enabled = true, opti
 }
 
 test('accounts are off without a data directory: routes answer 404 and key issue is unchanged', async t => {
-  const { h, send } = await setup(t, false), alice = evm();
+  const { send } = await setup(t, false), alice = evm();
   for (const path of ['/accounts', '/accounts/me', '/accounts/link/start', '/accounts/link', '/accounts/unlink']) {
     const response = await send(path, alice, statements.signIn, { handle: 'alice' });
     assert.deepEqual([response.status, response.body.error?.code], [404, 'accounts_disabled']);
   }
   const issued = await send('/keys', alice, KEY_STATEMENT);
   assert.equal(issued.status, 200); assert.equal('account' in issued.body, false);
-  assert.equal(h.auth.parse(`Bearer ${issued.body.key}`).account, undefined);
 });
 
 test('either wallet type creates an account with a permanent UID, and a handle is unique and well formed', async t => {
@@ -149,14 +148,13 @@ test('the registry survives a restart, and a damaged file is set aside so the re
   assert.equal((await empty.create('alice', alice.id)).handle, 'alice');
 });
 
-test('key issue reports the account and records its UID in the key', async t => {
+test('key issue reports the wallet\'s account, or null', async t => {
   const { h, send, create } = await setup(t), alice = evm(), loner = evm();
   const account = (await create(alice, 'alice')).body.account!;
   const linked = await send('/keys', alice, KEY_STATEMENT);
   assert.deepEqual(linked.body.account, account);
-  assert.deepEqual([h.auth.parse(`Bearer ${linked.body.key}`).user, h.auth.parse(`Bearer ${linked.body.key}`).account], [alice.id, account.uid]);
-  const alone = await send('/keys', loner, KEY_STATEMENT);
-  assert.equal(alone.body.account, null); assert.equal(h.auth.parse(`Bearer ${alone.body.key}`).account, undefined);
+  assert.equal(h.auth.parse(`Bearer ${linked.body.key}`).user, alice.id);
+  assert.equal((await send('/keys', loner, KEY_STATEMENT)).body.account, null);
 });
 
 test('account routes use each nonce once and share the per-IP limit', async t => {
@@ -178,7 +176,7 @@ const done = async (response: Response) => { await response.arrayBuffer(); retur
 test('a key spends from any wallet linked to its account: its own wallet first, one wallet per call', async t => {
   const { h, accounts } = await setup(t, true, { seed: false });
   const account = await accounts.create('alice', A); await accounts.link(account.uid, B);
-  const key = h.auth.issue(A, 0, account.uid).key, spent = (wallet: string) => h.connector.accounts.get(wallet)?.spent ?? 0n;
+  const key = h.auth.issue(A, 0).key, spent = (wallet: string) => h.connector.accounts.get(wallet)?.spent ?? 0n;
   h.connector.seed(B, 1_000_000n);
   h.respond({ id: 'linked-{n}' });
   assert.deepEqual(await done(await chat(h.base, key)), [200, 'credits']);
@@ -191,15 +189,15 @@ test('a key spends from any wallet linked to its account: its own wallet first, 
   // Two wallets that each hold too little are not added together: one call, one debit.
   const short = await accounts.create('carol', C), D = 'near:mainnet:dave.near'; await accounts.link(short.uid, D);
   h.connector.seed(C, 5n); h.connector.seed(D, 5n);
-  assert.equal((await chat(h.base, h.auth.issue(C, 0, short.uid).key)).status, 402);
+  assert.equal((await chat(h.base, h.auth.issue(C, 0).key)).status, 402);
 });
 
-test('a wallet that leaves an account can no longer be charged by it, and a key cannot name an account its wallet is not in', async t => {
+test('a wallet that leaves an account can no longer be charged by it, and a wallet outside it never can', async t => {
   const { h, accounts } = await setup(t, true, { seed: false });
   const account = await accounts.create('alice', A); await accounts.link(account.uid, B);
   h.connector.seed(B, 1_000_000n);
-  const key = h.auth.issue(A, 0, account.uid).key;
-  assert.equal((await chat(h.base, h.auth.issue(C, 0, account.uid).key)).status, 402);
+  const key = h.auth.issue(A, 0).key;
+  assert.equal((await chat(h.base, h.auth.issue(C, 0).key)).status, 402);
   await accounts.unlink(B);
   assert.equal((await chat(h.base, key)).status, 402);
   assert.equal(h.connector.accounts.get(B)!.spent, 0n); assert.equal(h.connector.debitCalls, 0);
@@ -209,19 +207,16 @@ test('a wallet that leaves an account can no longer be charged by it, and a key 
   assert.deepEqual(await done(await chat(h.base, key)), [200, 'credits']);
 });
 
-test('free trial calls are counted per account: what a wallet used moves in with it, and linking adds none', async t => {
+test('free trial calls stay per wallet: linking neither adds to nor takes from a wallet\'s own allowance', async t => {
   const { h, accounts } = await setup(t, true, { seed: false, freeCallsPerUser: 2, freeCallsPerDay: 300 });
   const left = async (key: string) => (await (await fetch(h.base + '/v1/free-calls', { headers: { authorization: `Bearer ${key}` } })).json()).remaining;
   h.respond({ id: 'trial-{n}' });
-  const walletKey = h.auth.issue(A, 0).key;
-  assert.deepEqual(await done(await chat(h.base, walletKey)), [200, 'free']);
-  const account = await accounts.create('alice', A);
-  const key = h.auth.issue(A, 0, account.uid).key;
-  assert.equal(await left(key), 1);
-  assert.deepEqual(await done(await chat(h.base, key)), [200, 'free']);
-  await accounts.link(account.uid, B);
-  const second = h.auth.issue(B, 0, account.uid).key;
-  assert.deepEqual([await left(key), await left(second)], [0, 0]);
-  assert.equal((await chat(h.base, second)).status, 402);
+  const first = h.auth.issue(A, 0).key, second = h.auth.issue(B, 0).key;
+  assert.deepEqual(await done(await chat(h.base, first)), [200, 'free']);
+  const account = await accounts.create('alice', A); await accounts.link(account.uid, B);
+  assert.deepEqual([await left(first), await left(second)], [1, 2]);
+  assert.deepEqual(await done(await chat(h.base, first)), [200, 'free']);
+  assert.equal((await chat(h.base, first)).status, 402);
+  assert.deepEqual([await left(first), await left(second)], [0, 2]);
   assert.equal(h.connector.debitCalls, 0);
 });

@@ -78,7 +78,7 @@ export class Accounts {
     if (this.byWallet.has(wallet)) throw new HttpError(409, 'wallet_linked', 'That wallet is already in an account');
     if (account.wallets.length >= MAX_WALLETS) throw tooManyWallets();
     account.wallets.push(wallet); this.byWallet.set(wallet, account);
-    await this.save(() => { account.wallets.pop(); this.byWallet.delete(wallet); });
+    await this.save(() => { account.wallets.splice(account.wallets.indexOf(wallet), 1); this.byWallet.delete(wallet); });
     return account;
   }
   async unlink(wallet: string): Promise<Account> {

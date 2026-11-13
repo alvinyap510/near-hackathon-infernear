@@ -84,7 +84,7 @@ export function createRelayServer(gateway: Gateway, options: { publicUrl: string
         const user = await gateway.auth.walletProof(proof);
         if (path === '/keys') {
           const account = options.accounts?.of(user) ?? null;
-          json(res, 200, { ...await gateway.issue(user, account?.uid), ...(options.accounts ? { account } : {}) }); return;
+          json(res, 200, { ...await gateway.issue(user), ...(options.accounts ? { account } : {}) }); return;
         }
         sponsor();
         json(res, 200, await gateway.revoke(user)); return;

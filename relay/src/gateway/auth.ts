@@ -9,8 +9,7 @@ import { ExpiringMap } from './expiring-map.ts';
 export type NearKeyLookup = (accountId: string, publicKey: string) => Promise<boolean>;
 export const KEY_STATEMENT = 'Authorize one InferNear API key action.';
 
-// `account` is the UID of the account the issuing wallet was linked to when the key was made.
-export type KeyPayload = { user: string; epoch: number; exp: number; account?: string };
+export type KeyPayload = { user: string; epoch: number; exp: number };
 export type LinkTicket = { uid: string; by: string };
 const unauthorized = () => new HttpError(401, 'invalid_api_key', 'Bad, expired or revoked credentials');
 
@@ -92,9 +91,9 @@ export class Auth {
     if (parsed.expires_at <= Math.floor(this.now() / 1000) || !this.nonces.get(parsed.nonce) || !this.nonces.delete(parsed.nonce)) throw unauthorized();
     return `near:mainnet:${account_id}`;
   }
-  issue(user: string, epoch: number, account?: string): { key: string; key_epoch: number; expires_at: number } {
+  issue(user: string, epoch: number): { key: string; key_epoch: number; expires_at: number } {
     const exp = Math.floor(this.now() / 1000) + 30 * 24 * 3600;
-    const payload = Buffer.from(JSON.stringify({ user, epoch, exp, ...(account ? { account } : {}) })).toString('base64url');
+    const payload = Buffer.from(JSON.stringify({ user, epoch, exp })).toString('base64url');
     return { key: `inf_${payload}.${this.mac(payload).toString('base64url')}`, key_epoch: epoch, expires_at: exp };
   }
   parse(header: string | undefined): KeyPayload {
@@ -106,8 +105,7 @@ export class Auth {
       if (mac.length !== expected.length || !timingSafeEqual(mac, expected)) throw unauthorized();
       const payload: KeyPayload = JSON.parse(Buffer.from(match[1], 'base64url').toString());
       if (typeof payload.user !== 'string' || !Number.isSafeInteger(payload.epoch) || payload.epoch < 0 ||
-          !Number.isSafeInteger(payload.exp) || payload.exp <= Math.floor(this.now() / 1000) ||
-          (payload.account !== undefined && typeof payload.account !== 'string')) throw unauthorized();
+          !Number.isSafeInteger(payload.exp) || payload.exp <= Math.floor(this.now() / 1000)) throw unauthorized();
       return payload;
     } catch { throw unauthorized(); }
   }
