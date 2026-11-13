@@ -33,10 +33,11 @@ export function App(){
   // The account behind the connected wallet. It starts from the browser's memory and is replaced by whatever the relay says.
   const [account,setAccount]=useState<UserAccount|null>(null),[pending,setPendingState]=useState<LinkTicket|null>(()=>links.get());
   useEffect(()=>{setAccount(session?cache.read(session.user):null);setPendingState(links.get());},[session?.user]);
-  const onAccount=useCallback((next:UserAccount|null)=>{const user=current.current.session?.user;if(next)cache.write(next);else if(user)cache.forget(user);setAccount(next);},[]);
-  const onUnlinked=useCallback((rest:UserAccount)=>{const user=current.current.session?.user;cache.write(rest,user);setAccount(null);},[]);
+  // `user` is the wallet the answer is about. It is remembered for that wallet either way, and shown only if that wallet is still the connected one.
+  const onAccount=useCallback((next:UserAccount|null,user:string)=>{if(next)cache.write(next);else cache.forget(user);if(current.current.session?.user===user)setAccount(next);},[]);
+  const onUnlinked=useCallback((rest:UserAccount,user:string)=>{cache.write(rest,user);if(current.current.session?.user===user)setAccount(null);},[]);
   const setPending=useCallback((link:LinkTicket|null)=>{if(link)links.set(link);else links.clear();setPendingState(link);},[]);
-  const onIssued=useCallback((key:IssuedKey|null,at:number)=>{updateAuth({type:'issued',revision:at,key});if(key&&key.account!==undefined)onAccount(key.account);},[updateAuth,onAccount]);
+  const onIssued=useCallback((key:IssuedKey|null,at:number,user:string)=>{updateAuth({type:'issued',revision:at,key});if(key&&key.account!==undefined)onAccount(key.account,user);},[updateAuth,onAccount]);
   const go=useCallback((next:Tab)=>{window.location.hash=next;window.scrollTo({top:0});},[]);
   useEffect(()=>{const onHash=()=>{if(window.location.hash!=='#main')setTab(tabFromHash());};window.addEventListener('hashchange',onHash);return()=>window.removeEventListener('hashchange',onHash);},[]);
   useEffect(()=>{let stopped=false;const started=current.current.revision;void data.restoreSession().then(s=>{if(!stopped&&current.current.revision===started&&s!==null)accept(s);}).catch(e=>{if(!stopped)setWalletError(errorText(e));});return()=>{stopped=true;};},[accept]);
@@ -60,10 +61,10 @@ export function App(){
   else if(!session)content=<ConnectPrompt title={tab==='account'?'Your account':tab==='keys'?'Your API keys':'Bring USDC to Base'} onConnect={openWallet}/>;
   else if(tab==='bridge')content=session.kind==='evm'?<Bridge session={session} onDeposit={()=>go('account')}/>:<ConnectPrompt title="This route needs an EVM wallet" onConnect={openWallet}/>;
   else if(!overview)content=readError?<ErrorNote error={readError}/>:<p className="loading"><Spinner/> Reading your vaults and credits…</p>;
-  else if(tab==='keys')content=<Keys key={revision} session={session} overview={overview} issued={issued} onIssued={key=>onIssued(key,revision)} onChanged={refresh} onTry={()=>go('try')}/>;
+  else if(tab==='keys')content=<Keys key={revision} session={session} overview={overview} issued={issued} onIssued={key=>onIssued(key,revision,session.user)} onChanged={refresh} onTry={()=>go('try')}/>;
   else content=<Account key={revision} session={session} overview={overview} selectedId={selectedId} onSelect={setSelectedId} onChanged={refresh} onBridge={()=>go('bridge')} onConnect={openWallet}/>;
   // The account lives in the header: in the account dropdown, and as a strip under the header while a link is pending.
-  const accountPanel=session?(place:'menu'|'banner',close:()=>void)=><AccountPanel key={session.user} place={place} session={session} account={account} pending={pending} onAccount={onAccount} onUnlinked={onUnlinked} onPending={setPending} onSwitchWallet={()=>{close();openWallet();}}/>:undefined;
+  const accountPanel=session?(place:'menu'|'banner',close:()=>void)=><AccountPanel key={session.user} place={place} session={session} account={account} pending={pending} onAccount={next=>onAccount(next,session.user)} onUnlinked={rest=>onUnlinked(rest,session.user)} onPending={setPending} onSwitchWallet={()=>{close();openWallet();}}/>:undefined;
   return <>{data.isMock&&<MockRibbon/>}<Header accountSeed={account?.avatarSeed} handle={account?.handle} promptHandle={!!session&&!account&&!pending} accountPanel={accountPanel} address={session?(session.kind==='evm'?session.address:session.accountId):null} chainName={session?.kind==='near'?'NEAR':'Base'} tab={tab} onTab={go} onConnect={openWallet} onDisconnect={()=>void disconnect()}/>
     <main id="main" className="page">{content}</main><WalletDialog open={dialog} onClose={()=>{if(!busyId)setDialog(false);}} options={options} busyId={busyId} error={walletError} onSelect={id=>void connect(id)}/>
     <footer className="footer"><span>InferNear · built at NEAR HACKATHON</span><span>Inference credits from yield or direct purchase · principal stays yours</span></footer></>;
