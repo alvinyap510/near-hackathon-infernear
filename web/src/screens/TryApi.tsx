@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Check, CopyButton, ErrorNote, Spinner, errorText } from '../components/ui.tsx';
+import { observeFreeCalls, observeRunDebit } from '../data/chat.ts';
 import { apiBaseUrl } from '../config.ts';
-import { data, DataError, type Attestation, type Model, type RunResult } from '../data/index.ts';
+import { data, DataError, type Attestation, type Model, type RunResult, type FreeCalls } from '../data/index.ts';
 import { formatPerMillion, formatUsd, shortHex, expectedDebit } from '../data/money.ts';
 import { quickstartJs, quickstartPython, quickstartPrivateJs, quickstartPrivatePython, SDK_PIN } from '../quickstart.ts';
 // The relay's own default reply cap (RELAY_MAX_TOKENS). A smaller cap cut reasoning models off before any visible answer.
@@ -9,6 +10,9 @@ const MAX_TOKENS=4096;
 export function TryApi({apiKey,onChanged,onKeys,onCredits}:{apiKey:string|null;onChanged():Promise<void>;onKeys():void;onCredits():void}){
   const [models,setModels]=useState<Model[]>([]),[model,setModel]=useState<Model|null>(null),[mode,setMode]=useState<'standard'|'private'>('standard'),[lang,setLang]=useState<'js'|'py'>('js');
   const [key,setKey]=useState(apiKey??''),[prompt,setPrompt]=useState('Reply with the word ok.'),[running,setRunning]=useState(false),[error,setError]=useState<string|null>(null),[needsCredits,setNeedsCredits]=useState(false);
+  const [quota,setQuota]=useState<{key:string;count:FreeCalls|null}|null>(null),[quotaRefresh,setQuotaRefresh]=useState(0);
+  const freeCalls=quota?.key===key?quota.count:null;
+  useEffect(()=>observeFreeCalls(key,data.freeCalls,count=>setQuota({key,count})),[key,quotaRefresh]);
   const [text,setText]=useState(''),[attestation,setAttestation]=useState<Attestation|null>(null),[result,setResult]=useState<RunResult|null>(null);
   useEffect(()=>{void data.models().then(list=>{setModels(list);setModel(list[0]??null);}).catch(e=>setError(errorText(e)));},[]);
   const privateCodeOnly=mode==='private'&&!data.isMock;
@@ -17,17 +21,17 @@ export function TryApi({apiKey,onChanged,onKeys,onCredits}:{apiKey:string|null;o
   const run=async()=>{
     if(!model||!key)return;setRunning(true);setError(null);setNeedsCredits(false);setResult(null);setAttestation(null);setText('');
     try{const r=await data.run({key,model,prompt,maxTokens:MAX_TOKENS,mode},event=>{if(event.kind==='text')setText(t=>t+event.delta);if(mode==='private'&&event.kind==='attested')setAttestation(event.attestation);});setResult({...r,mode});if(mode==='private'&&r.attestation)setAttestation(r.attestation);try{await onChanged();}catch{/* Completed inference remains visible if a separate balance refresh fails. */}}
-    catch(e){setError(errorText(e));setNeedsCredits(e instanceof DataError&&(e.code==='insufficient_credit'||e.code==='credits'||e.code==='http_402'));}finally{setRunning(false);}
+    catch(e){setError(errorText(e));setNeedsCredits(e instanceof DataError&&(e.code==='insufficient_credit'||e.code==='credits'||e.code==='http_402'));}finally{setRunning(false);setQuotaRefresh(value=>value+1);}
   };
-  return <div className="screen"><header className="page-head rise"><div><p className="eyebrow">Try the API</p><h1 className="title">Make a call with your credits</h1></div><p className="page-note">{data.isMock?'Mock source: calls and verification are simulated.':'Standard mode calls the live relay. Private mode is available from your code.'}</p></header>
+  return <div className="screen"><header className="page-head rise"><div><p className="eyebrow">Try the API</p><h1 className="title">Make a call</h1></div><p className="page-note">{data.isMock?'Mock source: calls and verification are simulated.':'Standard mode calls the live relay. Private mode is available from your code.'}</p></header>
     <div className="seg-control" role="tablist" aria-label="Chat mode">{(['standard','private'] as const).map(m=><button key={m} type="button" role="tab" aria-selected={mode===m} className={mode===m?'on':''} disabled={running} onClick={()=>{setMode(m);setResult(null);setAttestation(null);setText('');setError(null);}}>{m==='standard'?'Standard':'Private'}</button>)}</div>
     <p className="loss-note">{mode==='standard'?'In standard mode the relay can read your prompt and reply in transit. The model runs in NEAR AI’s TEE; this panel does not verify a response signature.':'Private mode encrypts to the model key with NEAR AI’s SDK. Browser completion verification is not validated in this release; run the quickstart from your code.'}</p>
     <div className="try-grid"><section className="codecard rise"><div className="codecard-head"><div className="lang-tabs">{(['js','py'] as const).map(l=><button key={l} type="button" onClick={()=>setLang(l)} aria-selected={lang===l}>{l==='js'?'JavaScript':'Python'}</button>)}</div><CopyButton text={code} tone="seal"/></div><pre className="code" tabIndex={0}><code>{code}</code></pre><p className="codecard-foot">{mode==='standard'?'Official OpenAI package · custom base URL and your key':`Private SDK ${SDK_PIN.repo}@${SDK_PIN.commit.slice(0,7)} · E2EE v3 · response verification`}</p></section>
     <div className="console"><section className="card run rise"><div className="card-row"><h2 className="card-title">{privateCodeOnly?'Run private mode from your code':'Run it here'}</h2>{data.isRunMock&&<span className="sim-tag">Simulation</span>}</div>
       <label className="field"><span className="field-k">Model</span><span className="input-wrap"><select value={model?.id??''} disabled={running} onChange={e=>setModel(models.find(m=>m.id===e.target.value)??null)}>{models.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></span></label>{model&&<p className="fineprint">Input {formatPerMillion(model.inPriceNano)} · output {formatPerMillion(model.outPriceNano)} · max {MAX_TOKENS} output tokens</p>}
-      {privateCodeOnly?<p className="card-sub">No browser inference is sent in this mode. Copy the SDK quickstart; no simulated reply or verification will be substituted.</p>:<><label className="field"><span className="field-k">Your API key · kept only in this tab</span><span className="input-wrap"><input type="password" autoComplete="off" value={key} disabled={running} onChange={e=>setKey(e.target.value)} placeholder="inf_…"/></span></label><label className="field"><span className="field-k">Prompt</span><textarea rows={3} value={prompt} disabled={running} onChange={e=>setPrompt(e.target.value)}/></label><button type="button" className="btn primary block" disabled={running||!model||!prompt.trim()||!key} onClick={()=>void run()}>{running?<Spinner/>:null}{running?'Waiting for the reply…':data.isRunMock?'Run simulation':'Run standard call'}</button>{!key&&<button type="button" className="btn outline" onClick={onKeys}>Create an API key</button>}</>}
-      <ErrorNote error={error}/>{needsCredits&&<div className="needs-key"><p>No available credits (402). Deposit into a vault or add credits.</p><button className="btn primary" onClick={onCredits}>Deposit or add credits</button></div>}
-      {result&&!text&&<p className="fineprint">This completion produced no visible answer. It may still be charged; usage and the inference debit are shown below.</p>}
+      {privateCodeOnly?<p className="card-sub">No browser inference is sent in this mode. Copy the SDK quickstart; no simulated reply or verification will be substituted.</p>:<><label className="field"><span className="field-k">Your API key · kept only in this tab</span><span className="input-wrap"><input type="password" autoComplete="off" value={key} disabled={running} onChange={e=>setKey(e.target.value)} placeholder="inf_…"/></span></label><label className="field"><span className="field-k">Prompt</span><textarea rows={3} value={prompt} disabled={running} onChange={e=>setPrompt(e.target.value)}/></label><button type="button" className="btn primary block" disabled={running||!model||!prompt.trim()||!key} onClick={()=>void run()}>{running?<Spinner/>:null}{running?'Waiting for the reply…':data.isRunMock?'Run simulation':'Run standard call'}</button>{freeCalls&&freeCalls.remaining>0&&<p className="fineprint">{freeCalls.remaining} free {freeCalls.remaining===1?'call':'calls'} left</p>}{!key&&<button type="button" className="btn outline" onClick={onKeys}>Create an API key</button>}</>}
+      <ErrorNote error={error}/>{needsCredits&&<div className="needs-key"><p>{freeCalls?.remaining===0?'No free calls left or available credits (402).':'No available credits (402).'} Deposit into a vault or add credits.</p><button className="btn primary" onClick={onCredits}>Deposit or add credits</button></div>}
+      {result&&!text&&<p className="fineprint">This completion produced no visible answer. {result.billing==='free'?'Reported usage is shown below.':'It may still be charged; usage and the inference debit are shown below.'}</p>}
       {text&&<div className="exchange"><div className="reply"><span className="wire-k">Reply</span><p className="reply-v">{text}</p></div></div>}{result&&<p className="fineprint">Inference-Id: <code>{result.receipt.inferenceId}</code><br/>Completion: <code>{result.completionId||'Not provided'}</code></p>}</section>
       {attestation&&<Verified attestation={attestation} result={result}/>} {result&&<BillCheck result={result}/>}</div></div></div>;
 }
@@ -100,10 +104,20 @@ function BillCheck({ result }: { result: RunResult }) {
 
   useEffect(() => {
     setDebited(undefined);
-    let stopped=false,timer:ReturnType<typeof setTimeout>;
-    const poll=async()=>{try{const value=data.isRunMock?result.simulatedDebit??null:await data.debitedAmount(receipt.inferenceId);if(stopped)return;setDebited(value);setDebitError(null);if(value===null&&!data.isRunMock)timer=setTimeout(poll,3000);}catch(e){if(!stopped){setDebitError(errorText(e));timer=setTimeout(poll,5000);}}};
-    void poll();return()=>{stopped=true;clearTimeout(timer);};
-  }, [receipt.inferenceId, result.simulatedDebit]);
+    setDebitError(null);
+    return observeRunDebit(result,data,value=>{setDebited(value);setDebitError(null);},error=>setDebitError(errorText(error)));
+  }, [result]);
+
+  if(result.billing==='free')return <section className="card bill rise" aria-labelledby="bill-h">
+    <div className="card-row"><h2 id="bill-h" className="card-title">Reported usage</h2><span className="badge">Free trial</span></div>
+    <table className="bill-table"><tbody>{receipt.source==='signed_usage'?<>
+      <tr><th scope="row">Prompt tokens</th><td>{receipt.promptTokens}</td></tr>
+      <tr><th scope="row">Completion tokens</th><td>{receipt.completionTokens}</td></tr>
+    </>:<tr><th scope="row">Token usage</th><td>Not provided by the upstream</td></tr>}
+      <tr className="total"><td colSpan={2}>Free trial call: paid by InferNear, not charged to your credits.</td></tr>
+    </tbody></table>
+    <p className="fineprint">{data.isRunMock?'Simulated free call; no NEAR debit.':'Usage is reported by the upstream, not signature-verified. No NEAR debit.'}</p>
+  </section>;
 
   const expected = expectedDebit(receipt, result.reservation);
   const signed = receipt.source === 'signed_usage';

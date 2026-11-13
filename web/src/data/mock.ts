@@ -46,6 +46,12 @@ const MOCK_REPLY =
 
 export function createMockData(): DashboardData {
   const proofs = new Map<string, string>();
+  const freeUsed=new Map<string,number>();
+  const mockUser=(key:string)=>{
+    if(!key.startsWith('inf_'))throw new DataError('key','Create an API key first.');
+    try{return JSON.parse(atob(key.slice(4).split('.')[0].replace(/-/g,'+').replace(/_/g,'/'))).user as string;}
+    catch{return caip10(MOCK_ADDRESS,config.vaultChainId||'8453');} // Legacy synthetic fixture keys share one mock wallet.
+  };
   const consume = (message: string) => {
     const user = proofs.get(message);
     if (!user) throw new DataError('wallet_proof', 'Sign a fresh single-use wallet proof.');
@@ -286,16 +292,17 @@ export function createMockData(): DashboardData {
       return MODELS;
     },
 
+    async freeCalls(key){const used=freeUsed.get(mockUser(key))??0;return{per_user:5,used,remaining:5-used};},
+
     async run({ key, model, prompt, maxTokens }, onEvent: (event: RunEvent) => void) {
-      let activeUser='';
-      try { activeUser=JSON.parse(atob(key.slice(4).split('.')[0].replace(/-/g,'+').replace(/_/g,'/'))).user; } catch { /* Fixture-only legacy keys have no payload. */ }
-      const activeState=activeUser.startsWith('near:mainnet:')?nearAccount(activeUser.slice(13)):state;
-      if (!key.startsWith('inf_')) throw new DataError('key', 'Create an API key first.');
+      const activeUser=mockUser(key),activeState=activeUser.startsWith('near:mainnet:')?nearAccount(activeUser.slice(13)):state;
+      const used=freeUsed.get(activeUser)??0,billing=used<5?'free':'credits';
       const inputBound = BigInt(Math.ceil(new TextEncoder().encode(prompt).length * 2));
       const reservation = tokenCost(Number(inputBound), maxTokens, model.inPriceNano, model.outPriceNano);
-      if (activeState.credited - activeState.spent < reservation)
+      if (billing==='credits' && activeState.credited - activeState.spent < reservation)
         throw new DataError('credits', 'Not enough credits for this request (402).');
 
+      if(billing==='free')freeUsed.set(activeUser,used+1);
       await sleep(700);
       const attestation: Attestation = {
         model: model.id,
@@ -328,17 +335,17 @@ export function createMockData(): DashboardData {
         source: 'signed_usage',
       };
       const charged = expectedDebit(receipt, reservation);
-      activeState.spent += charged;
-      activeState.debited.set(receipt.inferenceId, charged);
+      if(billing==='credits'){activeState.spent += charged;activeState.debited.set(receipt.inferenceId, charged);}
 
       return {
+        billing,...(billing==='free'?{freeRemaining:5-(freeUsed.get(activeUser)??0)}:{}),
         text: MOCK_REPLY,
         completionId: receipt.chatId,
         attestation,
         reply: { signatureKind: 'provider_tee', signer: `0x${hex(20)}` },
         receipt,
         reservation,
-        simulatedDebit: charged,
+        ...(billing==='credits'?{simulatedDebit:charged}:{}),
       };
     },
 

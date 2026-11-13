@@ -360,6 +360,7 @@ export function createLiveData(settings: LiveConfig, dependencies: Dependencies 
       return result === null ? null : amount(result);
     }),
     models: chat.models,
+    freeCalls: key => guarded(() => chat.freeCalls(key)),
     run: (request,onEvent) => guarded(() => chat.run(request,onEvent)),
     bridgeChains: bridge.bridgeChains,
     bridgeQuote: bridge.bridgeQuote,

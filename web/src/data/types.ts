@@ -130,7 +130,12 @@ export type RunEvent =
   | { kind: 'encrypted'; ciphertext: string }
   | { kind: 'text'; delta: string };
 
+export type FreeCalls = { per_user: number; used: number; remaining: number };
+
 export type RunResult = {
+  billing: 'free' | 'credits';
+  /** Relay header for a free result; quota display is refreshed from the relay. */
+  freeRemaining?: number;
   text: string;
   completionId: string;
   mode?: 'standard' | 'private';
@@ -217,6 +222,7 @@ export interface DashboardData {
   createKey(proof: WalletProof): Promise<IssuedKey>;
   revokeAll(proof: WalletProof): Promise<Revoked>;
   models(): Promise<Model[]>;
+  freeCalls(key: string): Promise<FreeCalls>;
   run(request: RunRequest, onEvent: (event: RunEvent) => void): Promise<RunResult>;
   /** Connector `debited_amount(inference_id)`, or null. */
   debitedAmount(inferenceId: string): Promise<bigint | null>;
