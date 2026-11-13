@@ -24,7 +24,7 @@ Every chat response carries a billing header:
 | `X-InferNear-Billing: credits` | This call is billed to your credits |
 | `X-InferNear-Free-Remaining: <n>` | Sent on free calls: how many you have left |
 
-The header says how the call is billed, and it is set when the call is admitted. A call that then fails is not charged. To see what was actually charged, look the call up on the ledger with `debited_amount` (see [How credits work](../credits/how-credits-work.md#check-your-balance)).
+The header says how the call is billed, and it is set when the call is admitted. A response that is not a `2xx`, or one without a usable inference or completion id, is not charged. A `2xx` reply that is cut off after it has an id can still be charged. To see what was actually charged, look the call up on the ledger with `debited_amount` (see [How credits work](../credits/how-credits-work.md#check-your-balance)).
 
 ## Check how many you have left
 
