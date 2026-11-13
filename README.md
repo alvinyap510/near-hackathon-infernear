@@ -267,6 +267,7 @@ The three Base vaults and the credit ledger have no owner, admin, pause or upgra
 - **PT-deJAAA expires on 26 Nov 2026.** After that the Pendle vault's PT stops appreciating.
 - **The relay is trusted for prices and attribution.** It cannot spend principal, but it decides how yield is priced and who earned it; both are publicly recomputable from chain data.
 - **Encryption hides content, not metadata.** A relay can still observe request size, timing and token counts.
+- **The console's NEAR wallet dependency has open advisories.** `npm audit` in `web/` reports high-severity findings in packages pulled in by Meteor Wallet's SDK and the NEAR JS libraries (`decode-uri-component`, `elliptic`). They are transitive, are not suppressed, and are not patched here: the only fix npm offers replaces those libraries with breaking versions.
 
 ## Third-party libraries and services
 
