@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { HttpError, reportError, type Report } from '../types.ts';
 import { ExpiringMap } from './expiring-map.ts';
+import { AccountExists, MAX_WALLETS, statements, tooManyWallets, validHandle, type Accounts } from './accounts.ts';
 import { Gateway } from './ledger.ts';
 import type { SignedRequests } from './signed.ts';
 import { Meter } from './meter.ts';
@@ -9,7 +10,7 @@ import { endToEndHeaders } from './upstream.ts';
 // Bound untrusted buffered envelopes in the process that also settles credits.
 export const MAX_BODY_BYTES = 1_048_576;
 
-export function createRelayServer(gateway: Gateway, options: { publicUrl: string; report: Report; now?: () => number; allowedOrigin?: string; signedRequests?: SignedRequests; clientIpHeader?: string; sponsoredPerDay?: number }) {
+export function createRelayServer(gateway: Gateway, options: { publicUrl: string; report: Report; now?: () => number; allowedOrigin?: string; signedRequests?: SignedRequests; clientIpHeader?: string; sponsoredPerDay?: number; accounts?: Accounts }) {
   const now = options.now ?? Date.now;
   const ipLimits = new ExpiringMap<{ count: number }>(60_000, now);
   const origin = new URL(options.publicUrl).origin;
@@ -81,9 +82,53 @@ export function createRelayServer(gateway: Gateway, options: { publicUrl: string
         const raw = await body(req);
         try { proof = JSON.parse(raw.toString()); } catch { throw new HttpError(401, 'invalid_api_key', 'Bad, expired or revoked credentials'); }
         const user = await gateway.auth.walletProof(proof);
-        if (path === '/keys') { json(res, 200, await gateway.issue(user)); return; }
+        if (path === '/keys') {
+          const account = options.accounts?.of(user) ?? null;
+          json(res, 200, { ...await gateway.issue(user, account?.uid), ...(options.accounts ? { account } : {}) }); return;
+        }
         sponsor();
         json(res, 200, await gateway.revoke(user)); return;
+      }
+      if (req.method === 'POST' && (path === '/accounts' || path.startsWith('/accounts/'))) {
+        // Handles, UIDs and linked wallets live in this relay, not on chain. Every route takes a
+        // fresh wallet signature naming its action; none sends a transaction.
+        const accounts = options.accounts;
+        if (!accounts) throw new HttpError(404, 'accounts_disabled', 'Accounts are not enabled on this relay');
+        limitIp(req);
+        const raw = await body(req);
+        let value: { handle?: unknown; ticket?: unknown };
+        try { value = JSON.parse(raw.toString()); } catch { throw new HttpError(400, 'invalid_json', 'Expected JSON'); }
+        const proof = (statement: string) => gateway.auth.walletProof(value, statement);
+        if (path === '/accounts/me') { json(res, 200, { account: accounts.of(await proof(statements.signIn)) }); return; }
+        if (path === '/accounts') {
+          if (!validHandle(value?.handle)) throw new HttpError(400, 'invalid_handle', 'A handle is 3 to 20 characters: a-z, 0-9, - and _, starting and ending with a letter or digit');
+          const wallet = await proof(statements.create(value.handle));
+          try { json(res, 201, { account: await accounts.create(value.handle, wallet) }); }
+          catch (error) {
+            // The caller has just proved the wallet is theirs, so they may see the account it already has.
+            if (!(error instanceof AccountExists)) throw error;
+            json(res, 409, { error: { message: error.message, type: 'invalid_request_error', code: error.code }, account: error.account });
+          }
+          return;
+        }
+        if (path === '/accounts/link') {
+          const ticket = gateway.auth.readTicket(value?.ticket);
+          const account = accounts.byId(ticket.uid);
+          if (!account || !account.wallets.includes(ticket.by)) throw new HttpError(401, 'invalid_ticket', 'Bad, expired or used link ticket');
+          const wallet = await proof(statements.join(account.handle));
+          ticket.redeem();
+          json(res, 200, { account: await accounts.link(account.uid, wallet) }); return;
+        }
+        if (path === '/accounts/link/start' || path === '/accounts/unlink') {
+          const handle = typeof value?.handle === 'string' ? value.handle : '';
+          const wallet = await proof(path === '/accounts/unlink' ? statements.leave(handle) : statements.invite(handle));
+          const account = accounts.of(wallet);
+          if (!account || account.handle !== handle) throw new HttpError(404, 'no_account', 'This wallet is not in that account');
+          if (path === '/accounts/unlink') { json(res, 200, { account: await accounts.unlink(wallet) }); return; }
+          if (account.wallets.length >= MAX_WALLETS) throw tooManyWallets();
+          json(res, 200, gateway.auth.ticket(account.uid, wallet)); return;
+        }
+        throw new HttpError(404, 'not_found', 'Route not found');
       }
       if (req.method === 'GET' && path === '/v1/free-calls') {
         json(res, 200, await gateway.freeCalls(req.headers.authorization)); return;

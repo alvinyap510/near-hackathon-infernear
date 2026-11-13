@@ -76,7 +76,7 @@ test('NEAR and SIWE revocations share the daily sponsored budget',async t=>{
   const now=Date.now(),h=await harness({now:()=>now,nearKey:async()=>true,sponsoredPerDay:1});t.after(h.close);
   assert.equal((await post(h.base,'/keys/revoke',proof(await nonce(h.base),now))).status,200);
   const evm=privateKeyToAccount(('0x'+'23'.repeat(32)) as `0x${string}`);
-  const message=createSiweMessage({address:evm.address,chainId:8453,domain:'relay.test',uri:'http://relay.test',version:'1',nonce:await nonce(h.base),issuedAt:new Date(now),expirationTime:new Date(now+300_000)});
+  const message=createSiweMessage({address:evm.address,chainId:8453,domain:'relay.test',uri:'http://relay.test',version:'1',nonce:await nonce(h.base),issuedAt:new Date(now),expirationTime:new Date(now+300_000),statement:KEY_STATEMENT});
   const response=await post(h.base,'/keys/revoke',{message,signature:await evm.signMessage({message})});
   assert.equal(response.status,429);assert.equal((await response.json()).error.code,'sponsored_limit');
 });

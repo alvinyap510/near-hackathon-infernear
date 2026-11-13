@@ -63,7 +63,7 @@ export class Gateway {
     this.checkEpoch(key, state);
     return key;
   }
-  async issue(user: string) {
+  async issue(user: string, accountUid?: string) {
     const state = this.user(user);
     return state.lock.run(async () => {
       const account = await this.connector.account(user);
@@ -72,7 +72,7 @@ export class Gateway {
         if (account.key_epoch < state.pendingEpoch) throw new HttpError(503, 'revocation_pending', 'Revocation is not confirmed; retry later');
         state.pendingEpoch = undefined;
       }
-      return this.auth.issue(user, state.epoch);
+      return this.auth.issue(user, state.epoch, accountUid);
     });
   }
   async revoke(user: string) {

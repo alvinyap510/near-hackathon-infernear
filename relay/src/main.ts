@@ -2,6 +2,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import type { Hex } from 'viem';
 import { nearConnector } from './adapters/near.ts';
 import { evmPorts, type EvmVaultConfig, type BridgeToken } from './adapters/evm.ts';
+import { Accounts } from './gateway/accounts.ts';
 import { Auth } from './gateway/auth.ts';
 import { freeCallLimit } from './gateway/free-calls.ts';
 import { Gateway } from './gateway/ledger.ts';
@@ -32,10 +33,12 @@ async function main() {
     oneClickUrl: required('ONECLICK_API_URL'), oneClickToken: process.env.ONECLICK_API_TOKEN, bridgeTokens: JSON.parse(required('ONECLICK_TOKENS')) as BridgeToken[], destinationAsset: required('ONECLICK_DESTINATION_ASSET'),
     recipient: required('TREASURY_NEAR_ACCOUNT'), slippageBps: integer('ONECLICK_SLIPPAGE_BPS'), minYieldMicro });
   const keeper = new Keeper([...ports.vaults, connector.rhea], connector, ports.bridge, report, { balances: () => connector.balances(), minimum: BigInt(required('NEAR_LOW_BALANCE_YOCTO')) });
+  // Handles and linked wallets are kept only when a data directory is configured.
+  const accounts = process.env.RELAY_DATA_DIR ? await Accounts.open(process.env.RELAY_DATA_DIR, report) : undefined;
   // Wait longer than normal inclusion before accepting fresh reservations after restart.
   report('startup_wait', { seconds: 30 });
   await sleep(30_000);
-  const server = createRelayServer(gateway, { publicUrl, report, allowedOrigin: required('RELAY_WEB_ORIGIN'), signedRequests: new SignedRequests(connector, { vault: rheaVault, intents, chainId }), clientIpHeader: process.env.RELAY_CLIENT_IP_HEADER || undefined, sponsoredPerDay: integer('RELAY_SPONSORED_TX_PER_DAY') });
+  const server = createRelayServer(gateway, { publicUrl, report, allowedOrigin: required('RELAY_WEB_ORIGIN'), signedRequests: new SignedRequests(connector, { vault: rheaVault, intents, chainId }), clientIpHeader: process.env.RELAY_CLIENT_IP_HEADER || undefined, sponsoredPerDay: integer('RELAY_SPONSORED_TX_PER_DAY'), accounts });
   server.listen(integer('RELAY_PORT'), () => report('listening', { port: process.env.RELAY_PORT }));
   const retries = setInterval(() => { void gateway.retryDebits(); }, 1000);
   let stopped = false;

@@ -5,7 +5,7 @@ import { setImmediate as turn } from 'node:timers/promises';
 import { request } from 'node:http';
 import { privateKeyToAccount } from 'viem/accounts';
 import { createSiweMessage } from 'viem/siwe';
-import { Auth } from '../src/gateway/auth.ts';
+import { Auth, KEY_STATEMENT } from '../src/gateway/auth.ts';
 import { Meter, inferenceId } from '../src/gateway/meter.ts';
 import { costMicro, HttpError } from '../src/types.ts';
 import { harness, fixture, USER, e2ee, settle, eventually } from './harness.ts';
@@ -232,7 +232,7 @@ test('SIWE key routes require a single-use expiring nonce, our domain/URI, chain
   const wallet = privateKeyToAccount(('0x' + '12'.repeat(32)) as `0x${string}`);
   const proof = async (nonce: string, overrides: Record<string, unknown> = {}) => {
     const message = createSiweMessage({ address: wallet.address, chainId: 8453, domain: 'relay.test', uri: 'http://relay.test', version: '1', nonce,
-      issuedAt: new Date(now), expirationTime: new Date(now + 300_000), ...overrides });
+      issuedAt: new Date(now), expirationTime: new Date(now + 300_000), statement: KEY_STATEMENT, ...overrides });
     return { message, signature: await wallet.signMessage({ message }) };
   };
   const nonce = async () => (await (await fetch(h.base + '/auth/nonce')).json()).nonce as string;
@@ -320,7 +320,7 @@ test('key revocation is an operator-paid transaction: it uses the IP bucket and 
   const wallet = privateKeyToAccount(('0x' + '56'.repeat(32)) as `0x${string}`);
   const proof = async () => {
     const nonce = (await (await fetch(h.base + '/auth/nonce')).json()).nonce as string;
-    const message = createSiweMessage({ address: wallet.address, chainId: 8453, domain: 'relay.test', uri: 'http://relay.test', version: '1', nonce, issuedAt: new Date(now), expirationTime: new Date(now + 300_000) });
+    const message = createSiweMessage({ address: wallet.address, chainId: 8453, domain: 'relay.test', uri: 'http://relay.test', version: '1', nonce, issuedAt: new Date(now), expirationTime: new Date(now + 300_000), statement: KEY_STATEMENT });
     return { message, signature: await wallet.signMessage({ message }) };
   };
   const send = async (path: string) => fetch(h.base + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(await proof()) });
