@@ -11,6 +11,8 @@ The relay runs as one Docker container behind a [Cloudflare Tunnel](https://deve
    - `RELAY_PUBLIC_URL=https://api.<your-domain>`
    - `RELAY_PORT=8787`
    - `RELAY_CLIENT_IP_HEADER=cf-connecting-ip`
+   - `RELAY_DATA_DIR=/data` to keep accounts (handles and linked wallets). The compose file mounts a named volume there; it holds handles, account IDs and wallet ids, no secrets and no balances. Leave it unset to run without accounts.
+   - `RELAY_FREE_CALLS_PER_USER=5` and `RELAY_FREE_CALLS_PER_DAY=300` for the free trial calls (both 0 = off).
    - `RELAY_WEB_ORIGIN=` the dashboard's origin
    - `CLOUDFLARE_TUNNEL_TOKEN=` the token from step 1
 3. From the repository root:
