@@ -11,7 +11,7 @@ InferNear is an OpenAI-format API endpoint on top of NEAR AI's private TEE model
 
 Built at the NEAR HACKATHON (1–14 Nov 2026).
 
-> **Status (13 Nov 2026): deployed on mainnet, with small caps.** The API is live at `https://api.infernear.dev/v1`, the console at `https://app.infernear.dev` and the landing page at `https://infernear.dev`. Three Base vaults, the credit top-up contract, the NEAR credit ledger and the Rhea vault on NEAR are live. Free trial calls work on the live endpoint today (a real model reply, checked on 13 Nov). No user has deposited or bought credits yet, so no credits exist on the ledger and no credit-paid call has been made: see [known limits](#not-done-yet-and-known-limits). Every command under "Verify it yourself" runs from a clean clone, offline after install, against mocks and fixtures.
+> **Status (13 Nov 2026): deployed on mainnet, with small caps.** The API is live at `https://api.infernear.dev/v1`, the console at `https://app.infernear.dev`, the landing page at `https://infernear.dev` and the documentation at `https://docs.infernear.dev`. Three Base vaults, the credit top-up contract, the NEAR credit ledger and the Rhea vault on NEAR are live. Free trial calls work on the live endpoint today (a real model reply, checked on 13 Nov). No user has deposited or bought credits yet, so no credits exist on the ledger and no credit-paid call has been made: see [known limits](#not-done-yet-and-known-limits). Every command under "Verify it yourself" runs from a clean clone, offline after install, against mocks and fixtures.
 
 ## The problem
 
@@ -60,7 +60,7 @@ Settlement is on NEAR throughout: credits are posted to the ledger by a keeper, 
 10. Or deposit USDC into the Aave USDC vault → its yield is posted as credits once it is worth $0.001; the principal stays redeemable.
 11. A call paid with credits shows its debit on NEAR in the result panel, under its inference ID.
 
-**From a clean clone, with no network after install:** [Verify it yourself](#verify-it-yourself), five command blocks and the test counts each one prints.
+**From a clean clone, with no network after install:** [Verify it yourself](#verify-it-yourself), six command blocks and what each one prints.
 
 ## Live deployment
 
@@ -69,6 +69,7 @@ Settlement is on NEAR throughout: credits are posted to the ledger by a keeper, 
 | API endpoint | `https://api.infernear.dev/v1` (OpenAI Chat Completions format; `GET /v1/models` lists the served TEE models) |
 | Landing page | `https://infernear.dev` |
 | Console | `https://app.infernear.dev` |
+| Documentation | `https://docs.infernear.dev` (guides, API reference and specs; source in `docs-site/`) |
 | Credit ledger (NEAR) | [`connector.infernear-ai.near`](https://nearblocks.io/address/connector.infernear-ai.near) |
 | Rhea USDC vault (NEAR) | [`rhea.infernear-ai.near`](https://nearblocks.io/address/rhea.infernear-ai.near) |
 | Aave USDC vault (Base) | [`0x19110449a361855d30090BC26112E9a5c3793198`](https://basescan.org/address/0x19110449a361855d30090BC26112E9a5c3793198) |
@@ -229,6 +230,9 @@ cd contracts/near && cargo fetch --locked && cargo test --locked --workspace && 
 
 # Landing page (static production build)
 cd landing && npm ci --ignore-scripts && npm run build && cd ..
+
+# Documentation site (static production build; fails on a dead internal link)
+cd docs-site && npm ci --ignore-scripts && npm run build && cd ..
 ```
 
 What each block prints when it passes:
@@ -240,6 +244,7 @@ What each block prints when it passes:
 | Base contracts | `85 tests passed, 0 failed, 3 skipped` (the three skipped tests need a Base RPC and are run separately, see `contracts/evm/README.md`) |
 | NEAR contracts | `test result: ok. 14 passed` (credit ledger) and `test result: ok. 44 passed` (Rhea vault) |
 | Landing page | `✓ built` |
+| Documentation site | `build complete` |
 
 The relay demo is a fixture flow: a holder receives 1,000 micro-USD of credits from a finalized vault snapshot, spends 13 through the HTTP API, and has 987 left.
 
@@ -252,6 +257,7 @@ Each component's README has the full verification set: Base fork tests against r
 | Gateway and keeper (TypeScript, Node) | `relay/` | [relay/README.md](relay/README.md) |
 | Dashboard (Vite, React) | `web/` | [web/README.md](web/README.md) |
 | Landing page (static, Vite) | `landing/` | [landing/README.md](landing/README.md) |
+| Documentation site (static, VitePress) | `docs-site/` | [docs-site/README.md](docs-site/README.md) |
 | Interfaces between components | `docs/` | [docs/interfaces.md](docs/interfaces.md) |
 | Deployment (Docker, Cloudflare Tunnel) | `deploy/` | [deploy/README.md](deploy/README.md) |
 
@@ -298,6 +304,7 @@ All installed through package managers at pinned versions; no templates or pre-e
 | Relay and NEAR scripts | viem, near-api-js; TypeScript (type checks) |
 | Dashboard | React 19, viem, @scure/base, @near-wallet-selector/core with its Meteor Wallet module, @near-js/transactions, buffer, Vite, Fontsource fonts (Hanken Grotesk, Martian Mono; the logo wordmark is outlined from Hanken Grotesk), @web3icons/react (MIT) for the chain, asset and protocol logos; Rhea's logo is Rhea's own file from rhea.finance |
 | Landing page | Vite, three.js, @web3icons/core (MIT) for the logos, the same Fontsource fonts and Rhea logo |
+| Documentation site | VitePress 1.6.4 (MIT) and the same Fontsource fonts |
 | Deployment | Docker images `node:24.22.1-bookworm-slim` and `cloudflare/cloudflared:2026.10.7` |
 | Live SDK probe (optional) | NEAR AI's official [inference SDK](https://github.com/nearai/inference-sdk), installed outside the repo |
 
