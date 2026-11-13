@@ -127,7 +127,7 @@ export class Auth {
       if (mac.length !== expected.length || !timingSafeEqual(mac, expected)) throw invalid();
       const { uid, by, exp, jti } = JSON.parse(Buffer.from(match[1], 'base64url').toString());
       if (exp <= Math.floor(this.now() / 1000) || !this.tickets.get(jti)) throw invalid();
-      return { uid, by, redeem: () => { if (!this.tickets.delete(jti)) throw invalid(); } };
+      return { uid, by, redeem: () => { if (exp <= Math.floor(this.now() / 1000) || !this.tickets.delete(jti)) throw invalid(); } };
     } catch { throw invalid(); }
   }
   private mac(payload: string): Buffer { return createHmac('sha256', this.secret).update(payload).digest(); }

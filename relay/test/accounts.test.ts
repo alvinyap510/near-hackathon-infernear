@@ -94,7 +94,7 @@ test('a signature made for one action is refused for every other', async t => {
 });
 
 test('linking needs both wallets: a member invites, the new wallet joins, and the UID and avatar seed stay fixed', async t => {
-  const { send, create, link, clock } = await setup(t), alice = evm(), bob = near('bob.near'), carol = evm();
+  const { h, send, create, link, clock } = await setup(t), alice = evm(), bob = near('bob.near'), carol = evm();
   const account = (await create(alice, 'alice')).body.account!;
   const started = await send('/accounts/link/start', alice, statements.invite('alice'), { handle: 'alice' });
   assert.equal(started.status, 200); assert.match(started.body.ticket!, /^ilt_/);
@@ -111,6 +111,10 @@ test('linking needs both wallets: a member invites, the new wallet joins, and th
   assert.equal((await send('/accounts/link', carol, statements.join('alice'), { ticket: `${payload}x.${mac}` })).body.error?.code, 'invalid_ticket');
   clock.now += 601_000;
   assert.equal((await send('/accounts/link', carol, statements.join('alice'), { ticket: second.body.ticket })).body.error?.code, 'invalid_ticket');
+  // Read one second before its expiry, redeemed after it: refused.
+  const late = h.auth.ticket(account.uid, alice.id), read = (clock.now += 599_000, h.auth.readTicket(late.ticket));
+  clock.now += 2_000;
+  assert.throws(() => read.redeem(), (error: { code?: string }) => error.code === 'invalid_ticket');
   // A wallet belongs to one account, and an account holds at most four.
   const dave = evm(); await create(dave, 'dave');
   assert.equal((await link(alice, dave, 'alice')).body.error?.code, 'wallet_linked');
@@ -226,6 +230,22 @@ test('a wallet that leaves an account can no longer be charged by it, and a wall
   await accounts.link(account.uid, B, account.wallets[0]);
   h.respond({ id: 'relinked' });
   assert.deepEqual(await done(await chat(h.base, key)), [200, 'credits']);
+});
+
+test('a wallet unlinked, or a key revoked, while the ledger is being read is not charged', async t => {
+  const { h, accounts } = await setup(t, true, { seed: false });
+  const account = await accounts.create('alice', A); await accounts.link(account.uid, B, A);
+  h.connector.seed(B, 1_000_000n);
+  const key = h.auth.issue(A, 0).key, read = h.connector.account.bind(h.connector);
+  // B leaves while its balance is being read for A's call.
+  h.connector.account = async user => { const value = await read(user); if (user === B) await accounts.unlink(B); return value; };
+  assert.equal((await chat(h.base, key)).status, 402);
+  assert.equal(h.gateway.state(B).reserved, 0n);
+  // A's key is revoked while B's balance is being read.
+  await accounts.link(account.uid, B, A);
+  h.connector.account = async user => { const value = await read(user); if (user === B) await h.gateway.revoke(A); return value; };
+  assert.equal((await chat(h.base, key)).status, 401);
+  assert.equal(h.gateway.state(B).reserved, 0n); assert.equal(h.connector.debitCalls, 0);
 });
 
 test('free trial calls stay per wallet: linking neither adds to nor takes from a wallet\'s own allowance', async t => {
