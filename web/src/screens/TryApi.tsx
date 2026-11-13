@@ -4,7 +4,8 @@ import { apiBaseUrl } from '../config.ts';
 import { data, DataError, type Attestation, type Model, type RunResult } from '../data/index.ts';
 import { formatPerMillion, formatUsd, shortHex, expectedDebit } from '../data/money.ts';
 import { quickstartJs, quickstartPython, quickstartPrivateJs, quickstartPrivatePython, SDK_PIN } from '../quickstart.ts';
-const MAX_TOKENS=64;
+// The relay's own default reply cap (RELAY_MAX_TOKENS). A smaller cap cut reasoning models off before any visible answer.
+const MAX_TOKENS=4096;
 export function TryApi({apiKey,onChanged,onKeys,onCredits}:{apiKey:string|null;onChanged():Promise<void>;onKeys():void;onCredits():void}){
   const [models,setModels]=useState<Model[]>([]),[model,setModel]=useState<Model|null>(null),[mode,setMode]=useState<'standard'|'private'>('standard'),[lang,setLang]=useState<'js'|'py'>('js');
   const [key,setKey]=useState(apiKey??''),[prompt,setPrompt]=useState('Reply with the word ok.'),[running,setRunning]=useState(false),[error,setError]=useState<string|null>(null),[needsCredits,setNeedsCredits]=useState(false);
