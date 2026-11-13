@@ -1,6 +1,6 @@
 # Base principal vaults
 
-The live deployment set is **Aave USDC**, **RateVault with cbETH**, and **Pendle PT-deJAAA**, all on **Base**. This component implements and tests those vaults and prepares their deployments. **No deployment was broadcast in this change; no deployed InferNear address is claimed here.** StakingRewards remains built and offline-tested, outside the live deployment set. The Ethereum-L1-only wstETH implementation and fork fixtures have been removed.
+The live deployment set is **Aave USDC**, **RateVault with cbETH**, and **Pendle PT-deJAAA**, all on **Base**. This component implements and tests those vaults and the credit top-up contract, and holds their deploy scripts. **All four are deployed on Base mainnet**: the three vaults since 12 Nov 2026 and `CreditTopUp` since 13 Nov 2026. Addresses and explorer links are in the [root README](../../README.md#live-deployment). StakingRewards remains built and offline-tested, outside the live deployment set. The Ethereum-L1-only wstETH implementation and fork fixtures have been removed.
 
 The vaults have no owner, admin, upgrade, pause or principal-sweeping method. Users retain their covered principal claim; only surplus is paid to the immutable yield recipient. Vault counters remain in the yield token's base units. The keeper and connector handle priced credit posting separately.
 
@@ -85,4 +85,4 @@ The script deploys one selected vault, then donates its cushion before any inten
 forge test --offline --match-contract DeployTest
 ```
 
-The operator performs any broadcast; the script has not been run with a broadcast flag. `StakingRewardsVault` retains its separate-token constructor check, principal backing and offline tests, with no branch in this Base deployment script.
+The operator performs every broadcast. Both scripts have been broadcast on Base mainnet: `Deploy.s.sol` once per vault on 12 Nov 2026 (each run also donates the vault's cushion) and `DeployTopUp.s.sol` on 13 Nov 2026. `StakingRewardsVault` retains its separate-token constructor check, principal backing and offline tests, with no branch in this Base deployment script.

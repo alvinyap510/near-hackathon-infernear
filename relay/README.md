@@ -17,6 +17,8 @@ npm run demo
 
 `npm test` type-checks the service, tests and probe, then runs Node's test runner. Tests use only loopback servers and fakes; no `.env`, credentials or external network are needed. After the dependency cache has been populated, `npm ci --offline --ignore-scripts` also works. No install script or browser download is needed.
 
+`npm run live-check` is the one command here that uses the network: it makes a throwaway key, signs in to the public relay (`INFERNEAR_API_URL`, default `https://api.infernear.dev`), receives an API key and makes one free trial call, printing each step and `PASS` at the end. It sends no transaction, needs no `.env`, and uses one of the day's shared free calls.
+
 `npm run demo` is a fixture-only smoke flow: a passive holder receives 1,000 micro-USD from a fake finalized vault snapshot, spends 13 through the HTTP API, and has 987 remaining. The quote below the bridge minimum is explicitly labelled as a fixture. No principal or real assets are involved.
 
 ## Service configuration

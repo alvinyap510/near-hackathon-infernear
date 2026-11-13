@@ -1,6 +1,6 @@
 # NEAR contracts
 
-Rust / `near-sdk` 5.30 workspace containing the inference credit connector and the [Rhea USDC vault](rhea-vault/README.md). Both are tested locally. Neither deployment nor a funded mainnet probe was run for this revision.
+Rust / `near-sdk` 5.30 workspace containing the inference credit connector and the [Rhea USDC vault](rhea-vault/README.md). Both are tested locally and **both are deployed on NEAR mainnet**: the connector at `connector.infernear-ai.near` (no access keys) since 12 Nov 2026, and the vault at `rhea.infernear-ai.near`, whose code was replaced with this revision on 13 Nov 2026 and has completed a cycle. Links are in the [root README](../../README.md#live-deployment). No user deposit has gone through either yet.
 
 ## Verified build and tests
 

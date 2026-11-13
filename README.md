@@ -32,18 +32,19 @@ Settlement is on NEAR throughout: credits are posted to the ledger by a keeper, 
 
 ## Try it
 
-**No wallet, one minute.**
+**No wallet, a few minutes.**
 
 1. `curl -s https://api.infernear.dev/v1/models` → a list of 7 NEAR AI TEE models, each with `inputCostPerToken` and `outputCostPerToken`.
-2. Open `https://app.infernear.dev` → the Vaults tab shows four vaults with their deposits and current rates, read from Base and NEAR.
+2. Open `https://app.infernear.dev` → the Vaults tab shows the four vaults, read from Base and NEAR: the amount deposited for the three Base vaults, and the current supply rate for the Aave and Rhea vaults (the cbETH and Pendle vaults have no single on-chain rate to show).
 3. Open the explorer links under [Live deployment](#live-deployment) → the contracts.
+4. A real model reply, with no wallet of your own: `cd relay && npm ci --ignore-scripts && npm run live-check` → a throwaway key signs in to the live relay, receives an API key and makes one free call. It prints seven `ok` lines (7 models, the key, `5 of 5` free calls, the model's reply `"ok"`, `billing: free` with an inference ID, `4` left) and ends with `PASS`. It sends no transaction and uses one of the day's 300 shared free calls.
 
 **With a wallet and no funds.** Each wallet gets 5 free trial calls, paid by InferNear (300 a day across all wallets).
 
-4. In the console, connect an EVM wallet (on Base) or Meteor Wallet (NEAR). Optionally open the account button and pick a handle.
-5. **API keys** → create a key (your wallet signs one message; no transaction is sent) → the key is shown once.
-6. **Try the API** → choose a model → Run → the model's reply appears with a "Free trial" result, and the count goes from 5 to 4.
-7. Or use the key from a terminal:
+5. In the console, connect an EVM wallet (on Base) or Meteor Wallet (NEAR). Optionally open the account button and pick a handle.
+6. **API keys** → create a key (your wallet signs one message; no transaction is sent) → the key is shown once.
+7. **Try the API** → choose a model → Run → the model's reply appears with a "Free trial" result, and the count goes from 5 to 4.
+8. Or use the key from a terminal:
 
    ```sh
    curl -s -D - https://api.infernear.dev/v1/chat/completions \
@@ -55,9 +56,9 @@ Settlement is on NEAR throughout: credits are posted to the ledger by a keeper, 
 
 **With funds (optional, small amounts). Built, tested on fixtures and on a fork of live Base, but not yet run with real money on mainnet.**
 
-8. **Account** → Add credits → buy 1 USDC of credits on Base (a purchase, not redeemable) → about 20 minutes later the Account tab shows $1.00 of credits, posted on NEAR.
-9. Or deposit USDC into the Aave USDC vault → its yield is posted as credits once it is worth $0.001; the principal stays redeemable.
-10. A call paid with credits shows its debit on NEAR in the result panel, under its inference ID.
+9. **Account** → Add credits → buy 1 USDC of credits on Base (a purchase, not redeemable) → about 20 minutes later the Account tab shows $1.00 of credits, posted on NEAR.
+10. Or deposit USDC into the Aave USDC vault → its yield is posted as credits once it is worth $0.001; the principal stays redeemable.
+11. A call paid with credits shows its debit on NEAR in the result panel, under its inference ID.
 
 **From a clean clone, with no network after install:** [Verify it yourself](#verify-it-yourself), five command blocks and the test counts each one prints.
 
@@ -161,7 +162,7 @@ flowchart LR
   G -->|debit reported usage| C
 ```
 
-1. **Deposit on your chain.** Each vault is an ERC-4626 vault with no owner, admin, upgrade or pause. You can redeem your principal at any time; only the surplus above principal is paid to InferNear.
+1. **Deposit on your chain.** Each vault is an ERC-4626 vault with no owner, admin, upgrade or pause. You can redeem your principal whenever the underlying protocol has the liquidity to pay it (Aave and Rhea Lend can be fully lent out for a time; withdrawals from the Rhea vault queue until its next cycle); only the surplus above principal is paid to InferNear.
 2. **Yield becomes credits.** The keeper reads each holder's attributed yield at a finalized block, prices it in USD, and posts it to the NEAR connector. Credits come only from what the keeper posts, which is realized yield and finalized USDC purchases through the top-up contract: `spent ≤ credited` per user, enforced on chain.
 3. **Call the API.** Sign in with your wallet to create an API key: an EVM wallet (EIP-4361) or Meteor Wallet on NEAR (NEP-413). Then point an OpenAI client or NEAR AI's SDK at InferNear's endpoint. The gateway charges the model's reported `usage` against your credits. Each wallet gets 5 free trial calls, funded by InferNear, before credits are needed. You can pick a handle for your account and link a second wallet to it, EVM or NEAR, so one identity and one API key cover both.
 
@@ -243,7 +244,7 @@ These are enforced in the contracts and tested in the contract and relay suites:
 1. Principal is never spendable as credits.
 2. Credits spent ≤ credits posted (yield realized, plus any USDC purchased), per user, always.
 3. Principal + unspent realized yield + unrealized yield = position value, in integer base units within documented rounding.
-4. You can always withdraw your principal, minus documented protocol exit costs and pro-rata strategy losses.
+4. Your principal is always yours to withdraw, minus documented protocol exit costs and pro-rata strategy losses, and subject to the underlying protocol having the liquidity to pay it at that moment.
 
 The three Base vaults and the credit ledger have no owner, admin, pause or upgrade path. **The Rhea vault on mainnet is the exception: it keeps its deployment key during the hackathon**, so its code can be fixed and the deployment wound down afterwards. Whoever holds that key could replace the vault's code, so treat the Rhea vault as operator-controlled until the key is deleted (the deploy script deletes it by default; `NEAR_RHEA_KEEP_KEY=true` keeps it).
 
@@ -255,7 +256,7 @@ The three Base vaults and the credit ledger have no owner, admin, pause or upgra
 - **Live inference was verified once, by probe.** On 2026-11-12 `npm run spike` in `relay` sent encrypted JS and Python requests, plain and streaming, through the relay to a NEAR AI TEE model; TEE signatures verified and every charge matched NEAR's bill after rounding up to whole micro-USD ([details](relay/README.md#live-sdk-probe--passed-on-2026-11-12)). It needs your own NEAR AI key to reproduce.
 - **The model build check is off.** The SDK still verifies the model's TEE hardware attestation and signatures, but NEAR's check that the model runs NEAR's published proxy build currently rejects NEAR's own deploys, so we leave it out until NEAR fixes it. The gateway build check stays on.
 - **The Rhea vault was redeployed with a fix on 13 Nov 2026.** Its first cycles on mainnet failed because the contract gave Rhea's asset view too little gas; a second defect (idle cash not supplied in a cycle that also pays yield) was fixed with it. The code was replaced on the same account with the stored state unchanged ([transaction](https://nearblocks.io/txns/DW2hx4izJCcMMgJ8C9h2cXaaNo2JcZAADMsnTJBu4D79)), and the next cycle supplied the vault's 1 USDC cushion to Rhea Lend ([transaction](https://nearblocks.io/txns/5K8tsb9HZNFQJDbbSj2arXd2xHjyrtxzGaK4QPTsC7oW)). It holds no user deposit yet.
-- **A free trial call has run on the live relay; a credit-paid one has not.** On 13 Nov 2026 a throwaway wallet signed in at `api.infernear.dev`, picked a handle, received a key and made a standard-mode call that returned a real reply and was billed as a free trial; a second wallet was then linked to the same account. The real-wallet run through the console is still to come.
+- **Free trial calls work on the live relay; a credit-paid call has not been made.** `npm run live-check` in `relay/` reproduces it with a throwaway wallet: sign-in, a key, and a standard-mode call that returns a real reply billed as a free trial. On 13 Nov 2026 the same flow was also run with a handle and a second linked wallet. The real-wallet run through the console is still to come.
 - **No deposit, credit or paid API call has happened on mainnet yet.** The contracts, relay and console are live, and wallet sign-in and API-key issue were checked against the live relay; the first funded round trip is still to come. The console's deposit, withdrawal and Meteor sign-in flows have so far run only in automated tests, not with a real wallet.
 - **Standard mode and NEAR-wallet sign-in went live on 13 Nov 2026 and are only partly exercised.** Against the live relay, a throwaway EVM wallet signed in, received a key, and its plain OpenAI-format call was accepted up to the credit check (`402 insufficient_credit`, as expected with no credits). A paid standard call and a sign-in with a real NEAR wallet have not been done yet.
 - **Standard mode is not private from the relay.** The relay can read the prompt and reply in transit; it stores neither. Use private mode when that matters.
