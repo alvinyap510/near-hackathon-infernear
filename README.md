@@ -23,7 +23,7 @@ NEAR AI Cloud runs open models inside attested TEEs, so a prompt can stay privat
 |---|---|---|---|
 | **NEAR AI Cloud** (private inference) | Every model InferNear serves is one of NEAR AI Cloud's attested `vllm` TEE chat models. The relay lists them with their prices, forwards each call on InferNear's own NEAR AI account, and bills from the usage the model reports. | `relay/src/gateway/upstream.ts`, `ledger.ts`, `meter.ts` | `curl -s https://api.infernear.dev/v1/models` |
 | **NEAR AI TEE attestation and signed replies** | In private mode NEAR AI's inference SDK checks the model's hardware attestation, encrypts the prompt to that TEE and verifies the model's signature over the reply. The relay only carries ciphertext. | `relay/scripts/spike.ts`, `relay/scripts/provenance.json`, `web/src/quickstart.ts` | [Live SDK probe](relay/README.md#live-sdk-probe--passed-on-2026-11-12) |
-| **NEAR Intents (1Click API)** | Carries USDC between chains: from Base into the Rhea vault on NEAR, the principal back to the user's own Base address, quotes for USDC arriving from other chains, and (switched off in this deployment) the treasury's yield to NEAR. | `web/src/data/rhea.ts`, `relay/src/gateway/signed.ts`, `relay/src/adapters/evm.ts` | [the dry-run quote](#near-intents-every-chains-yield-routed-to-near-ai) |
+| **NEAR Intents (1Click API)** | Carries USDC between chains: from Base into the Rhea vault on NEAR, the principal back to the user's own Base address, quotes for USDC arriving from other chains, and (switched off in this deployment) the treasury's yield to NEAR. | `web/src/data/rhea.ts`, `relay/src/gateway/signed.ts`, `relay/src/adapters/evm.ts` | [the dry-run quote](#near-intents-the-rail-between-a-users-chain-and-near) |
 | **NEAR smart contracts** (near-sdk) | The **credit ledger** `connector.infernear-ai.near` records, per user, the credits posted and spent, and keeps a receipt for every paid call; it has no keys. The **Rhea USDC vault** `rhea.infernear-ai.near` holds principal for EVM and NEAR users and pays out only yield. | `contracts/near/src/lib.rs`, `contracts/near/rhea-vault/src/lib.rs` | explorer links in [Live deployment](#live-deployment) |
 | **Rhea Lend** (lending on NEAR) | The Rhea vault supplies its USDC there; the interest is the yield that becomes credits. | `contracts/near/rhea-vault/src/lib.rs` | [its first cycle on mainnet](https://nearblocks.io/txns/5K8tsb9HZNFQJDbbSj2arXd2xHjyrtxzGaK4QPTsC7oW) |
 | **NEAR accounts and wallets** | A NEAR user signs in with Meteor Wallet (NEP-413) to get API keys under their own account, can deposit into the Rhea vault from it, and can link an EVM wallet to the same InferNear account. | `relay/src/gateway/auth.ts`, `relay/src/gateway/accounts.ts`, `web/src/data/near-session.ts` | sign in at the console |
@@ -78,9 +78,27 @@ Settlement is on NEAR throughout: credits are posted to the ledger by a keeper, 
 
 Each vault has a deposit cap of about $10,000 (Rhea 10,000 USDC, Aave 10,000 USDC, cbETH 5 ETH of principal, Pendle 10,000 USD of PT principal) and a small cushion donated at deployment that absorbs rounding.
 
-## NEAR Intents: every chain's yield, routed to NEAR AI
+### The deployed code is this repository's code
 
-**This is the point of InferNear.** NEAR AI Cloud's private models are paid for on NEAR, but most people's assets and wallets are somewhere else. InferNear uses **NEAR Intents (the 1Click API)** as the rail between the two, so a user on another chain funds private inference without ever holding a NEAR account, a NEAR key or NEAR tokens.
+**NEAR.** Build both contracts and hash them:
+
+```sh
+cd contracts/near && cargo build --locked --target wasm32-unknown-unknown --release --workspace
+shasum -a 256 target/wasm32-unknown-unknown/release/infernear_connector.wasm target/wasm32-unknown-unknown/release/infernear_rhea_vault.wasm
+```
+
+| Contract | Bytes | sha256 of the build | `code_hash` on chain (the same 32 bytes in base58) |
+|---|---|---|---|
+| `connector.infernear-ai.near` | 352,257 | `00405ebcf2c94c06ce4672a9bc4bc8eac8adae652fbd424c4d5e0649baf6fb65` | `1yvttLvjVnHFuuDgWrQNZYNbvsCtSctYKDwv5dRajye` |
+| `rhea.infernear-ai.near` | 427,731 | `87f913f1ecd7dd80358d48dd97130dbc6138bd1376adc0e52042ae32e289d92c` | `A9nKrBReW24CktqUiFPnG4YHBmHgAzaQbh8ezpyxQiKD` |
+
+The on-chain value is the `code_hash` field of a `view_account` query on any NEAR RPC. We get these hashes with Rust 1.97.1 from two different checkout paths on macOS (checked 13 Nov 2026); another toolchain can produce different bytes.
+
+**Base.** `cd contracts/evm && forge build`, then compare each contract's deployed runtime bytecode (`cast code <address>`) with `deployedBytecode` in `out/<Contract>.sol/<Contract>.json`: they are equal apart from the constructor's immutable values.
+
+## NEAR Intents: the rail between a user's chain and NEAR
+
+NEAR AI Cloud's private models are paid for on NEAR, but most people's assets and wallets are somewhere else. InferNear is designed around **NEAR Intents (the 1Click API)** as the rail between the two, so a user on another chain can fund private inference without holding a NEAR account, a NEAR key or NEAR tokens. **What is live today is narrower than the design:** the console fetches real quotes from NEAR Intents, and the routes that carry funds (rows 2 to 4 below) are built and tested on fixtures but have not carried funds on mainnet yet. The three Base vaults and the credit top-up do not need Intents: their yield and purchases are read on Base and posted to the NEAR ledger by the keeper.
 
 ```mermaid
 flowchart LR
