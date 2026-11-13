@@ -20,6 +20,8 @@ The ledger is the contract [`connector.infernear-ai.near`](https://nearblocks.io
 
 Your available balance is `credited − spent`. The contract enforces **spent ≤ credited** for every user, so a call can never be charged against credits that do not exist. The contract has no owner, no admin and no keys, and it holds no funds.
 
+<CreditsFlow />
+
 Your user id is `eip155:8453:<your address, lower case>` for an EVM wallet or `near:mainnet:<your account id>` for a NEAR wallet.
 
 ## How yield becomes credits

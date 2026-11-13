@@ -4,6 +4,8 @@ This page says plainly what you are trusting when you use InferNear, and what yo
 
 ## Who can read your prompts
 
+<PrivacyModes />
+
 | | Standard mode | Private mode |
 |---|---|---|
 | **InferNear's relay** | Can read the prompt and reply while forwarding them. Stores neither | Sees ciphertext only |

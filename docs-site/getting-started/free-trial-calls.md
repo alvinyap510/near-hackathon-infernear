@@ -2,6 +2,8 @@
 
 Every wallet gets **5 free trial calls**, paid for by InferNear. They let you check that the API does what you need before you deposit or buy anything.
 
+<FreeCallPips />
+
 ## The rules
 
 | | |

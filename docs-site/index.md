@@ -4,6 +4,8 @@
 
 InferNear is an OpenAI-format API endpoint on top of NEAR AI's private TEE models. You deposit into a vault on your own chain and keep the principal. The yield goes to InferNear and comes back to you as API credits on NEAR. You never need a NEAR account or NEAR tokens: only InferNear does.
 
+<ProductLoop />
+
 | | |
 |---|---|
 | API endpoint | `https://api.infernear.dev/v1` |

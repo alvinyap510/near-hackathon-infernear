@@ -8,6 +8,8 @@ The console fetches real quotes from NEAR Intents. The routes that carry funds a
 
 ## What Intents carries
 
+<IntentsRoutes />
+
 | # | Route | How | Status |
 |---|---|---|---|
 | 1 | USDC from another chain to your own Base address | A 1Click quote, then one transfer on the origin chain | The console shows real quotes for USDC from Ethereum, Arbitrum, Optimism or Polygon. Sending is switched off in this release |

@@ -10,6 +10,8 @@ InferNear gives them one OpenAI-format endpoint, sign-in with the wallet they al
 
 ## The flow
 
+<HowItWorksFlow />
+
 1. **Deposit on your chain.** You deposit into a vault and keep the principal. Only the surplus above principal, the yield, is paid to InferNear.
 2. **Yield becomes credits.** A keeper reads each depositor's yield at a finalized block, prices it in USD, and posts it to the credit ledger on NEAR.
 3. **Sign in and get a key.** You sign one message with your wallet to create an API key. No NEAR account is needed.
