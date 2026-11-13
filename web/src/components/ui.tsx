@@ -10,7 +10,7 @@ import rheaLogo from '../assets/rhea-logo.svg';
 import type { Token } from '../data/index.ts';
 import { formatAmount } from '../data/money.ts';
 
-export function CopyButton({ text, label = 'Copy', tone = 'paper' }: { text: string; label?: string; tone?: 'paper' | 'seal' }) {
+export function CopyButton({ text, label = 'Copy', tone = 'paper', role }: { text: string; label?: string; tone?: 'paper' | 'seal'; role?: 'menuitem' }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     await navigator.clipboard.writeText(text);
@@ -18,7 +18,7 @@ export function CopyButton({ text, label = 'Copy', tone = 'paper' }: { text: str
     setTimeout(() => setCopied(false), 1600);
   };
   return (
-    <button type="button" className={`btn-copy ${tone}`} onClick={copy} aria-live="polite">
+    <button type="button" className={`btn-copy ${tone}`} onClick={copy} aria-live="polite" role={role}>
       {copied ? 'Copied' : label}
     </button>
   );

@@ -1,6 +1,7 @@
 import { useRef, type KeyboardEvent } from 'react';
-import { shortHex } from '../data/money.ts';
-import { SealGlyph, ChainBadge } from './ui.tsx';
+import { AccountMenu } from './AccountMenu.tsx';
+import { canonicalSeed } from './avatar.ts';
+import { SealGlyph } from './ui.tsx';
 
 export const TABS = [
   { id: 'vaults', label: 'Vaults' },
@@ -40,6 +41,9 @@ export function Header({
   onConnect?: () => void;
 }) {
   const refs = useRef<(HTMLAnchorElement | null)[]>([]);
+  // The avatar's seed. Today the connected wallet's canonical id; once account handles exist it
+  // becomes the account's stored seed, so the avatar stays fixed across linked wallets.
+  const accountSeed = address ? canonicalSeed(address) : null;
 
   // Arrow keys move between tabs, as in any tab list.
   const onKey = (e: KeyboardEvent, i: number) => {
@@ -78,16 +82,8 @@ export function Header({
             ))}
           </nav>
         <div className="wallet">
-          {address ? (
-            <>
-              <ChainBadge name={chainName} />
-              <span className="chip addr" title={address}>
-                <span className="avatar" aria-hidden="true" style={{ ['--h' as string]: (parseInt(address.slice(2, 5), 16) || 0) % 360 }} />
-                {shortHex(address)}
-              </span>
-              {onConnect && <button type="button" className="btn ghost" onClick={onConnect}>Switch wallet</button>}
-              {onDisconnect && <button type="button" className="btn ghost" onClick={onDisconnect}>Disconnect</button>}
-            </>
+          {address && accountSeed ? (
+            <AccountMenu seed={accountSeed} id={address} kind={chainName === 'NEAR' ? 'near' : 'evm'} onSwitch={onConnect} onLogout={onDisconnect} />
           ) : onConnect ? (
             <button type="button" className="btn primary header-connect" onClick={onConnect}>
               <span className="btn-dot" aria-hidden="true" />
