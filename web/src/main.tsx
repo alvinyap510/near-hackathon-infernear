@@ -1,3 +1,4 @@
+import './polyfills.ts';
 import '@fontsource-variable/hanken-grotesk';
 import '@fontsource-variable/martian-mono/standard.css';
 import { StrictMode } from 'react';
