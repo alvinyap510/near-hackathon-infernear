@@ -117,7 +117,7 @@ export function createRelayServer(gateway: Gateway, options: { publicUrl: string
           if (!account || !account.wallets.includes(ticket.by)) throw new HttpError(401, 'invalid_ticket', 'Bad, expired or used link ticket');
           const wallet = await proof(statements.join(account.handle));
           ticket.redeem();
-          json(res, 200, { account: await accounts.link(account.uid, wallet) }); return;
+          json(res, 200, { account: await accounts.link(account.uid, wallet, ticket.by) }); return;
         }
         if (path === '/accounts/link/start' || path === '/accounts/unlink') {
           const handle = typeof value?.handle === 'string' ? value.handle : '';

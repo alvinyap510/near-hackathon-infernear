@@ -73,10 +73,12 @@ export class Accounts {
       return { account, undo: () => { this.byUid.delete(uid); this.byHandle.delete(handle); this.byWallet.delete(wallet); } };
     });
   }
-  link(uid: string, wallet: string): Promise<Account> {
+  // `invitedBy` is the wallet whose invitation this is. It must still be in the account at the
+  // moment the new wallet is added: an invitation ends when its wallet leaves.
+  link(uid: string, wallet: string, invitedBy: string): Promise<Account> {
     return this.change(() => {
       const account = this.byUid.get(uid);
-      if (!account) throw new HttpError(404, 'no_account', 'No such account');
+      if (!account?.wallets.includes(invitedBy)) throw new HttpError(401, 'invalid_ticket', 'Bad, expired or used link ticket');
       if (this.byWallet.has(wallet)) throw new HttpError(409, 'wallet_linked', 'That wallet is already in an account');
       if (account.wallets.length >= MAX_WALLETS) throw tooManyWallets();
       account.wallets.push(wallet); this.byWallet.set(wallet, account);

@@ -152,17 +152,21 @@ test('changes are applied one at a time, and a failed write is undone exactly', 
   const { accounts, directory } = await setup(t), W = (n: number) => `near:mainnet:w${n}.near`;
   const account = await accounts.create('alice', W(0));
   // Racing changes: both links and the unlink of a wallet that is only just being linked.
-  const results = await Promise.allSettled([accounts.link(account.uid, W(1)), accounts.link(account.uid, W(2)), accounts.unlink(W(1)), accounts.create('alice', W(3))]);
+  const results = await Promise.allSettled([accounts.link(account.uid, W(1), account.wallets[0]), accounts.link(account.uid, W(2), account.wallets[0]), accounts.unlink(W(1)), accounts.create('alice', W(3))]);
   assert.deepEqual(results.map(r => r.status), ['fulfilled', 'fulfilled', 'fulfilled', 'rejected']);
   assert.deepEqual(account.wallets, [W(0), W(2)]);
   // The directory becomes unwritable: the change is refused and nothing in memory moves.
   await chmod(directory, 0o500); t.after(() => chmod(directory, 0o700));
-  await assert.rejects(accounts.link(account.uid, W(4)), (error: { code?: string }) => error.code === 'service_unavailable');
+  await assert.rejects(accounts.link(account.uid, W(4), account.wallets[0]), (error: { code?: string }) => error.code === 'service_unavailable');
   await assert.rejects(accounts.unlink(W(2)), (error: { code?: string }) => error.code === 'service_unavailable');
   assert.deepEqual([account.wallets, accounts.of(W(4)), accounts.of(W(2))?.uid], [[W(0), W(2)], null, account.uid]);
   await chmod(directory, 0o700);
-  assert.deepEqual((await accounts.link(account.uid, W(4))).wallets, [W(0), W(2), W(4)]);
+  assert.deepEqual((await accounts.link(account.uid, W(4), account.wallets[0])).wallets, [W(0), W(2), W(4)]);
   assert.deepEqual((await Accounts.open(directory, () => {})).byId(account.uid)?.wallets, [W(0), W(2), W(4)]);
+  // An invitation ends when its wallet leaves, even if the join was already on its way.
+  await accounts.unlink(W(4));
+  await assert.rejects(accounts.link(account.uid, W(5), W(4)), (error: { code?: string }) => error.code === 'invalid_ticket');
+  assert.equal(accounts.of(W(5)), null);
 });
 
 test('key issue reports the wallet\'s account, or null', async t => {
@@ -192,7 +196,7 @@ const done = async (response: Response) => { await response.arrayBuffer(); retur
 
 test('a key spends from any wallet linked to its account: its own wallet first, one wallet per call', async t => {
   const { h, accounts } = await setup(t, true, { seed: false });
-  const account = await accounts.create('alice', A); await accounts.link(account.uid, B);
+  const account = await accounts.create('alice', A); await accounts.link(account.uid, B, account.wallets[0]);
   const key = h.auth.issue(A, 0).key, spent = (wallet: string) => h.connector.accounts.get(wallet)?.spent ?? 0n;
   h.connector.seed(B, 1_000_000n);
   h.respond({ id: 'linked-{n}' });
@@ -204,14 +208,14 @@ test('a key spends from any wallet linked to its account: its own wallet first, 
   await settle(h.gateway, A);
   assert.deepEqual([spent(A), spent(B)], [13n, 13n]);
   // Two wallets that each hold too little are not added together: one call, one debit.
-  const short = await accounts.create('carol', C), D = 'near:mainnet:dave.near'; await accounts.link(short.uid, D);
+  const short = await accounts.create('carol', C), D = 'near:mainnet:dave.near'; await accounts.link(short.uid, D, short.wallets[0]);
   h.connector.seed(C, 5n); h.connector.seed(D, 5n);
   assert.equal((await chat(h.base, h.auth.issue(C, 0).key)).status, 402);
 });
 
 test('a wallet that leaves an account can no longer be charged by it, and a wallet outside it never can', async t => {
   const { h, accounts } = await setup(t, true, { seed: false });
-  const account = await accounts.create('alice', A); await accounts.link(account.uid, B);
+  const account = await accounts.create('alice', A); await accounts.link(account.uid, B, account.wallets[0]);
   h.connector.seed(B, 1_000_000n);
   const key = h.auth.issue(A, 0).key;
   assert.equal((await chat(h.base, h.auth.issue(C, 0).key)).status, 402);
@@ -219,7 +223,7 @@ test('a wallet that leaves an account can no longer be charged by it, and a wall
   assert.equal((await chat(h.base, key)).status, 402);
   assert.equal(h.connector.accounts.get(B)!.spent, 0n); assert.equal(h.connector.debitCalls, 0);
   // Linked again later, the same key can be charged to it without being reissued.
-  await accounts.link(account.uid, B);
+  await accounts.link(account.uid, B, account.wallets[0]);
   h.respond({ id: 'relinked' });
   assert.deepEqual(await done(await chat(h.base, key)), [200, 'credits']);
 });
@@ -230,7 +234,7 @@ test('free trial calls stay per wallet: linking neither adds to nor takes from a
   h.respond({ id: 'trial-{n}' });
   const first = h.auth.issue(A, 0).key, second = h.auth.issue(B, 0).key;
   assert.deepEqual(await done(await chat(h.base, first)), [200, 'free']);
-  const account = await accounts.create('alice', A); await accounts.link(account.uid, B);
+  const account = await accounts.create('alice', A); await accounts.link(account.uid, B, account.wallets[0]);
   assert.deepEqual([await left(first), await left(second)], [1, 2]);
   assert.deepEqual(await done(await chat(h.base, first)), [200, 'free']);
   assert.equal((await chat(h.base, first)).status, 402);
