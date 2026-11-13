@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
-import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { baseEncode } from 'near-api-js';
@@ -146,6 +146,23 @@ test('the registry survives a restart, and a damaged file is set aside so the re
   assert.equal(empty.of(alice.id), null); assert.deepEqual(events, ['accounts_store_corrupt']);
   assert.equal((await readdir(directory)).some(name => name.startsWith('accounts.json.corrupt-')), true);
   assert.equal((await empty.create('alice', alice.id)).handle, 'alice');
+});
+
+test('changes are applied one at a time, and a failed write is undone exactly', async t => {
+  const { accounts, directory } = await setup(t), W = (n: number) => `near:mainnet:w${n}.near`;
+  const account = await accounts.create('alice', W(0));
+  // Racing changes: both links and the unlink of a wallet that is only just being linked.
+  const results = await Promise.allSettled([accounts.link(account.uid, W(1)), accounts.link(account.uid, W(2)), accounts.unlink(W(1)), accounts.create('alice', W(3))]);
+  assert.deepEqual(results.map(r => r.status), ['fulfilled', 'fulfilled', 'fulfilled', 'rejected']);
+  assert.deepEqual(account.wallets, [W(0), W(2)]);
+  // The directory becomes unwritable: the change is refused and nothing in memory moves.
+  await chmod(directory, 0o500); t.after(() => chmod(directory, 0o700));
+  await assert.rejects(accounts.link(account.uid, W(4)), (error: { code?: string }) => error.code === 'service_unavailable');
+  await assert.rejects(accounts.unlink(W(2)), (error: { code?: string }) => error.code === 'service_unavailable');
+  assert.deepEqual([account.wallets, accounts.of(W(4)), accounts.of(W(2))?.uid], [[W(0), W(2)], null, account.uid]);
+  await chmod(directory, 0o700);
+  assert.deepEqual((await accounts.link(account.uid, W(4))).wallets, [W(0), W(2), W(4)]);
+  assert.deepEqual((await Accounts.open(directory, () => {})).byId(account.uid)?.wallets, [W(0), W(2), W(4)]);
 });
 
 test('key issue reports the wallet\'s account, or null', async t => {
