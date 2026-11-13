@@ -1,0 +1,149 @@
+/* Shared look for the diagrams. Colours come from the theme's variables, so every diagram is
+   right in light and dark; sizes are SVG user units, so a diagram scales with its column. */
+
+.dg {
+  --dg-ink: var(--vp-c-text-1);
+  --dg-ink-2: var(--vp-c-text-2);
+  --dg-ink-3: var(--vp-c-text-3);
+  --dg-line: var(--vp-c-border);
+  --dg-card: var(--vp-c-bg-elv);
+  --dg-soft: var(--vp-c-bg-soft);
+  --dg-mint: #00ec97;
+  --dg-accent: var(--vp-c-brand-1);
+  --dg-amber: #f2b705;
+  --dg-chip: var(--vp-c-text-1);
+  --dg-chip-text: var(--vp-c-bg);
+  container-type: inline-size;
+  margin: 28px 0 32px;
+  padding: 22px 22px 16px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--vp-c-text-1) 9%, transparent) 1px, transparent 1.4px) 0 0 / 22px 22px,
+    var(--vp-c-bg-soft);
+}
+
+.dg svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.dg-cap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  align-items: baseline;
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--vp-c-text-2);
+}
+
+.dg-cap b {
+  font-family: var(--vp-font-family-mono);
+  font-stretch: 87.5%;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-3);
+}
+
+/* Shapes */
+.dg .n-box { fill: var(--dg-card); stroke: var(--dg-line); stroke-width: 1.2; }
+.dg .n-box.hot { stroke: var(--dg-accent); stroke-width: 1.6; }
+.dg .n-box.dim { fill: var(--dg-soft); stroke-dasharray: 5 5; }
+.dg .n-title { fill: var(--dg-ink); font-family: var(--vp-font-family-base); font-size: 15px; font-weight: 650; }
+.dg .n-sub {
+  fill: var(--dg-ink-3);
+  font-family: var(--vp-font-family-mono);
+  font-stretch: 87.5%;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.dg .edge { fill: none; stroke: var(--dg-line); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.dg .edge.dash { stroke-dasharray: 3 6; }
+.dg .edge.mint { stroke: var(--dg-accent); }
+.dg .e-label {
+  fill: var(--dg-ink-3);
+  font-family: var(--vp-font-family-mono);
+  font-stretch: 87.5%;
+  font-size: 9.5px;
+  font-weight: 500;
+}
+.dg .mint-fill { fill: var(--dg-mint); }
+.dg .accent-fill { fill: var(--dg-accent); }
+.dg .ink-fill { fill: var(--dg-ink); }
+.dg .card-fill { fill: var(--dg-card); }
+.dg .soft-fill { fill: var(--dg-soft); }
+.dg .line-stroke { fill: none; stroke: var(--dg-line); }
+.dg .ink-stroke { fill: none; stroke: var(--dg-ink); }
+.dg .accent-stroke { fill: none; stroke: var(--dg-accent); }
+.dg .chip rect { fill: var(--dg-chip); }
+.dg .chip text {
+  fill: var(--dg-chip-text);
+  font-family: var(--vp-font-family-mono);
+  font-stretch: 87.5%;
+  font-size: 9.5px;
+  font-weight: 600;
+}
+.dg .chip.mint rect { fill: var(--dg-mint); }
+.dg .chip.mint text { fill: #141519; }
+.dg .mark-br { fill: var(--dg-ink); }
+.dg .mark-core { fill: var(--dg-mint); }
+
+/* Pills (HTML) */
+.dg-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 2px;
+  border-radius: 999px;
+  border: 1px solid var(--vp-c-border);
+  font-family: var(--vp-font-family-mono);
+  font-stretch: 87.5%;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--vp-c-text-2);
+  white-space: nowrap;
+}
+.dg-pill::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--vp-c-text-3);
+}
+.dg-pill.live { border-color: color-mix(in srgb, var(--vp-c-brand-1) 40%, transparent); color: var(--vp-c-brand-1); }
+.dg-pill.live::before { background: var(--dg-mint, #00ec97); box-shadow: 0 0 0 3px rgba(0, 236, 151, 0.18); }
+.dg-pill.built::before { background: transparent; border: 1.5px solid var(--vp-c-text-3); width: 4px; height: 4px; }
+.dg-pill.off { color: var(--vp-c-text-3); }
+
+/* Two layouts where a diagram is too wide for a phone: the tall one takes over in a narrow column. */
+.dg .tall { display: none; }
+@container (max-width: 560px) {
+  .dg .wide { display: none; }
+  .dg .tall { display: block; }
+}
+
+/* Reduced motion: a still, complete picture. Moving packets go; SMIL is paused by useStill. */
+@media (prefers-reduced-motion: reduce) {
+  .dg .pk { display: none; }
+  .dg * { animation: none !important; transition: none !important; }
+}
+.dg .still-only { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .dg .still-only { display: inline; }
+}
+
+@media (max-width: 640px) {
+  .dg {
+    margin: 22px -8px 26px;
+    padding: 16px 12px 12px;
+  }
+}
