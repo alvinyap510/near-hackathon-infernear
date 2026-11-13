@@ -25,6 +25,7 @@ Built at the NEAR HACKATHON (1–14 Nov 2026).
 | Aave USDC vault (Base) | [`0x19110449a361855d30090BC26112E9a5c3793198`](https://basescan.org/address/0x19110449a361855d30090BC26112E9a5c3793198) |
 | cbETH vault (Base) | [`0x20B3852c32FFCBfD6a713045e7eA411683446f40`](https://basescan.org/address/0x20B3852c32FFCBfD6a713045e7eA411683446f40) |
 | Pendle PT-deJAAA vault (Base) | [`0x5801707F6AF54f33Ab3E1910c09D79B81D4Be92c`](https://basescan.org/address/0x5801707F6AF54f33Ab3E1910c09D79B81D4Be92c) |
+| Credit top-up (Base) | [`0xa62E3f3328e33DeB233C655df4f379c1bE7b03c6`](https://basescan.org/address/0xa62E3f3328e33DeB233C655df4f379c1bE7b03c6) |
 
 Each vault has a deposit cap of about $10,000 (Rhea 10,000 USDC, Aave 10,000 USDC, cbETH 5 ETH of principal, Pendle 10,000 USD of PT principal) and a small cushion donated at deployment that absorbs rounding.
 
@@ -138,9 +139,9 @@ A fourth shape, staking with claimable rewards, is built and tested (`StakingRew
 
 **Depositors bear strategy losses pro-rata.** If Aave, cbETH's exchange rate, the PT's backing (a Centrifuge AAA CLO note) or Rhea lose value, the loss falls on depositors; InferNear holds no reserve. Credits already granted are not clawed back. The dashboard shows this note next to each vault.
 
-### Buying credits directly (built, not deployed)
+### Buying credits directly
 
-`CreditTopUp` (`contracts/evm/src/CreditTopUp.sol`) sells credits for USDC at 1 USDC = $1 of credits. **It is a purchase, not a deposit: the USDC goes straight to InferNear and cannot be redeemed.** The contract holds no funds and has no owner, admin, pause or upgrade path. The keeper credits each buyer from the contract's finalized `paid` totals, and the console shows an "Add credits" box when the contract's address is configured. It is tested in the contract, relay and console suites but is not deployed on mainnet, so the live console hides the box.
+`CreditTopUp` (`contracts/evm/src/CreditTopUp.sol`) sells credits for USDC at 1 USDC = $1 of credits. **It is a purchase, not a deposit: the USDC goes straight to InferNear and cannot be redeemed.** The contract holds no funds and has no owner, admin, pause or upgrade path. The keeper credits each buyer from the contract's finalized `paid` totals, and the console shows an "Add credits" box when the contract's address is configured. It was deployed on Base on 13 Nov 2026 ([transaction](https://basescan.org/tx/0xff918851dfb148b216a386834086b279d652c38976bb5c9e7b31074c2460e284)), with a 1 USDC minimum; credits appear after Base finality, about 20 minutes. No purchase has been made through it yet.
 
 ## What uses NEAR
 
@@ -209,7 +210,7 @@ The three Base vaults and the credit ledger have no owner, admin, pause or upgra
 - **Standard mode and NEAR-wallet sign-in went live on 13 Nov 2026 and are only partly exercised.** Against the live relay, a throwaway EVM wallet signed in, received a key, and its plain OpenAI-format call was accepted up to the credit check (`402 insufficient_credit`, as expected with no credits). A paid standard call and a sign-in with a real NEAR wallet have not been done yet.
 - **Standard mode is not private from the relay.** The relay can read the prompt and reply in transit; it stores neither. Use private mode when that matters.
 - **In the console, "Try the API" sends a real standard-mode call; private mode there is code samples only.** A private call is made with NEAR AI's SDK from your own code, as in the probe above.
-- **The credit top-up contract is not deployed.** It is built and tested, and the console hides its box until an address is configured.
+- **No credit purchase has been made yet.** The top-up contract is live and the console shows its box to EVM wallets, but the first real purchase, and the keeper crediting it, are still to come.
 - **"From another chain" shows quotes only.** The console fetches real dry-run quotes from NEAR Intents; sending funds from that screen is switched off in this release.
 - **Every API call is settled by its own NEAR transaction.** That costs the operator roughly 0.0015 NEAR per call in gas and permanent ledger storage, far more than the inference itself; the ledger as funded covers about 590 calls. A production version would batch debits.
 - **PT-deJAAA expires on 26 Nov 2026.** After that the Pendle vault's PT stops appreciating.
