@@ -11,7 +11,55 @@ InferNear is an OpenAI-format API endpoint on top of NEAR AI's private TEE model
 
 Built at the NEAR HACKATHON (1–14 Nov 2026).
 
-> **Status (13 Nov 2026): deployed on mainnet, with small caps.** The API is live at `https://api.infernear.dev/v1` and the console at `https://app.infernear.dev`. Three Base vaults and the NEAR credit ledger are live; the Rhea vault on NEAR runs its fixed code since 13 Nov and has completed a cycle (see known limits). The landing page is at `https://infernear.dev`. No user deposit has been made yet, so no credits exist on the ledger. Every command under "Verify it yourself" still runs from a clean clone, offline after install, against mocks and fixtures.
+> **Status (13 Nov 2026): deployed on mainnet, with small caps.** The API is live at `https://api.infernear.dev/v1`, the console at `https://app.infernear.dev` and the landing page at `https://infernear.dev`. Three Base vaults, the credit top-up contract, the NEAR credit ledger and the Rhea vault on NEAR are live. Free trial calls work on the live endpoint today (a real model reply, checked on 13 Nov). No user has deposited or bought credits yet, so no credits exist on the ledger and no credit-paid call has been made: see [known limits](#not-done-yet-and-known-limits). Every command under "Verify it yourself" runs from a clean clone, offline after install, against mocks and fixtures.
+
+## The problem
+
+NEAR AI Cloud runs open models inside attested TEEs, so a prompt can stay private from the operator. But it is paid for from a NEAR AI account, and most people who want private AI keep their assets and wallets on other chains. They also do not want API bills to eat their capital. InferNear gives them one OpenAI-format endpoint, sign-in with the wallet they already have, and a way to pay with the yield on a deposit they keep.
+
+## What NEAR does in InferNear
+
+| NEAR technology | What it does here | Where in this repo | Check it |
+|---|---|---|---|
+| **NEAR AI Cloud** (private inference) | Every model InferNear serves is one of NEAR AI Cloud's attested `vllm` TEE chat models. The relay lists them with their prices, forwards each call on InferNear's own NEAR AI account, and bills from the usage the model reports. | `relay/src/gateway/upstream.ts`, `ledger.ts`, `meter.ts` | `curl -s https://api.infernear.dev/v1/models` |
+| **NEAR AI TEE attestation and signed replies** | In private mode NEAR AI's inference SDK checks the model's hardware attestation, encrypts the prompt to that TEE and verifies the model's signature over the reply. The relay only carries ciphertext. | `relay/scripts/spike.ts`, `relay/scripts/provenance.json`, `web/src/quickstart.ts` | [Live SDK probe](relay/README.md#live-sdk-probe--passed-on-2026-11-12) |
+| **NEAR Intents (1Click API)** | Carries USDC between chains: from Base into the Rhea vault on NEAR, the principal back to the user's own Base address, quotes for USDC arriving from other chains, and (switched off in this deployment) the treasury's yield to NEAR. | `web/src/data/rhea.ts`, `relay/src/gateway/signed.ts`, `relay/src/adapters/evm.ts` | [the dry-run quote](#near-intents-every-chains-yield-routed-to-near-ai) |
+| **NEAR smart contracts** (near-sdk) | The **credit ledger** `connector.infernear-ai.near` records, per user, the credits posted and spent, and keeps a receipt for every paid call; it has no keys. The **Rhea USDC vault** `rhea.infernear-ai.near` holds principal for EVM and NEAR users and pays out only yield. | `contracts/near/src/lib.rs`, `contracts/near/rhea-vault/src/lib.rs` | explorer links in [Live deployment](#live-deployment) |
+| **Rhea Lend** (lending on NEAR) | The Rhea vault supplies its USDC there; the interest is the yield that becomes credits. | `contracts/near/rhea-vault/src/lib.rs` | [its first cycle on mainnet](https://nearblocks.io/txns/5K8tsb9HZNFQJDbbSj2arXd2xHjyrtxzGaK4QPTsC7oW) |
+| **NEAR accounts and wallets** | A NEAR user signs in with Meteor Wallet (NEP-413) to get API keys under their own account, can deposit into the Rhea vault from it, and can link an EVM wallet to the same InferNear account. | `relay/src/gateway/auth.ts`, `relay/src/gateway/accounts.ts`, `web/src/data/near-session.ts` | sign in at the console |
+
+Settlement is on NEAR throughout: credits are posted to the ledger by a keeper, and each paid call is debited there under its inference ID.
+
+## Try it
+
+**No wallet, one minute.**
+
+1. `curl -s https://api.infernear.dev/v1/models` → a list of 7 NEAR AI TEE models, each with `inputCostPerToken` and `outputCostPerToken`.
+2. Open `https://app.infernear.dev` → the Vaults tab shows four vaults with their deposits and current rates, read from Base and NEAR.
+3. Open the explorer links under [Live deployment](#live-deployment) → the contracts.
+
+**With a wallet and no funds.** Each wallet gets 5 free trial calls, paid by InferNear (300 a day across all wallets).
+
+4. In the console, connect an EVM wallet (on Base) or Meteor Wallet (NEAR). Optionally open the account button and pick a handle.
+5. **API keys** → create a key (your wallet signs one message; no transaction is sent) → the key is shown once.
+6. **Try the API** → choose a model → Run → the model's reply appears with a "Free trial" result, and the count goes from 5 to 4.
+7. Or use the key from a terminal:
+
+   ```sh
+   curl -s -D - https://api.infernear.dev/v1/chat/completions \
+     -H "Authorization: Bearer $INFERNEAR_API_KEY" -H 'Content-Type: application/json' \
+     -d '{"model":"Qwen/Qwen3-VL-30B-A3B-Instruct","messages":[{"role":"user","content":"Reply with the single word: ok"}],"max_tokens":64}'
+   ```
+
+   → `200`, an OpenAI-format completion, and the header `x-infernear-billing: free`. With no free calls left and no credits it answers `402 insufficient_credit`.
+
+**With funds (optional, small amounts). Built, tested on fixtures and on a fork of live Base, but not yet run with real money on mainnet.**
+
+8. **Account** → Add credits → buy 1 USDC of credits on Base (a purchase, not redeemable) → about 20 minutes later the Account tab shows $1.00 of credits, posted on NEAR.
+9. Or deposit USDC into the Aave USDC vault → its yield is posted as credits once it is worth $0.001; the principal stays redeemable.
+10. A call paid with credits shows its debit on NEAR in the result panel, under its inference ID.
+
+**From a clean clone, with no network after install:** [Verify it yourself](#verify-it-yourself), five command blocks and the test counts each one prints.
 
 ## Live deployment
 
@@ -143,14 +191,6 @@ A fourth shape, staking with claimable rewards, is built and tested (`StakingRew
 
 `CreditTopUp` (`contracts/evm/src/CreditTopUp.sol`) sells credits for USDC at 1 USDC = $1 of credits. **It is a purchase, not a deposit: the USDC goes straight to InferNear and cannot be redeemed.** The contract holds no funds and has no owner, admin, pause or upgrade path. The keeper credits each buyer from the contract's finalized `paid` totals, and the console shows an "Add credits" box when the contract's address is configured. It was deployed on Base on 13 Nov 2026 ([transaction](https://basescan.org/tx/0xff918851dfb148b216a386834086b279d652c38976bb5c9e7b31074c2460e284)), with a 1 USDC minimum; credits appear after Base finality, about 20 minutes. No purchase has been made through it yet.
 
-## What uses NEAR
-
-- **NEAR AI Cloud private inference:** only attested `vllm` TEE chat models are listed and accepted; private mode adds end-to-end encryption from your machine to the model.
-- **NEAR wallets:** NEAR users sign in with Meteor Wallet (a NEP-413 signature checked against the account's full-access keys) to create API keys under their own account.
-- **NEAR Intents (1Click):** moves Base USDC into the Rhea vault and back to your Base address, and bridges InferNear's treasury yield to NEAR.
-- **NEAR contracts:** the credit ledger (`contracts/near/src`) and a keyless Rhea USDC vault (`contracts/near/rhea-vault`) that you control with your EVM wallet's signature.
-- **Rhea Lend:** the Rhea vault supplies USDC to `contract.main.burrow.near`.
-
 ## Verify it yourself
 
 Prerequisites: Node 24.22.1+, Foundry (Forge 1.5.1), rustup Rust 1.97.1 with the `wasm32-unknown-unknown` target, a C/C++ toolchain and CMake. Each step needs network access once to install dependencies.
@@ -172,7 +212,17 @@ cd contracts/near && cargo fetch --locked && cargo test --locked --workspace && 
 cd landing && npm ci --ignore-scripts && npm run build && cd ..
 ```
 
-`npm run demo` prints a fixture flow: a holder receives 1,000 micro-USD of credits from a finalized vault snapshot, spends 13 through the HTTP API, and has 987 left.
+What each block prints when it passes:
+
+| Block | Expected |
+|---|---|
+| Relay | `ℹ tests 97`, `ℹ pass 97`, `ℹ fail 0`, then the demo's last line `{"fixture":true,"status":200,"credited":"1000","spent":"13","available":"987"}` |
+| Dashboard | `ℹ tests 104`, `ℹ pass 104`, `ℹ fail 0`, then `✓ built` |
+| Base contracts | `85 tests passed, 0 failed, 3 skipped` (the three skipped tests need a Base RPC and are run separately, see `contracts/evm/README.md`) |
+| NEAR contracts | `test result: ok. 14 passed` (credit ledger) and `test result: ok. 44 passed` (Rhea vault) |
+| Landing page | `✓ built` |
+
+The relay demo is a fixture flow: a holder receives 1,000 micro-USD of credits from a finalized vault snapshot, spends 13 through the HTTP API, and has 987 left.
 
 Each component's README has the full verification set: Base fork tests against real cbETH and Pendle state, the NEAR sandbox gas test, WASM builds, formatting and lint.
 
