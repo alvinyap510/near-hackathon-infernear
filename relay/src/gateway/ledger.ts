@@ -150,15 +150,16 @@ export class Gateway {
       const admitted = await state.lock.run(async (): Promise<Reservation | undefined> => {
         const account = await this.connector.account(wallet);
         this.observe(state, account);
-        // The read above is where time passes: the key may have been revoked, or this wallet
-        // unlinked, while it was in flight. Both are checked again here, before anything is held.
-        this.checkEpoch(key, this.user(key.user));
-        if (!own && !this.linked(key.user).includes(wallet)) return undefined;
+        // Time passes at every read: the key may be revoked, or this wallet unlinked, while one is
+        // in flight. Both are checked again after each read, so nothing is held on stale authority.
+        const stillAllowed = () => { this.checkEpoch(key, this.user(key.user)); return own || this.linked(key.user).includes(wallet); };
+        if (!stillAllowed()) return undefined;
         if (state.active >= 4) { if (own) throw new HttpError(429, 'concurrency_limit', 'At most four requests in flight per user'); return undefined; }
         const free = own ? this.free.hold(wallet) : undefined;
         if (free) { state.active += 1; return { ...reservation, token: randomUUID(), user: wallet, free }; }
         // A free call never writes the ledger, so storage and headroom matter only from here on.
         if (await this.storageLow()) throw new HttpError(503, 'ledger_storage_low', 'The credit ledger is out of storage; the operator must top it up');
+        if (!stillAllowed()) return undefined;
         const committed = account.spent > state.floor! ? account.spent : state.floor!;
         const reserved = [...state.reservations.values()].reduce((a, b) => a + b, 0n);
         if (amount > account.credited - committed - reserved) return undefined;

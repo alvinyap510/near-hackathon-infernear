@@ -155,7 +155,7 @@ A fourth shape, staking with claimable rewards, is built and tested (`StakingRew
 Prerequisites: Node 24.22.1+, Foundry (Forge 1.5.1), rustup Rust 1.97.1 with the `wasm32-unknown-unknown` target, a C/C++ toolchain and CMake. Each step needs network access once to install dependencies.
 
 ```sh
-# API relay: gateway + keeper (96 tests, then an end-to-end demo on fixtures)
+# API relay: gateway + keeper (97 tests, then an end-to-end demo on fixtures)
 cd relay && npm ci --ignore-scripts && npm test && npm run demo && cd ..
 
 # Dashboard (104 tests, production build); `npm run dev` serves it on mock data unless the live `VITE_*` settings are filled in

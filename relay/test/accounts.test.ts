@@ -248,6 +248,25 @@ test('a wallet unlinked, or a key revoked, while the ledger is being read is not
   assert.equal(h.gateway.state(B).reserved, 0n); assert.equal(h.connector.debitCalls, 0);
 });
 
+test('a wallet unlinked, or a key revoked, while ledger storage is being read is not charged', async t => {
+  for (const [during, status] of [['unlink', 402], ['revoke', 401]] as const) {
+    const { h, accounts, clock } = await setup(t, true, { seed: false });
+    const account = await accounts.create('alice', A); await accounts.link(account.uid, B, A);
+    h.connector.seed(B, 1_000_000n);
+    const key = h.auth.issue(A, 0).key, read = h.connector.account.bind(h.connector), storage = h.connector.storageBalance.bind(h.connector);
+    // The storage figure is cached for a minute. Let it go stale while B's balance is read, so the
+    // storage read happens again as the last thing awaited before B's reservation.
+    let reading = false, fired = false;
+    h.connector.account = async user => { if (user === B) { clock.now += 61_000; reading = true; } return read(user); };
+    h.connector.storageBalance = async () => {
+      if (reading && !fired) { fired = true; await (during === 'unlink' ? accounts.unlink(B) : h.gateway.revoke(A)); }
+      return storage();
+    };
+    assert.equal((await chat(h.base, key)).status, status, during);
+    assert.equal(fired, true, during); assert.equal(h.gateway.state(B).reserved, 0n); assert.equal(h.connector.debitCalls, 0);
+  }
+});
+
 test('free trial calls stay per wallet: linking neither adds to nor takes from a wallet\'s own allowance', async t => {
   const { h, accounts } = await setup(t, true, { seed: false, freeCallsPerUser: 2, freeCallsPerDay: 300 });
   const left = async (key: string) => (await (await fetch(h.base + '/v1/free-calls', { headers: { authorization: `Bearer ${key}` } })).json()).remaining;
