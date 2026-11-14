@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>InferNear Film</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body>
+    <div id="stage">
+      <svg class="defs" width="0" height="0" aria-hidden="true"><defs id="filters"></defs></svg>
+
+      <!-- 1. Private AI already exists -->
+      <section class="scene" id="s-exists">
+        <div class="main" data-scale="1.35">
+          <div class="card cloud" data-whip>
+            <div class="card-head"><i class="ic" data-icon="near"></i><b>NEAR AI Cloud</b><span class="mono dim">attested TEEs</span></div>
+            <div class="rows">
+              <div class="row"><span class="mono">deepseek-ai/DeepSeek-V4.1-Flash</span><span class="tee">TEE <i class="ck"></i></span></div>
+              <div class="row"><span class="mono">Qwen/Qwen3.6-35B-A3B-FP8</span><span class="tee">TEE <i class="ck"></i></span></div>
+              <div class="row"><span class="mono">Qwen/Qwen3.8-27B</span><span class="tee">TEE <i class="ck"></i></span></div>
+              <div class="row"><span class="mono">z-ai/glm-5.3-flash</span><span class="tee">TEE <i class="ck"></i></span></div>
+            </div>
+          </div>
+        </div>
+        <div class="cap"><div class="l1" data-words>Private AI already exists.</div><div class="l2" data-words>Open models in attested TEEs, on NEAR AI Cloud.</div></div>
+      </section>
+
+      <!-- 2. But it lives on NEAR -->
+      <section class="scene" id="s-elsewhere">
+        <div class="main" data-scale="1.45">
+          <div class="flow" data-whip>
+            <div class="chip wallet">
+              <span class="stack"><i class="ic" data-icon="sui"></i><i class="ic" data-icon="solana"></i><i class="ic" data-icon="arbitrum"></i><i class="ic" data-icon="ethereum"></i><i class="ic" data-icon="base"></i></span>
+              <span class="txt"><b>Your wallet</b><span class="mono dim">1,000 USDC on Base</span></span>
+            </div>
+            <div class="link broken"><i class="half a"></i><i class="half b"></i><span class="x">×</span></div>
+            <div class="hub"><span class="disc"><i class="ic" data-icon="near"></i></span><span class="mono dim">NEAR</span></div>
+            <div class="link"><i class="fill"></i></div>
+            <div class="chip"><span class="chip-ic"></span><span class="txt"><b>NEAR AI Cloud</b><span class="mono dim">paid for on NEAR</span></span></div>
+          </div>
+        </div>
+        <div class="cap"><div class="l1" data-words>But it is paid for on NEAR.</div><div class="l2" data-words>Your wallet lives somewhere else.</div></div>
+      </section>
+
+      <!-- 3. API bills eat capital -->
+      <section class="scene" id="s-capital">
+        <div class="main" data-scale="1.12">
+          <div class="card balance" data-whip>
+            <div class="bal-top">
+              <div><div class="mono dim">Your balance</div><div class="big" id="bal">$1,000.00</div></div>
+              <div class="delta mono" id="baldelta">−$0.00</div>
+            </div>
+            <div class="bar"><i id="balbar"></i></div>
+            <div class="mono dim sub">API bills</div>
+            <div class="bills">
+              <div class="bill"><span>chat.completions</span><span class="mono dim">1.9M tokens</span><b>−$64.20</b></div>
+              <div class="bill"><span>chat.completions</span><span class="mono dim">1.4M tokens</span><b>−$48.75</b></div>
+              <div class="bill"><span>chat.completions</span><span class="mono dim">2.7M tokens</span><b>−$91.10</b></div>
+              <div class="bill"><span>chat.completions</span><span class="mono dim">1.7M tokens</span><b>−$57.30</b></div>
+            </div>
+          </div>
+        </div>
+        <div class="cap"><div class="l1" data-words>And every API bill spends what you hold.</div></div>
+      </section>
+
+      <!-- 4. Slam -->
+      <section class="scene" id="s-slam">
+        <div class="panel mint" id="slam1"><div class="slam" data-words>Keep the principal.</div></div>
+        <div class="panel night" id="slam2"><div class="slam" data-words>Let the *yield* pay.</div></div>
+      </section>
+
+      <!-- 5. Logo -->
+      <section class="scene" id="s-logo">
+        <div class="logo-wrap" id="logo1"></div>
+        <div class="tagline" data-words>Private AI for every chain, paid for by yield.</div>
+      </section>
+
+      <!-- 6. Chapter 01 -->
+      <section class="scene chapter" id="s-ch1">
+        <div class="ch" data-whip>
+          <span class="ch-num mono">01</span>
+          <h1 data-words>Bringing everyone | to NEAR AI Cloud</h1>
+          <p class="mono dim" data-words>From any chain, with the wallet you already have.</p>
+        </div>
+      </section>
+
+      <!-- 7. Deposit -->
+      <section class="scene" id="s-deposit">
+        <div class="main" data-scale="1.3">
+          <div class="card deposit" data-whip>
+            <div class="card-head"><i class="ic" data-icon="aave"></i><b>Aave USDC vault</b><span class="pill"><i class="ic" data-icon="base"></i>Base</span></div>
+            <div class="mono dim lab">Deposit</div>
+            <div class="input"><span class="amt" id="amt"></span><span class="tok"><i class="ic" data-icon="usdc"></i>USDC</span></div>
+            <div class="kv"><span>Principal</span><b><i class="lock"></i>stays yours</b></div>
+            <div class="kv"><span>Yield</span><b>becomes API credits</b></div>
+            <div class="foot"><span class="mono dim">ERC-4626 · Base mainnet</span><span class="btn" id="depbtn"><span id="deplabel">Deposit</span></span></div>
+          </div>
+        </div>
+        <div class="cap"><div class="l1" data-words>Deposit on your own chain.</div><div class="l2" data-words>The principal stays yours.</div></div>
+      </section>
+
+      <!-- 8. Yield becomes credits -->
+      <section class="scene" id="s-yield">
+        <div class="main" data-scale="1.4">
+          <div class="flowcol" data-whip>
+            <div class="flow">
+              <div class="chip"><i class="ic" data-icon="usdc"></i><span class="txt"><b>Aave USDC vault</b><span class="mono dim"><i class="lock sm"></i>1,000.00 principal</span></span></div>
+              <div class="link" id="yl1"><i class="fill"></i></div>
+              <div class="hub"><span class="disc"><i class="ic" data-icon="near"></i></span><span class="mono dim">Credit ledger</span></div>
+              <div class="link" id="yl2"><i class="fill"></i></div>
+              <div class="chip"><span class="sq-ic"><i></i></span><span class="txt"><b>API credits</b><span class="mono credit" id="credits">$0.000</span></span></div>
+            </div>
+            <div class="steps" id="ysteps">
+              <div class="step"><i></i><span class="mono">Yield earned</span></div>
+              <div class="step"><i></i><span class="mono">Posted on NEAR</span></div>
+              <div class="step"><i></i><span class="mono">Credits ready</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="cap"><div class="l1" data-words>Only the yield moves.</div><div class="l2" data-words>It becomes API credits on NEAR.</div></div>
+      </section>
+
+      <!-- 9. Sign in, no NEAR account -->
+      <section class="scene" id="s-signin">
+        <div class="main" data-scale="1.35">
+          <div class="signin" data-whip>
+            <div class="connect" id="connect">
+              <span class="c-idle"><i class="ic" data-icon="base"></i>Connect wallet</span>
+              <span class="c-done"><i class="ic" data-icon="base"></i><span class="mono">0x7f3a…21c9</span><span class="ok"><i class="ck"></i>Signed in</span></span>
+            </div>
+            <div class="nos">
+              <span class="no"><i class="ck"></i>No NEAR account</span>
+              <span class="no"><i class="ck"></i>No NEAR key</span>
+              <span class="no"><i class="ck"></i>No NEAR tokens</span>
+            </div>
+          </div>
+        </div>
+        <div class="cap"><div class="l1" data-words>Sign in with the wallet you already have.</div><div class="l2" data-words>InferNear holds the NEAR side for you.</div></div>
+      </section>
+
+      <!-- 10. Chapter 02 -->
+      <section class="scene chapter" id="s-ch2">
+        <div class="ch" data-whip>
+          <span class="ch-num mono">02</span>
+          <h1 data-words>Bringing NEAR AI Cloud | to everyone</h1>
+          <p class="mono dim" data-words>One endpoint, in the format you already use.</p>
+        </div>
+      </section>
+
+      <!-- 11. Code -->
+      <section class="scene" id="s-code">
+        <div class="main" data-scale="1.15">
+          <div class="code" data-whip>
+            <div class="code-bar"><i></i><i></i><i></i><span class="mono">app.py</span></div>
+            <pre class="mono"><span class="k">import</span> os
+<span class="k">from</span> openai <span class="k">import</span> OpenAI
+
+client = OpenAI(
+<span class="hl" id="hl1">    base_url=<span class="s">"<span id="url"></span>"</span>,</span>
+<span class="hl" id="hl2">    api_key=os.environ[<span class="s">"<span id="key"></span>"</span>],</span>
+)
+
+reply = client.chat.completions.create(
+    model=<span class="s">"Qwen/Qwen3.8-27B"</span>,
+    messages=[{<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: <span class="s">"Hello"</span>}],
+)</pre>
+            <span class="tag mono" id="tag1">changed</span><span class="tag mono" id="tag2">changed</span>
+          </div>
+        </div>
+        <div class="cap"><div class="l1" data-words>Keep your OpenAI client.</div><div class="l2" data-words>Change the URL and the key.</div></div>
+      </section>
+
+      <!-- 12. Models and a reply -->
+      <section class="scene" id="s-models">
+        <div class="main" data-scale="1.12">
+          <div class="pair" data-whip>
+            <div class="card models">
+              <div class="card-head"><span class="sq-ic"><i></i></span><b>7 private models</b><span class="mono dim">GET /v1/models</span></div>
+              <div class="mrows">
+                <div class="mrow"><span class="mono">DeepSeek-V4.1-Flash-1017</span><span class="tee">TEE</span></div>
+                <div class="mrow"><span class="mono">DeepSeek-V4.1-Flash-…-abliterated</span><span class="tee">TEE</span></div>
+                <div class="mrow"><span class="mono">Qwen3.6-35B-A3B-FP8</span><span class="tee">TEE</span></div>
+                <div class="mrow" id="pick"><span class="mono">Qwen3.8-27B</span><span class="tee">TEE</span></div>
+                <div class="mrow"><span class="mono">Qwen3.8-27B-abliterated</span><span class="tee">TEE</span></div>
+                <div class="mrow"><span class="mono">Qwen3-VL-30B-A3B-Instruct</span><span class="tee">TEE</span></div>
+                <div class="mrow"><span class="mono">glm-5.3-flash</span><span class="tee">TEE</span></div>
+              </div>
+            </div>
+            <div class="reply">
+              <div class="r-head mono"><span class="ok200">200 OK</span><span class="dim2">POST /v1/chat/completions</span></div>
+              <div class="r-model mono">Qwen/Qwen3.8-27B</div>
+              <div class="r-text" id="rtext"></div>
+              <div class="r-foot">
+                <span class="sig mono" id="sig"><i class="ck"></i>Signed inside the TEE</span>
+                <span class="mono dim2" id="iid">inference-id 7f04ff95…</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cap"><div class="l1" data-words>Only private models, in attested TEEs.</div><div class="l2" data-words>Replies are signed inside the TEE.</div></div>
+      </section>
+
+      <!-- 13. Private mode -->
+      <section class="scene" id="s-private">
+        <div class="main" data-scale="1.12">
+          <div class="flow priv" data-whip>
+            <div class="card pnode">
+              <div class="mono dim">Your machine</div>
+              <div class="ptext mono" id="ptext">Summarise my contract</div>
+              <div class="mono dim small">encrypts to the model's key</div>
+            </div>
+            <div class="link" id="pl1"><i class="fill"></i><span class="packet mono" id="pk1">encrypted</span></div>
+            <div class="card pnode relay">
+              <div class="mono dim2">InferNear relay</div>
+              <div class="ptext mono cipher" id="cipher"></div>
+              <div class="mono dim2 small">forwards bytes it cannot read</div>
+            </div>
+            <div class="link" id="pl2"><i class="fill"></i><span class="packet mono" id="pk2">encrypted</span></div>
+            <div class="card pnode tee-node">
+              <span class="core" id="core"><i></i></span>
+              <div class="mono dim">Model TEE</div>
+              <div class="mono dim small">decrypts and signs here</div>
+            </div>
+          </div>
+        </div>
+        <div class="cap"><div class="l1" data-words>Private mode: encrypted on your machine.</div><div class="l2" data-words>The relay forwards bytes it cannot read.</div></div>
+      </section>
+
+      <!-- 14. Proof slam -->
+      <section class="scene" id="s-proof">
+        <div class="panel night" id="proofpanel">
+          <div class="proof">
+            <div class="ph" data-words>Proof, not *promises.*</div>
+            <div class="pl" data-words>Models you can attest.</div>
+            <div class="pl" data-words>Base vaults with no admin.</div>
+            <div class="pl" data-words>Every credit on a public NEAR ledger.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 15. Vision -->
+      <section class="scene" id="s-vision">
+        <svg class="rays" id="rays" viewBox="0 0 1920 1080"></svg>
+        <div class="orbit" id="orbit">
+          <div class="center"><div class="mark-c" id="markc"></div><b>InferNear</b><span class="mono dim">on NEAR AI Cloud</span></div>
+          <div class="sat live" data-a="-90"><i class="ic" data-icon="base"></i><span class="mono">Base · live</span></div>
+          <div class="sat" data-a="-38"><i class="ic" data-icon="ethereum"></i><span class="mono">Ethereum</span></div>
+          <div class="sat" data-a="14"><i class="ic" data-icon="arbitrum"></i><span class="mono">Arbitrum</span></div>
+          <div class="sat" data-a="62"><i class="ic" data-icon="bnb"></i><span class="mono">BNB Chain</span></div>
+          <div class="sat" data-a="118"><i class="ic" data-icon="robinhood"></i><span class="mono">Robinhood Chain</span></div>
+          <div class="sat" data-a="166"><i class="ic" data-icon="solana"></i><span class="mono">Solana</span></div>
+          <div class="sat" data-a="218"><i class="ic" data-icon="sui"></i><span class="mono">Sui</span></div>
+        </div>
+        <div class="cap"><div class="l1" data-words>Your chain. Your wallet. Private AI.</div><div class="l2 sm" data-words>Base today. More chains next, with NEAR Intents as the rail.</div></div>
+      </section>
+
+      <!-- 16. End card -->
+      <section class="scene" id="s-end">
+        <div class="logo-wrap dark" id="logo2"></div>
+        <div class="end-tag" data-words>Private AI for every chain, paid for by yield.</div>
+        <div class="end-url mono" id="endurl">infernear.dev</div>
+        <div class="end-foot mono" id="endfoot"><span>Built at NEAR HACKATHON</span><span class="dotsep"></span><i class="ic" data-icon="near"></i><span>Powered by NEAR AI Cloud</span></div>
+      </section>
+
+      <div id="cursor"><svg viewBox="0 0 28 28"><path d="M5 3.5v19.2l5.1-4.6 3.3 7.5 3.3-1.4-3.2-7.4h6.9z" fill="#141519" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+      <div id="ripple"></div>
+    </div>
+    <div id="hud"><div id="hudbar"><i></i></div><span id="hudtime"></span></div>
+    <script type="module" src="/src/film.js"></script>
+  </body>
+</html>

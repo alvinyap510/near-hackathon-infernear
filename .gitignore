@@ -26,3 +26,6 @@ __pycache__/
 
 # vitepress
 **/.vitepress/cache/
+
+# film renders
+video/out/
