@@ -65,7 +65,7 @@ test('real NEAR adapter uses finalized views, distinct signers, numeric receipts
     if (method === 'send_tx') {
       const transaction = decodeSignedTransaction(Buffer.from(params.signed_tx_base64, 'base64')).transaction;
       const call = transaction.actions[0].functionCall!;
-      signed.push({ receiver: transaction.receiverId, signer: transaction.signerId, method: call.methodName, args: JSON.parse(Buffer.from(call.args).toString()), deposit: call.deposit });
+      signed.push({ receiver: transaction.receiverId, signer: transaction.signerId, method: call.methodName, args: JSON.parse(Buffer.from(call.args).toString()), deposit: call.deposit, gas: call.gas });
       return { final_execution_status: 'FINAL', status: { SuccessValue: Buffer.from(call.methodName === 'bump_key_epoch' ? '2' : '').toString('base64') },
         transaction: { hash: 'fixture-tx', signer_id: transaction.signerId, public_key: key.getPublicKey().toString(), nonce: 11, receiver_id: 'connector.near', actions: [], signature: '' }, receipts_outcome: [], transaction_outcome: { id: 'fixture-tx', outcome: { logs: [], receipt_ids: [], gas_burnt: 0, tokens_burnt: '0', executor_id: transaction.signerId, status: { SuccessValue: '' } }, proof: [], block_hash: '11111111111111111111111111111111' } };
     }
@@ -83,6 +83,8 @@ test('real NEAR adapter uses finalized views, distinct signers, numeric receipts
   await connector.postCredits('fixture-vault', 100n, 10n ** 18n, 10n, [['fixture-user', 100n]]);
   assert.deepEqual(signed.map(tx => tx.signer), ['gateway.near', 'gateway.near', 'keeper.near']);
   assert.ok(signed.every(tx => tx.deposit === 0n));
+  // Gas is paid up front: the connector's own methods ask for what they need, so accounts holding 0.3 NEAR can send them.
+  assert.deepEqual(signed.map(tx => tx.gas), [30_000_000_000_000n, 30_000_000_000_000n, 100_000_000_000_000n]);
   assert.deepEqual(signed[0].args.receipt, receipt);
   assert.deepEqual(signed[2].args, { vault: 'fixture-vault', paid_cum: '100', rate: '1000000000000000000', source_block: 10, entries: [['fixture-user', '100']] });
   await connector.rhea.skim();

@@ -16,9 +16,13 @@ export async function nearConnector(config: { rpc: string; contract: string; gat
     return lock;
   };
   const view = (method: string, args: Record<string, unknown>) => provider.callFunction<any>({ contractId: config.contract, method, args, blockQuery: { finality: 'final' } });
-  const call = (account: NearAccount, methodName: string, args: Record<string, unknown>, contractId = config.contract) => lockFor(account).run(async () => {
+  // Gas is paid for up front and the unused part refunded: the 300 TGas maximum needs about 0.3 NEAR free in the
+  // signing account, which the keeper and gateway accounts do not hold. The connector's own methods need far less:
+  // a debit or a key bump writes one or two records, and a post writes at most 100 entries.
+  const MAX_GAS = 300_000_000_000_000n, POST_GAS = 100_000_000_000_000n, LEDGER_GAS = 30_000_000_000_000n;
+  const call = (account: NearAccount, methodName: string, args: Record<string, unknown>, contractId = config.contract, gas = MAX_GAS) => lockFor(account).run(async () => {
     try {
-      const outcome = await account.callFunctionRaw({ contractId, methodName, args, gas: 300_000_000_000_000n, deposit: 0n, waitUntil: 'FINAL' });
+      const outcome = await account.callFunctionRaw({ contractId, methodName, args, gas, deposit: 0n, waitUntil: 'FINAL' });
       const status = outcome.status;
       if (typeof status !== 'object' || !('SuccessValue' in status)) throw new Error(JSON.stringify(status));
       const text = Buffer.from(status.SuccessValue, 'base64').toString();
@@ -95,9 +99,9 @@ export async function nearConnector(config: { rpc: string; contract: string; gat
       return { credited: BigInt(value.credited), spent: BigInt(value.spent), available: BigInt(value.available), key_epoch: value.key_epoch };
     },
     async debitedAmount(id) { const value = await view('debited_amount', { inference_id: id }); return value === null ? null : BigInt(value); },
-    async debit(user: string, amount: bigint, receipt: Receipt) { await call(gateway, 'debit', { user, amount_micro: String(amount), receipt }); },
-    async bumpKeyEpoch(user) { const result = await call(gateway, 'bump_key_epoch', { user }); return { key_epoch: result.value, tx_hash: result.tx_hash }; },
-    async postCredits(vault, paid, rate, sourceBlock, entries) { await call(keeper, 'post_credits', { vault, paid_cum: String(paid), rate: String(rate), source_block: Number(sourceBlock), entries: entries.map(([user, amount]) => [user, String(amount)]) }); },
+    async debit(user: string, amount: bigint, receipt: Receipt) { await call(gateway, 'debit', { user, amount_micro: String(amount), receipt }, config.contract, LEDGER_GAS); },
+    async bumpKeyEpoch(user) { const result = await call(gateway, 'bump_key_epoch', { user }, config.contract, LEDGER_GAS); return { key_epoch: result.value, tx_hash: result.tx_hash }; },
+    async postCredits(vault, paid, rate, sourceBlock, entries) { await call(keeper, 'post_credits', { vault, paid_cum: String(paid), rate: String(rate), source_block: Number(sourceBlock), entries: entries.map(([user, amount]) => [user, String(amount)]) }, config.contract, POST_GAS); },
     async posted(vault) { const value = await view('vault', { vault }); return { paid: BigInt(value.paid_cum), total: BigInt(value.posted_total) }; },
     async storageBalance() {
       const state = await provider.viewAccount({ accountId: config.contract, blockQuery: { finality: 'final' } });
