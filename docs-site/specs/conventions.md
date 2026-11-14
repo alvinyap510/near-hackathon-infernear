@@ -46,9 +46,10 @@ The gateway takes a snapshot of the model's input and output prices when it admi
 
 ## Finality
 
-Credits are derived only from finalized chain state.
+Credits from yield are derived only from finalized chain state. Credits from purchases are derived from Base two blocks behind its head.
 
-* Base vaults and the top-up contract are read at a recent **finalized** Base block. Finality on Base trails the head by about 20 minutes.
+* Base vaults are read at a recent **finalized** Base block. Finality on Base trails the head by about 20 minutes.
+* The top-up contract is read two blocks behind the head of Base, so a purchase is credited within seconds. If Base ever dropped such a block, InferNear would bear the credits given for it.
 * The Rhea vault is read at a **finalized** NEAR block.
 * The price feed for a vault is read at the same block as the vault.
 

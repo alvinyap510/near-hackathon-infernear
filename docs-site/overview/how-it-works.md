@@ -25,7 +25,7 @@ InferNear gives them one OpenAI-format endpoint, sign-in with the wallet they al
 |---|---|---|
 | **Vaults** | Base (three ERC-4626 vaults) and NEAR (the Rhea USDC vault) | Hold principal; pay out only yield |
 | **Credit top-up** | Base | Sells credits for USDC, for people who prefer not to deposit |
-| **Keeper** | InferNear's relay | Reads vaults and purchases at finalized blocks and posts credits to the ledger |
+| **Keeper** | InferNear's relay | Reads vaults at finalized blocks and purchases within seconds, and posts credits to the ledger |
 | **Credit ledger** | NEAR (`connector.infernear-ai.near`) | Records credits posted and spent per user, with a receipt for every paid call |
 | **Gateway** | InferNear's relay (`api.infernear.dev`) | Authenticates API keys, checks credits, forwards calls, settles charges |
 | **NEAR AI Cloud** | NEAR AI's TEEs | Runs the models and signs their replies |

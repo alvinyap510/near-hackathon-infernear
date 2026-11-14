@@ -30,7 +30,7 @@ Your user id is `eip155:8453:<your address, lower case>` for an EVM wallet or `n
 2. It prices that yield in USD: USDC at $1, cbETH from Chainlink's cbETH/USD feed, the Pendle PT from Pendle's 15-minute average price.
 3. It posts the result to the ledger. Only this keeper can post, and for each vault the ledger checks that the yield posted for users never adds up to more than the yield total the keeper reports for that vault.
 
-Yield is collected once it is worth collecting, so small positions can wait a while before their first credits appear. Purchases through the top-up contract are posted about 20 minutes after they are made, once Base has finalized the block.
+Yield is collected once it is worth collecting, so small positions can wait a while before their first credits appear. Purchases through the top-up contract are posted within seconds of being made.
 
 ## How a call spends credits
 

@@ -40,7 +40,7 @@ What each block prints when it passes:
 
 | Block | Expected |
 |---|---|
-| Relay | `tests 97`, `pass 97`, `fail 0`, then the demo's last line `{"fixture":true,"status":200,"credited":"1000","spent":"13","available":"987"}` |
+| Relay | `tests 98`, `pass 98`, `fail 0`, then the demo's last line `{"fixture":true,"status":200,"credited":"1000","spent":"13","available":"987"}` |
 | Console | `tests 104`, `pass 104`, `fail 0`, then `built` |
 | Base contracts | `85 tests passed, 0 failed, 3 skipped` (the three skipped tests need a Base RPC) |
 | NEAR contracts | `test result: ok. 14 passed` (credit ledger) and `test result: ok. 44 passed` (Rhea vault) |

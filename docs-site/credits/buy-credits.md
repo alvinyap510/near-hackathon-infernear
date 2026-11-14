@@ -11,7 +11,7 @@ The USDC goes to InferNear and cannot be redeemed.
 1. Open [app.infernear.dev](https://app.infernear.dev) and connect an EVM wallet on Base.
 2. On the **Account** tab, find **Add credits**.
 3. Enter an amount (the minimum is 1 USDC) and confirm. Your wallet approves exactly that amount, then pays.
-4. The credits appear about 20 minutes later, once Base has finalized the payment and the keeper has posted it to the NEAR ledger.
+4. The credits appear within seconds, once the keeper has posted the payment to the NEAR ledger. The Account page updates on its own.
 
 The box shows the total you have bought and the transaction hash of your purchase.
 

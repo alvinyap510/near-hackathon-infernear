@@ -59,7 +59,7 @@ Storage must work before `pay`. A failed hash write removes the stale entry and 
 
 The same wallet-operation validity checks cover vault approval→deposit, redeem, native Rhea actions, and Rhea bridge/signature→relay flows. Disconnecting or changing providers during an approval, quote, account read or signature stops the next transaction/submission. This does not revoke an ERC-20 approval that already mined.
 
-The box shows the owner's total bought. Credits appear after Base finality (about 20 minutes) and the keeper's NEAR post; the live client does not synthesize an immediate credit. A labelled mock purchase changes synthetic credits and wallet USDC, never principal.
+The box shows the owner's total bought. Credits appear within seconds, once the keeper has posted the purchase to NEAR; the live client does not synthesize a credit. While less is credited than was bought, or after a purchase made in the box, it re-reads the balances every 5 seconds for at most 2 minutes. A labelled mock purchase changes synthetic credits and wallet USDC, never principal.
 
 ## API calls
 

@@ -56,7 +56,7 @@ Settlement is on NEAR throughout: credits are posted to the ledger by a keeper, 
 
 **With funds (optional, small amounts). Built, tested on fixtures and on a fork of live Base, but not yet run with real money on mainnet.**
 
-9. **Account** → Add credits → buy 1 USDC of credits on Base (a purchase, not redeemable) → about 20 minutes later the Account tab shows $1.00 of credits, posted on NEAR.
+9. **Account** → Add credits → buy 1 USDC of credits on Base (a purchase, not redeemable) → within seconds the Account tab shows $1.00 of credits, posted on NEAR.
 10. Or deposit USDC into the Aave USDC vault → its yield is posted as credits once it is worth $0.001; the principal stays redeemable.
 11. A call paid with credits shows its debit on NEAR in the result panel, under its inference ID.
 
@@ -182,7 +182,7 @@ flowchart LR
 ```
 
 1. **Deposit on your chain.** Each vault is an ERC-4626 vault with no owner, admin, upgrade or pause. You can redeem your principal whenever the underlying protocol has the liquidity to pay it (Aave and Rhea Lend can be fully lent out for a time; withdrawals from the Rhea vault queue until its next cycle); only the surplus above principal is paid to InferNear.
-2. **Yield becomes credits.** The keeper reads each holder's attributed yield at a finalized block, prices it in USD, and posts it to the NEAR connector. Credits come only from what the keeper posts, which is realized yield and finalized USDC purchases through the top-up contract: `spent ≤ credited` per user, enforced on chain.
+2. **Yield becomes credits.** The keeper reads each holder's attributed yield at a finalized block, prices it in USD, and posts it to the NEAR connector. Credits come only from what the keeper posts, which is realized yield and USDC purchases through the top-up contract: `spent ≤ credited` per user, enforced on chain.
 3. **Call the API.** Sign in with your wallet to create an API key: an EVM wallet (EIP-4361) or Meteor Wallet on NEAR (NEP-413). Then point an OpenAI client or NEAR AI's SDK at InferNear's endpoint. The gateway charges the model's reported `usage` against your credits. Each wallet gets 5 free trial calls, funded by InferNear, before credits are needed. You can pick a handle for your account and link a second wallet to it, EVM or NEAR, so one identity and one API key cover both.
 
 ### Two ways to call the API
@@ -209,14 +209,14 @@ A fourth shape, staking with claimable rewards, is built and tested (`StakingRew
 
 ### Buying credits directly
 
-`CreditTopUp` (`contracts/evm/src/CreditTopUp.sol`) sells credits for USDC at 1 USDC = $1 of credits. **It is a purchase, not a deposit: the USDC goes straight to InferNear and cannot be redeemed.** The contract holds no funds and has no owner, admin, pause or upgrade path. The keeper credits each buyer from the contract's finalized `paid` totals, and the console shows an "Add credits" box when the contract's address is configured. It was deployed on Base on 13 Nov 2026 ([transaction](https://basescan.org/tx/0xff918851dfb148b216a386834086b279d652c38976bb5c9e7b31074c2460e284)), with a 1 USDC minimum; credits appear after Base finality, about 20 minutes. No purchase has been made through it yet.
+`CreditTopUp` (`contracts/evm/src/CreditTopUp.sol`) sells credits for USDC at 1 USDC = $1 of credits. **It is a purchase, not a deposit: the USDC goes straight to InferNear and cannot be redeemed.** The contract holds no funds and has no owner, admin, pause or upgrade path. The keeper credits each buyer from the contract's `paid` totals, read two blocks behind the head of Base every 5 seconds, and the console shows an "Add credits" box when the contract's address is configured. It was deployed on Base on 13 Nov 2026 ([transaction](https://basescan.org/tx/0xff918851dfb148b216a386834086b279d652c38976bb5c9e7b31074c2460e284)), with a 1 USDC minimum. Credits appear within seconds of a purchase, before Base finality: if Base ever dropped the block, InferNear would bear the credits given for it, never a user. The first purchase, 2 USDC on 15 Nov 2026, is credited on the NEAR connector.
 
 ## Verify it yourself
 
 Prerequisites: Node 24.22.1+, Foundry (Forge 1.5.1), rustup Rust 1.97.1 with the `wasm32-unknown-unknown` target, a C/C++ toolchain and CMake. Each step needs network access once to install dependencies.
 
 ```sh
-# API relay: gateway + keeper (97 tests, then an end-to-end demo on fixtures)
+# API relay: gateway + keeper (98 tests, then an end-to-end demo on fixtures)
 cd relay && npm ci --ignore-scripts && npm test && npm run demo && cd ..
 
 # Dashboard (104 tests, production build); `npm run dev` serves it on mock data unless the live `VITE_*` settings are filled in
@@ -239,7 +239,7 @@ What each block prints when it passes:
 
 | Block | Expected |
 |---|---|
-| Relay | `ℹ tests 97`, `ℹ pass 97`, `ℹ fail 0`, then the demo's last line `{"fixture":true,"status":200,"credited":"1000","spent":"13","available":"987"}` |
+| Relay | `ℹ tests 98`, `ℹ pass 98`, `ℹ fail 0`, then the demo's last line `{"fixture":true,"status":200,"credited":"1000","spent":"13","available":"987"}` |
 | Dashboard | `ℹ tests 104`, `ℹ pass 104`, `ℹ fail 0`, then `✓ built` |
 | Base contracts | `85 tests passed, 0 failed, 3 skipped` (the three skipped tests need a Base RPC and are run separately, see `contracts/evm/README.md`) |
 | NEAR contracts | `test result: ok. 14 passed` (credit ledger) and `test result: ok. 44 passed` (Rhea vault) |

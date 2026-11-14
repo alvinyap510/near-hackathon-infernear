@@ -22,7 +22,7 @@ It stays yours. A vault puts it into a yield-bearing position and pays only the 
 
 ## How long until my credits show up?
 
-* **A purchase:** about 20 minutes, once Base has finalized the payment.
+* **A purchase:** a few seconds.
 * **Vault yield:** when enough has built up to be worth collecting. A small deposit can wait a while for its first credits.
 
 ## What happens when I run out of credits?

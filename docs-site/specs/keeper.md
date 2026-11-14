@@ -1,6 +1,6 @@
 # Keeper
 
-The keeper turns yield and purchases into credits. It reads each vault and the top-up contract at a finalized block, prices what it finds, and posts cumulative totals to the [credit ledger](credit-ledger.md). It runs in the same Node process as the [gateway](gateway.md).
+The keeper turns yield and purchases into credits. It reads each vault at a finalized block and the top-up contract two blocks behind the head of Base, prices what it finds, and posts cumulative totals to the [credit ledger](credit-ledger.md). It runs in the same Node process as the [gateway](gateway.md).
 
 | Property | Value |
 |---|---|
@@ -16,7 +16,7 @@ Every minute the keeper reads every source. For each source it can do two things
 |---|---|
 | A Base vault | `skim()`, simulated at the latest block, would pay out yield worth at least the configured threshold |
 | The Rhea vault | It has queued deposits or exits, attributed yield awaiting payout, cash it has not supplied, or unrealized yield of the threshold amount |
-| Any source | Its finalized cumulative entries differ from what the ledger already holds |
+| Any source | Its cumulative entries differ from what the ledger already holds |
 
 If the same work is still there after a transaction, including a failed one, the keeper waits 1, 2, 4 minutes and so on, up to 6 hours, before sending again. A growing amount does not count as new work. A skim simulation that reverts sends nothing and does not hold back posting.
 
@@ -59,7 +59,7 @@ post_credits(vault, paid_cum, rate, source_block, entries)
 
 ## The credit top-up
 
-A `topup` entry is the [credit top-up contract](base-vaults.md#credit-top-up), not a vault. Its beneficiaries come from its `Paid` events, and their credits from `paid(beneficiary)` at the same finalized block, posted at `1e18` under `paidTotal()`. Nothing is ever unpaid, and the keeper never sends it a transaction.
+A `topup` entry is the [credit top-up contract](base-vaults.md#credit-top-up), not a vault. Its beneficiaries come from its `Paid` events, and their credits from `paid(beneficiary)` at the same block, two blocks behind the head of Base and read every 5 seconds, posted at `1e18` under `paidTotal()`. Nothing is ever unpaid, and the keeper never sends it a transaction.
 
 ## The Rhea vault
 
@@ -75,4 +75,4 @@ The keeper reports the ledger's balance and storage, and the free NEAR balance o
 
 ## Trust
 
-The keeper decides how yield is priced and which holder earned it. It cannot move principal, and every input it uses is public chain data at a named finalized block, so its posts can be recomputed by anyone.
+The keeper decides how yield is priced and which holder earned it. It cannot move principal, and every input it uses is public chain data at a named block, so its posts can be recomputed by anyone.
