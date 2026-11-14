@@ -4340,6 +4340,12 @@ body:has(dialog.wd[open]) {
   color: var(--ink-3);
 }
 
+.topup-eta .spinner {
+  display: inline-block;
+  margin-right: 8px;
+  vertical-align: -2px;
+}
+
 .topup-main {
   grid-area: main;
   min-width: 0;

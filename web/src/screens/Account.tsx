@@ -99,7 +99,7 @@ export function Account({
         </ul>
       </section>
 
-      {session.kind==='evm' && <TopUp session={session} onChanged={onChanged}/>}
+      {session.kind==='evm' && <TopUp session={session} credited={credits.credited} onChanged={onChanged}/>}
 
       <section className="picker-wrap rise d3" aria-labelledby="picker-h">
         <h2 id="picker-h" className="mini-h">

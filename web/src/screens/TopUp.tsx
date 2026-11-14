@@ -3,12 +3,22 @@ import { data, PURCHASE_NOTICE, type Session, type TopUpAccount, type PurchaseSt
 import { AssetBadge, ChainBadge, CopyButton, ErrorNote, Spinner, errorText } from '../components/ui.tsx';
 import { formatAmount, formatUsd, parseUsdc, shortHex } from '../data/money.ts';
 const exact=(amount:bigint)=>`${formatAmount(amount,6,6)} USDC`;
-export function TopUp({session,onChanged}:{session:Session;onChanged():Promise<void>}){
+export function TopUp({session,credited,onChanged}:{session:Session;credited:bigint;onChanged():Promise<void>}){
   const [account,setAccount]=useState<TopUpAccount|null>(null),[input,setInput]=useState('');
   const [confirm,setConfirm]=useState<{session:Session;amount:bigint}|null>(null),[busy,setBusy]=useState(false);
   const [error,setError]=useState<string|null>(null),[purchase,setPurchase]=useState<PurchaseState|null>(null);
+  // `bought` is the credited total when the last purchase here confirmed; the page watches for its credits until `until`.
+  const [bought,setBought]=useState<bigint|null>(null),[until,setUntil]=useState(()=>Date.now()+120_000),[poll,setPoll]=useState(0);
+  // Credits are behind when less is credited than was bought, or when nothing has arrived since a purchase made here.
+  const behind=account!==null&&(credited<account.paid||(bought!==null&&credited<=bought));
+  // While they are behind, re-read the balances every 5 seconds (for at most 2 minutes), so the credits show up on their own.
   useEffect(()=>{
-    let stopped=false;setConfirm(null);setInput('');setAccount(null);setPurchase(null);setError(null);
+    if(!behind||Date.now()>until)return;
+    const timer=setTimeout(()=>{void onChanged().catch(()=>{}).finally(()=>setPoll(n=>n+1));},5000);
+    return()=>clearTimeout(timer);
+  },[behind,until,poll,credited]);
+  useEffect(()=>{
+    let stopped=false;setConfirm(null);setInput('');setAccount(null);setPurchase(null);setError(null);setBought(null);setUntil(Date.now()+120_000);
     void Promise.all([data.topUpAccount(session),data.topUpPurchase(session)]).then(([account,state])=>{if(!stopped){setAccount(account);setPurchase(state);}}).catch(e=>{if(!stopped)setError(errorText(e));});
     return()=>{stopped=true;};
   },[session]);
@@ -35,7 +45,7 @@ export function TopUp({session,onChanged}:{session:Session;onChanged():Promise<v
   const buy=async()=>{
     if(reviewed===null)return;const amount=reviewed;
     setConfirm(null);setInput('');setBusy(true);setError(null);
-    try{await data.topUp(session,amount);setPurchase(await data.topUpPurchase(session));setAccount(await data.topUpAccount(session));
+    try{await data.topUp(session,amount);setBought(credited);setUntil(Date.now()+120_000);setPurchase(await data.topUpPurchase(session));setAccount(await data.topUpAccount(session));
       try{await onChanged();}catch{setError('Purchase confirmed; balance refresh failed. Do not repeat the purchase.');}
     }catch(e){setError(errorText(e));try{setPurchase(await data.topUpPurchase(session));}catch{/* Keep the original failure visible; another submission stays blocked in the data layer. */}}
     finally{setBusy(false);}
@@ -52,7 +62,7 @@ export function TopUp({session,onChanged}:{session:Session;onChanged():Promise<v
           <div><dt>USDC on Base · connected wallet</dt><dd>{formatAmount(account.walletBalance,6,2)}<span className="topup-unit">USDC</span></dd></div>
           <div><dt>Total bought for you</dt><dd>{formatAmount(account.paid,6,2)}<span className="topup-unit">USDC</span></dd></div>
         </dl>
-        <p className="topup-eta">Credits appear after Base finality (about 20 minutes), when the keeper posts the purchase to NEAR.</p>
+        <p className="topup-eta">{behind&&Date.now()<=until?<><Spinner/>Posting your purchase to NEAR. Your credits update here on their own.</>:'Credits appear within seconds of the purchase confirming on Base, when the keeper posts it to NEAR.'}</p>
       </div>
       <div className="topup-main">
         {purchase&&recorded&&<div className={`topup-status ${recorded.tone}`}>
@@ -74,7 +84,7 @@ export function TopUp({session,onChanged}:{session:Session;onChanged():Promise<v
           <dl className="topup-summary">
             <div><dt>From</dt><dd>{wallet?<code>{wallet}</code>:'Connected wallet'}, on Base</dd></div>
             <div><dt>You get</dt><dd>{formatUsd(reviewed)} of credits on NEAR, at 1 USDC = $1</dd></div>
-            <div><dt>Credits arrive</dt><dd>After Base finality, about 20 minutes</dd></div>
+            <div><dt>Credits arrive</dt><dd>Within seconds of the purchase confirming on Base</dd></div>
           </dl>
           <p className="loss-note topup-notice">{PURCHASE_NOTICE}</p>
           <div className="topup-actions"><button className="btn primary" onClick={()=>void buy()} disabled={busy}>{busy?<Spinner/>:<span className="btn-dot" aria-hidden="true"/>}Confirm purchase</button><button className="btn ghost" disabled={busy} onClick={()=>setConfirm(null)}>Cancel</button></div>
