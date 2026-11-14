@@ -258,7 +258,7 @@ Each component's README has the full verification set: Base fork tests against r
 | Dashboard (Vite, React) | `web/` | [web/README.md](web/README.md) |
 | Landing page (static, Vite) | `landing/` | [landing/README.md](landing/README.md) |
 | Documentation site (static, VitePress) | `docs-site/` | [docs-site/README.md](docs-site/README.md) |
-| Film: the 79-second overview video, drawn in HTML, CSS and SVG and rendered to MP4 | `video/` | [video/README.md](video/README.md) |
+| Film: the 84-second overview video, made in code (HTML, CSS, SVG, three.js and a Web Audio score) and rendered to MP4 | `video/` | [video/README.md](video/README.md) |
 | Interfaces between components | `docs/` | [docs/interfaces.md](docs/interfaces.md) |
 | Deployment (Docker, Cloudflare Tunnel) | `deploy/` | [deploy/README.md](deploy/README.md) |
 
@@ -306,6 +306,7 @@ All installed through package managers at pinned versions; no templates or pre-e
 | Dashboard | React 19, viem, @scure/base, @near-wallet-selector/core with its Meteor Wallet module, @near-js/transactions, buffer, Vite, Fontsource fonts (Hanken Grotesk, Martian Mono; the logo wordmark is outlined from Hanken Grotesk), @web3icons/react (MIT) for the chain, asset and protocol logos; Rhea's logo is Rhea's own file from rhea.finance |
 | Landing page | Vite, three.js, @web3icons/core (MIT) for the logos, the same Fontsource fonts and Rhea logo |
 | Documentation site | VitePress 1.6.4 (MIT) and the same Fontsource fonts |
+| Film | Vite, three.js, @web3icons/core (MIT), the same Fontsource fonts; Playwright (with the installed Google Chrome) and ffmpeg to render it. The score is synthesised in the browser, with no samples |
 | Deployment | Docker images `node:24.22.1-bookworm-slim` and `cloudflare/cloudflared:2026.10.7` |
 | Live SDK probe (optional) | NEAR AI's official [inference SDK](https://github.com/nearai/inference-sdk), installed outside the repo |
 
