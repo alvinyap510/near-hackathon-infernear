@@ -108,7 +108,7 @@ The request itself selects the mode: the SDK's encryption headers mean private m
 ## What has been verified, and what has not
 
 * **Verified live.** On 12 Nov 2026 a probe sent encrypted requests from both JavaScript and Python, plain and streaming, through the relay to a NEAR AI TEE model. The TEE signatures verified, tampered replies were rejected, and every charge matched NEAR AI's own bill after rounding up to a whole micro-USD. The probe used the SDK at commit `a0bf5fd` of nearai/inference-sdk.
-* **The npm package has had less testing than the probe.** `@nearai/inference-sdk@0.3.0` passed a free attestation check of a model through the live relay. We have not yet run a completion with that exact package; the probe above used a checkout of the SDK's repository.
+* **The published samples run as written.** On 14 Nov 2026 both samples on this page were run against the live relay with a throwaway wallet's free trial call: the JavaScript one with `@nearai/inference-sdk@0.3.0` from npm, the Python one with the SDK at commit `a0bf5fd`. Each returned an encrypted reply whose `provider_tee` signature verified.
 * **The model build check is off.** The SDK verifies the model's TEE hardware attestation and its signatures. NEAR's additional check that the model runs NEAR's published build currently rejects NEAR's own deployments, so the samples leave it out. The gateway build check stays on.
 * **In the console, private mode is code samples only.** "Try the API" sends standard-mode calls. A private call is made from your own code, as above.
 * **Not complete secrecy against an active relay.** A relay can still learn from request length, timing and token counts.
