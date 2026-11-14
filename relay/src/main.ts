@@ -43,8 +43,9 @@ async function main() {
   const retries = setInterval(() => { void gateway.retryDebits(); }, 1000);
   let stopped = false;
   void (async () => {
-    // Credit purchases are checked every 5 seconds so a buyer is credited promptly; every twelfth pass covers everything.
-    for (let pass = 0; !stopped; pass++) {
+    // Credit purchases are checked every 5 seconds so a buyer is credited promptly, and first after a restart;
+    // every twelfth pass covers everything.
+    for (let pass = 1; !stopped; pass++) {
       try { await keeper.tick(pass % 12 ? 'topup' : undefined); } catch (error) { reportError(report, 'keeper_retry', error); }
       await sleep(5_000);
     }
