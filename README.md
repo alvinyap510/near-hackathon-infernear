@@ -258,6 +258,7 @@ Each component's README has the full verification set: Base fork tests against r
 | Dashboard (Vite, React) | `web/` | [web/README.md](web/README.md) |
 | Landing page (static, Vite) | `landing/` | [landing/README.md](landing/README.md) |
 | Documentation site (static, VitePress) | `docs-site/` | [docs-site/README.md](docs-site/README.md) |
+| Film: the 79-second overview video, drawn in HTML, CSS and SVG and rendered to MP4 | `video/` | [video/README.md](video/README.md) |
 | Interfaces between components | `docs/` | [docs/interfaces.md](docs/interfaces.md) |
 | Deployment (Docker, Cloudflare Tunnel) | `deploy/` | [deploy/README.md](deploy/README.md) |
 
