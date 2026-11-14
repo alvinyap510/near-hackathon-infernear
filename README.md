@@ -9,9 +9,26 @@
 
 InferNear is an OpenAI-format API endpoint on top of NEAR AI's private TEE models. You deposit into a vault on your own chain and keep the principal; the yield goes to InferNear and comes back to you as API credits on NEAR. You call the endpoint in one of two ways: with any OpenAI client, by changing the base URL and key (standard mode, where the relay can read the prompt in transit), or with NEAR AI's official SDK, which encrypts the prompt on your machine to an attested model so the relay forwards ciphertext it cannot read (private mode). You never need a NEAR account or NEAR tokens: only InferNear does.
 
-Built at the NEAR HACKATHON (1–14 Nov 2026).
+Built at the NEAR HACKATHON (1–14 Nov 2026). Every commit in this repository was made between 4 and 14 Nov 2026 (UTC); there is no earlier baseline ([commit history](https://github.com/alvinyap510/near-hackathon-infernear/commits/main)).
 
-> **Status (13 Nov 2026): deployed on mainnet, with small caps.** The API is live at `https://api.infernear.dev/v1`, the console at `https://app.infernear.dev`, the landing page at `https://infernear.dev` and the documentation at `https://docs.infernear.dev`. Three Base vaults, the credit top-up contract, the NEAR credit ledger and the Rhea vault on NEAR are live. Free trial calls work on the live endpoint today (a real model reply, checked on 13 Nov). No user has deposited or bought credits yet, so no credits exist on the ledger and no credit-paid call has been made: see [known limits](#not-done-yet-and-known-limits). Every command under "Verify it yourself" runs from a clean clone, offline after install, against mocks and fixtures.
+**Demo:** [walkthrough video](https://www.loom.com/share/008bb265a87440cca9802d201ba0291f) · [console](https://app.infernear.dev) · [API](https://api.infernear.dev/v1/models) · [documentation](https://docs.infernear.dev) · [landing page](https://infernear.dev)
+
+> **Status (15 Nov 2026): deployed on mainnet, with small caps.** The API is live at `https://api.infernear.dev/v1`, the console at `https://app.infernear.dev`, the landing page at `https://infernear.dev` and the documentation at `https://docs.infernear.dev`. Three Base vaults, the credit top-up contract, the NEAR credit ledger and the Rhea vault on NEAR are live. Free trial calls return real model replies on the live endpoint, in standard mode and in private mode; in private mode the console verifies the model's TEE and the reply's signature in your browser. One credit purchase (2 USDC) has been made and is credited on the ledger. No vault deposit and no credit-paid call has happened yet: see [known limits](#not-done-yet-and-known-limits). Every command under "Verify it yourself" runs from a clean clone, offline after install, against mocks and fixtures.
+
+## Check the claims
+
+Each row is a claim this README makes and the quickest way to check it.
+
+| Claim | Check | You should see |
+|---|---|---|
+| The endpoint serves NEAR AI Cloud's private TEE models in OpenAI format | `curl -s https://api.infernear.dev/v1/models` | 7 models, each with a per-token input and output price |
+| A real model reply, with no wallet and no funds | `cd relay && npm ci --ignore-scripts && npm run live-check` | six `ok` lines, then `PASS` |
+| Private mode encrypts the prompt to an attested TEE and checks the reply's signature | [Console](https://app.infernear.dev) → API keys → create a key → Try the API → **Private** → Run | after 20 to 30 seconds, the reply with a **Verified** panel: TEE hardware, fresh nonce, model key, reply signature |
+| Users keep their principal; only yield becomes credits | `cd contracts/evm && npm ci --ignore-scripts && forge build && forge test --offline`, and [Fund-safety rules](#fund-safety-rules) | `85 tests passed, 0 failed, 3 skipped`, including invariant fuzzing |
+| The contracts are deployed on mainnet, and are this repository's code | [Live deployment](#live-deployment) and [the code-hash check](#the-deployed-code-is-this-repositorys-code) | explorer links; the NEAR code hashes equal the built ones, and the Base bytecode equals the build apart from constructor values |
+| NEAR Intents carries USDC between a user's chain and NEAR | [the dry-run quote](#near-intents-the-rail-between-a-users-chain-and-near) | a real 1Click quote, with no funds sent |
+| Everything builds and passes from a clean clone | [Verify it yourself](#verify-it-yourself) | relay 98 tests, console 104, Base contracts 85, NEAR contracts 58; the landing page and docs build |
+| What is not done is stated | [Not done yet, and known limits](#not-done-yet-and-known-limits) | no vault deposit or credit-paid call on mainnet yet, among others |
 
 ## The problem
 
@@ -296,14 +313,14 @@ The three Base vaults and the credit ledger have no owner, admin, pause or upgra
 
 ## Third-party libraries and services
 
-All installed through package managers at pinned versions; no templates or pre-existing code were copied in.
+All installed through package managers at pinned versions; no templates or pre-existing code were copied in. The code in this repository was written during the hackathon with AI coding agents (Claude Code, Codex and opencode) under the author's direction and review, which the hackathon's rules allow (Q-005).
 
 | Component | Libraries |
 |---|---|
 | Base vaults | OpenZeppelin Contracts 5.4, Aave v3 origin 3.6, Aave address book, forge-std (tests) |
 | NEAR contracts | near-sdk 5.30; near-contract-standards, near-workspaces, proptest and tokio (tests) |
 | Relay and NEAR scripts | viem, near-api-js; TypeScript (type checks) |
-| Dashboard | React 19, viem, @scure/base, @near-wallet-selector/core with its Meteor Wallet module, @near-js/transactions, buffer, Vite, Fontsource fonts (Hanken Grotesk, Martian Mono; the logo wordmark is outlined from Hanken Grotesk), @web3icons/react (MIT) for the chain, asset and protocol logos; Rhea's logo is Rhea's own file from rhea.finance |
+| Dashboard | React 19, viem, `@nearai/inference-sdk` 0.3.0 (NEAR AI's official SDK, loaded only for a private call), @scure/base, @near-wallet-selector/core with its Meteor Wallet module, @near-js/transactions, buffer, Vite, Fontsource fonts (Hanken Grotesk, Martian Mono; the logo wordmark is outlined from Hanken Grotesk), @web3icons/react (MIT) for the chain, asset and protocol logos; Rhea's logo is Rhea's own file from rhea.finance |
 | Landing page | Vite, three.js, @web3icons/core (MIT) for the logos, the same Fontsource fonts and Rhea logo |
 | Documentation site | VitePress 1.6.4 (MIT) and the same Fontsource fonts |
 | Film | Vite, three.js, @web3icons/core (MIT), the same Fontsource fonts; Playwright (with the installed Google Chrome) and ffmpeg to render it. The score is synthesised in the browser, with no samples |
