@@ -37,7 +37,7 @@ Settlement is on NEAR throughout: credits are posted to the ledger by a keeper, 
 1. `curl -s https://api.infernear.dev/v1/models` → a list of 7 NEAR AI TEE models, each with `inputCostPerToken` and `outputCostPerToken`.
 2. Open `https://app.infernear.dev` → the Vaults tab shows the four vaults, read from Base and NEAR: the amount deposited for the three Base vaults, and the current supply rate for the Aave and Rhea vaults (the cbETH and Pendle vaults have no single on-chain rate to show).
 3. Open the explorer links under [Live deployment](#live-deployment) → the contracts.
-4. A real model reply, with no wallet of your own: `cd relay && npm ci --ignore-scripts && npm run live-check` → a throwaway key signs in to the live relay, receives an API key and makes one free call. It prints seven `ok` lines (7 models, the key, `5 of 5` free calls, the model's reply `"ok"`, `billing: free` with an inference ID, `4` left) and ends with `PASS`. It sends no transaction and uses one of the day's 300 shared free calls.
+4. A real model reply, with no wallet of your own: `cd relay && npm ci --ignore-scripts && npm run live-check` → a throwaway key signs in to the live relay, receives an API key and makes one free call. It prints six `ok` lines (7 models, the key, `5 of 5` free calls, the model's reply `"ok"`, `billing: free` with an inference ID, `4` left) and ends with `PASS`. It sends no transaction and uses one of the day's 300 shared free calls.
 
 **With a wallet and no funds.** Each wallet gets 5 free trial calls, paid by InferNear (300 a day across all wallets).
 

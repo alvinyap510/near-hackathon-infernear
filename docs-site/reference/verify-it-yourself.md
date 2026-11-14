@@ -13,7 +13,7 @@ Everything InferNear claims can be checked: against the live services, on chain,
    cd relay && npm ci --ignore-scripts && npm run live-check
    ```
 
-   A throwaway key signs in to the live relay, receives an API key and makes one free call. The script prints seven `ok` lines and ends with `PASS`. It sends no transaction and uses one of the day's shared free calls.
+   A throwaway key signs in to the live relay, receives an API key and makes one free call. The script prints six `ok` lines and ends with `PASS`. It sends no transaction and uses one of the day's shared free calls.
 
 ## From a clean clone
 
