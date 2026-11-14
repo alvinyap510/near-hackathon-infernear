@@ -32,10 +32,12 @@ test('headerless completion id uses the relay UUIDv5 convention; missing usage i
  const chat=createChatData('https://relay.fixture',async()=>json({id:'example.com',choices:[{message:{content:'done'}}]}));
  const result=await chat.run({key:'inf_fixture',model,prompt:'fixture',maxTokens:8},()=>{});assert.equal(result.receipt.inferenceId,'cfbff0d1-9375-5685-968c-48ce8b15ae17');assert.equal(result.receipt.source,'reservation');assert(result.receipt.promptTokens>=1024);
 });
-test('402 is propagated as insufficient credit, and live private mode never substitutes a simulation',async()=>{
+test('402 is propagated as insufficient credit, and private mode sends and shows nothing when the model’s TEE cannot be verified',async()=>{
  let requests=0;const chat=createChatData('https://relay.fixture',async()=>{requests++;return json({error:{code:'insufficient_credit',message:'Insufficient available credits'}},402);});
  const events:unknown[]=[];await assert.rejects(chat.run({key:'inf_fixture',model,prompt:'hi',maxTokens:1},e=>events.push(e)),code('insufficient_credit'));assert.deepEqual(events,[]);
- await assert.rejects(chat.run({key:'inf_fixture',model,prompt:'hi',maxTokens:1,mode:'private'},()=>{}),code('private_unavailable'));assert.equal(requests,1);
+ // Nothing answers on this port, so verification fails: the plain path is never used, and no reply or simulation appears.
+ const offline=createChatData('http://127.0.0.1:9',async()=>{requests++;return json({});});
+ const seen:unknown[]=[];await assert.rejects(offline.run({key:'inf_fixture',model,prompt:'hi',maxTokens:1,mode:'private'},e=>seen.push(e)));assert.deepEqual(seen,[]);assert.equal(requests,1);
 });
 
 test('1Click catalogue selects only listed USDC EVM origins and binds a real dry quote to the user Base address',async()=>{
