@@ -16,6 +16,8 @@ const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11';
 const multicallAbi = parseAbi(['struct Call3 { address target; bool allowFailure; bytes callData; }', 'struct Result { bool success; bytes returnData; }', 'function aggregate3(Call3[] calls) payable returns (Result[] returnData)']);
 
 const topUpAbi = parseAbi(['function paid(address) view returns (uint256)', 'function paidTotal() view returns (uint256)', 'function usdc() view returns (address)']);
+// A credit purchase is credited this many blocks after it lands, not at finality: the buyer should not wait 20 minutes.
+const TOPUP_CONFIRMATIONS = 2n;
 const paidEvent = parseAbiItem('event Paid(address indexed payer, address indexed beneficiary, uint256 amount)');
 const transferEvent = parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 value)');
 
@@ -33,7 +35,7 @@ export function evmPorts(config: { rpc: string; chainId: number; key: Hex; vault
   const vaults: VaultPort[] = config.vaults.map(entry => {
     if (!['aave', 'rate', 'pendle', 'topup'].includes(entry.kind)) throw new Error('Invalid EVM vault kind');
     const address = entry.address;
-    let nextBlock = config.fromBlock;
+    let nextBlock = config.fromBlock, recent = 0n;
     const holders = new Set<Address>();
     return {
       id: `eip155:${config.chainId}:${address.toLowerCase()}`, kind: entry.kind,
@@ -46,7 +48,13 @@ export function evmPorts(config: { rpc: string; chainId: number; key: Hex; vault
         });
       },
       async snapshot() {
-        const block = await publicClient.getBlock({ blockTag: 'finalized' });
+        // Vault yield is read at a finalized block. Paid totals only grow, so the purchase reading never moves
+        // backwards: an RPC node that lags fails the pass instead of reporting an older, smaller total.
+        if (entry.kind === 'topup') {
+          const head = await publicClient.getBlockNumber({ cacheTime: 0 }) - TOPUP_CONFIRMATIONS;
+          if (head > recent) recent = head;
+        }
+        const block = await publicClient.getBlock(entry.kind === 'topup' ? { blockNumber: recent } : { blockTag: 'finalized' });
         const blockNumber = block.number;
         // Event scans start at deployment; chunking avoids RPC log-range limits, not archive-state reads.
         while (nextBlock <= blockNumber) {

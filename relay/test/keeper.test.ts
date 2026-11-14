@@ -122,3 +122,17 @@ test('a long holder list is posted in batches of at most 100 entries, each under
   assert.equal((await connector.account(users[249])).credited, 1_000_000n);
   await keeper.tick(); assert.equal(connector.postCalls, 3); // nothing changed: no repost
 });
+
+test('a pass limited to credit purchases reads only the top-up contract and skips the bridge and the monitors', async () => {
+  const connector = new FakeConnector(), reports: string[] = [], topUpId = 'eip155:8453:0x7070707070707070707070707070707070707070';
+  let vaultReads = 0, bridgeTicks = 0;
+  const vault: VaultPort = { id: VAULT, kind: 'aave', async skim() {}, async snapshot() { vaultReads++; return { rate: 10n ** 18n, block: 10n, unpaid: 0n, paid: 100n, entries: [[USER, 100n]], work: null }; } };
+  const topUp: VaultPort = { id: topUpId, kind: 'topup', async skim() {}, async snapshot() { return { rate: 10n ** 18n, block: 10n, unpaid: 0n, paid: 2_000_000n, entries: [[USER, 2_000_000n]], work: null }; } };
+  const keeper = new Keeper([vault, topUp], connector, { async tick() { bridgeTicks++; return {}; } }, event => reports.push(event));
+  await keeper.tick('topup');
+  assert.equal(vaultReads, 0); assert.equal(bridgeTicks, 0); assert.deepEqual(reports, ['credits_posted']);
+  assert.equal((await connector.account(USER)).credited, 2_000_000n);
+  await keeper.tick();
+  assert.equal(vaultReads, 1); assert.equal(bridgeTicks, 1);
+  assert.equal((await connector.account(USER)).credited, 2_000_100n);
+});

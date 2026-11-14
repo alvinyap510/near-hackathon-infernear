@@ -45,8 +45,10 @@ export class Keeper {
     return true;
   }
   // One pass of free reads per vault. A transaction is sent only when those reads show work for it.
-  async tick(): Promise<void> {
+  // With `only`, the pass covers that kind of vault alone and skips the bridge and the monitors.
+  async tick(only?: VaultKind): Promise<void> {
     for (const vault of this.vaults) {
+      if (only && vault.kind !== only) continue;
       try {
         const snapshot = await vault.snapshot();
         if (snapshot.unpaid !== 0n || snapshot.busy) {
@@ -75,6 +77,7 @@ export class Keeper {
         else reportError(this.report, 'keeper_retry', error, { vault: vault.id });
       }
     }
+    if (only) return;
     try { this.report('bridge', await this.bridge.tick()); }
     catch (error) { reportError(this.report, 'bridge_retry', error); }
     try { this.report('connector_storage', await this.connector.storageBalance()); }

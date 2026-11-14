@@ -25,11 +25,13 @@ async function rpc(handler: (method: string, params: any) => unknown) {
   return { url: `http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}`, async close() { server.closeAllConnections(); await new Promise<void>(done => server.close(() => done())); } };
 }
 
-test('bought credits are read from the top-up contract at a finalized block and posted one USD per USDC, with no transaction', async t => {
+test('bought credits are read from the top-up contract two blocks behind the head and posted one USD per USDC, with no transaction', async t => {
   const paid: Record<string, bigint> = { [alice]: 5_000_000n, [bob]: 250_000n };
-  const sent: unknown[] = [], scans: any[] = [], reads: any[] = [];
+  const sent: unknown[] = [], scans: any[] = [], reads: any[] = [], blocks: string[] = [];
+  let head = 0x66;
   const fake = await rpc((method, params) => {
-    if (method === 'eth_getBlockByNumber') { assert.equal(params[0], 'finalized'); return { number: '0x64', timestamp: '0x1388' }; }
+    if (method === 'eth_blockNumber') return '0x' + head.toString(16);
+    if (method === 'eth_getBlockByNumber') { blocks.push(params[0]); return { number: params[0], timestamp: '0x1388' }; }
     if (method === 'eth_getLogs') {
       scans.push(params[0]);
       // bob paid for alice once and for himself once: the beneficiary earns the credits, not the payer.
@@ -38,7 +40,7 @@ test('bought credits are read from the top-up contract at a finalized block and 
         blockNumber: '0x64', blockHash: hash, transactionHash: hash, transactionIndex: '0x0', logIndex: '0x' + logIndex.toString(16), removed: false }));
     }
     if (method === 'eth_call') {
-      assert.equal(params[0].to.toLowerCase(), topUp); assert.equal(params[1], '0x64');
+      assert.equal(params[0].to.toLowerCase(), topUp); assert.equal(params[1], blocks.at(-1));
       const call = decodeFunctionData({ abi, data: params[0].data }); reads.push(call.functionName);
       if (call.functionName === 'usdc') return encodeAbiParameters([{ type: 'address' }], [usdc]);
       if (call.functionName === 'paidTotal') return encodeAbiParameters([{ type: 'uint256' }], [paid[alice] + paid[bob]]);
@@ -52,6 +54,7 @@ test('bought credits are read from the top-up contract at a finalized block and 
   const port = ports.vaults[0];
   assert.equal(port.kind, 'topup'); assert.equal(port.id, `eip155:8453:${topUp}`);
   const snapshot = await port.snapshot();
+  assert.deepEqual(blocks, ['0x64']); assert.equal(snapshot.block, 100n); // head 0x66, two blocks behind: never the finalized tag
   assert.deepEqual(scans[0].topics[0], encodeEventTopics({ abi, eventName: 'Paid' })[0]);
   assert.deepEqual(new Map(snapshot.entries), new Map([[`eip155:8453:${alice}`, 5_000_000n], [`eip155:8453:${bob}`, 250_000n]]));
   assert.equal(snapshot.paid, 5_250_000n); assert.equal(snapshot.unpaid, 0n); assert.equal(snapshot.rate, 10n ** 18n);
@@ -66,4 +69,7 @@ test('bought credits are read from the top-up contract at a finalized block and 
   assert.equal((await connector.account(`eip155:8453:${bob}`)).credited, 1_250_000n);
   await port.skim();
   assert.equal(sent.length, 0);
+  // An RPC node that lags behind an earlier reading must not move it backwards; a newer head moves it on.
+  head = 0x50; await port.snapshot(); assert.equal(blocks.at(-1), '0x64');
+  head = 0x70; await port.snapshot(); assert.equal(blocks.at(-1), '0x6e'); assert.equal(scans.at(-1).fromBlock, '0x65'); assert.equal(scans.at(-1).toBlock, '0x6e');
 });
