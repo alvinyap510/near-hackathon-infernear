@@ -1,6 +1,5 @@
-// InferNear film: a 79-second motion piece drawn with HTML, CSS and SVG.
-// Every frame is a pure function of time: render(t) sets every animated property from t alone,
-// so the page can be played in a browser or stepped frame by frame by render.mjs.
+// InferNear film. Every frame is a pure function of music time t (120 BPM: a beat is 0.5 s,
+// a bar is 2 s), so cuts land on the beat and the page renders frame by frame (render.mjs).
 import '@fontsource-variable/hanken-grotesk';
 import '@fontsource-variable/martian-mono/standard.css';
 import './film.css';
@@ -14,11 +13,12 @@ import bnb from '@web3icons/core/svgs/networks/branded/binance-smart-chain.svg.j
 import robinhood from '@web3icons/core/svgs/networks/branded/robinhood.svg.js';
 import sui from '@web3icons/core/svgs/networks/branded/sui.svg.js';
 import usdc from '@web3icons/core/svgs/tokens/branded/USDC.svg.js';
-import aave from '@web3icons/core/svgs/tokens/branded/AAVE.svg.js';
+import { createGL } from './gl.js';
+import { renderSoundtrack, wavBytes } from './audio.js';
 
-export const DURATION = 79;
+export const DURATION = 84;
 
-// ---------- small maths ----------
+// ---------- maths ----------
 const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 const prog = (t, a, d) => clamp((t - a) / d);
 const lerp = (a, b, k) => a + (b - a) * k;
@@ -26,18 +26,19 @@ const easeIn = x => x * x * x;
 const easeOut = x => 1 - Math.pow(1 - x, 3);
 const easeInOut = x => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 const expoOut = x => (x >= 1 ? 1 : 1 - Math.pow(2, -10 * x));
+const expoInOut = x => (x <= 0 ? 0 : x >= 1 ? 1 : x < 0.5 ? Math.pow(2, 20 * x - 10) / 2 : (2 - Math.pow(2, -20 * x + 10)) / 2);
 const backOut = x => 1 + 2.70158 * Math.pow(x - 1, 3) + 1.70158 * Math.pow(x - 1, 2);
 const money = (n, d = 2) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const stage = $('#stage');
 
 // ---------- marks ----------
-const ICONS = { base, near: nearMono.replace('fill="#fff"', 'fill="currentColor"'), ethereum, arbitrum, solana, bnb, robinhood, sui, usdc, aave };
+const ICONS = { base, near: nearMono.replace('fill="#fff"', 'fill="currentColor"'), ethereum, arbitrum, solana, bnb, robinhood, sui, usdc };
 const CHECK = '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const LOCK = '<svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.2" fill="currentColor"/><path d="M8.2 10.5V8a3.8 3.8 0 0 1 7.6 0v2.5" fill="none" stroke="currentColor" stroke-width="2.2"/></svg>';
-const CHIP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1" fill="currentColor" stroke="none"/><path d="M9 3v3M12 3v3M15 3v3M9 18v3M12 18v3M15 18v3M3 9h3M3 12h3M3 15h3M18 9h3M18 12h3M18 15h3"/></svg>';
 const LB = 'M4 5.5A1.5 1.5 0 0 1 5.5 4H12v4H8v16h4v4H5.5A1.5 1.5 0 0 1 4 26.5z';
 const RB = 'M20 4h6.5A1.5 1.5 0 0 1 28 5.5v21a1.5 1.5 0 0 1-1.5 1.5H20v-4h4V8h-4z';
 const WORDMARK = logoRaw.match(/<\/g><path d="([^"]+)"/)[1];
@@ -46,509 +47,572 @@ let uid = 0;
 function placeIcons() {
   for (const el of $$('[data-icon]')) {
     const n = ++uid;
-    el.innerHTML = ICONS[el.dataset.icon]
-      .replace(/\s(width|height)="24"/g, '')
-      .replace(/id="([^"]+)"/g, `id="$1-${n}"`)
-      .replace(/url\(#([^)]+)\)/g, `url(#$1-${n})`);
+    el.innerHTML = ICONS[el.dataset.icon].replace(/\s(width|height)="24"/g, '').replace(/id="([^"]+)"/g, `id="$1-${n}"`).replace(/url\(#([^)]+)\)/g, `url(#$1-${n})`);
   }
   for (const el of $$('.ck')) el.innerHTML = CHECK;
   for (const el of $$('.lock')) el.innerHTML = LOCK;
 }
 
-function buildLogo(host) {
-  const n = ++uid;
-  host.innerHTML = `<svg viewBox="0 0 242.6 40"><defs><clipPath id="wm${n}"><rect x="48" y="-10" width="0" height="60"/></clipPath></defs>
-    <g transform="scale(1.66667) translate(-4 -4)"><path fill="currentColor" d="${LB}"/><path fill="currentColor" d="${RB}"/><rect x="12" y="12" width="8" height="8" rx="1" fill="#00ec97"/></g>
-    <g clip-path="url(#wm${n})"><path fill="currentColor" d="${WORDMARK}"/></g></svg>`;
-  const [lb, rb] = $$('path', host);
-  return { host, lb, rb, sq: $('rect[fill]', host), clip: $('clipPath rect', host), wm: $$('path', host)[2] };
-}
-function animateLogo(L, t, a) {
-  const kb = expoOut(prog(t, a, 0.8));
-  L.lb.setAttribute('transform', `translate(${-(1 - kb) * 16} 0)`);
-  L.rb.setAttribute('transform', `translate(${(1 - kb) * 16} 0)`);
-  L.lb.style.opacity = L.rb.style.opacity = prog(t, a, 0.25);
-  const ks = backOut(prog(t, a + 0.3, 0.55));
-  L.sq.setAttribute('transform', `translate(16 16) scale(${Math.max(ks, 0)}) translate(-16 -16)`);
-  const kw = expoOut(prog(t, a + 0.6, 1.0));
-  L.clip.setAttribute('width', String(kw * 200));
-  L.wm.setAttribute('transform', `translate(${(1 - kw) * -14} 0)`);
-}
-
 // ---------- words ----------
+// data-mask text: '|' breaks a line, *words* are accented. Each line masks its words as they rise.
 function splitWords() {
-  for (const el of $$('[data-words]')) {
-    const words = el.textContent.trim().split(/\s+/);
-    el.innerHTML = words.map(w => {
-      if (w === '|') return '<br>';
-      const acc = /^\*.*\*[.,]?$/.test(w);
-      const text = w.replace(/\*/g, '');
-      return `<span class="w${acc ? ' acc' : ''}">${text}</span>`;
-    }).join(' ');
+  for (const el of $$('[data-mask]')) {
+    const lines = el.textContent.trim().split('|');
+    let acc = false;
+    el.innerHTML = lines.map(line => `<span class="ln">${line.trim().split(/\s+/).map(w => {
+      if (w.startsWith('*')) acc = true;
+      const cls = acc ? 'w acc' : 'w';
+      if (w.replace(/[.,!?]$/, '').endsWith('*')) acc = false;
+      return `<span class="${cls}">${w.replace(/\*/g, '')}</span>`;
+    }).join(' ')}</span>`).join('');
     el._w = $$('.w', el);
   }
 }
-// Words rise in one after another, and leave together.
-function words(el, t, a, b, stagger = 0.05) {
-  const out = easeIn(prog(t, b - 0.32, 0.32));
+function mask(el, t, a, b = 1e9, stagger = 0.05, dur = 0.65) {
+  const out = easeIn(prog(t, b - 0.3, 0.3));
   el._w.forEach((w, i) => {
-    const k = expoOut(prog(t, a + i * stagger, 0.7));
-    w.style.opacity = Math.min(prog(t, a + i * stagger, 0.25), 1) * (1 - out);
-    w.style.transform = `translate3d(0, ${(1 - k) * 0.55 - out * 0.25}em, 0)`;
-    const blur = (1 - k) * 10 + out * 6;
-    w.style.filter = blur > 0.3 ? `blur(${blur.toFixed(2)}px)` : 'none';
+    const k = expoOut(prog(t, a + i * stagger, dur));
+    w.style.transform = `translate3d(0, ${((1 - k) * 108 - out * 108).toFixed(2)}%, 0)`;
+    w.style.opacity = t < a + i * stagger ? 0 : 1;
   });
 }
-function caption(scene, t, l1, l2) {
-  const [a, b] = [scene.a, scene.b];
-  const c1 = $('.cap .l1', scene.el), c2 = $('.cap .l2', scene.el);
-  if (c1) words(c1, t, l1, b - 0.05);
-  if (c2) words(c2, t, l2, b - 0.05, 0.04);
-  return a;
-}
-
-// ---------- motion blur ----------
-// Each moving block gets its own horizontal Gaussian blur, scaled by its speed.
-function blurFilter(el, vertical = false) {
-  const n = ++uid;
-  $('#filters').insertAdjacentHTML('beforeend', `<filter id="mb${n}" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="0 0"/></filter>`);
-  el._blur = { id: `mb${n}`, node: $(`#mb${n} feGaussianBlur`), vertical };
-}
-function setBlur(el, amount) {
-  if (!el._blur) blurFilter(el);
-  if (amount < 0.4) { el.style.filter = 'none'; return; }
-  el._blur.node.setAttribute('stdDeviation', el._blur.vertical ? `0 ${amount.toFixed(2)}` : `${amount.toFixed(2)} 0`);
-  el.style.filter = `url(#${el._blur.id})`;
-}
-// Enter from the right at a, leave to the left at b: the whip cut between scenes.
-function whip(el, t, a, b, { dist = 380, inDur = 0.65, outDur = 0.36, blur = 30 } = {}) {
-  const ki = expoOut(prog(t, a, inDur));
-  const ko = easeIn(prog(t, b - outDur, outDur));
-  el.style.transform = `translate3d(${(dist * (1 - ki) - dist * 1.2 * ko).toFixed(2)}px, 0, 0)`;
-  el.style.opacity = prog(t, a, 0.16) * (1 - prog(t, b - 0.12, 0.12));
-  setBlur(el, blur * Math.max(1 - ki, ko));
-}
-// Each scene's content is drawn at a readable size (data-scale) and drifts slowly closer.
-function drift(scene, t, amount = 0.018) {
-  const m = $('.main', scene.el);
-  if (m) m.style.transform = `scale(${Number(m.dataset.scale ?? 1) * (1 + amount * prog(t, scene.a, scene.b - scene.a))})`;
-}
-function pop(el, t, a, d = 0.5, from = 0.6) {
-  const k = backOut(prog(t, a, d));
-  el.style.opacity = prog(t, a, 0.15);
-  el.style.transform = `scale(${lerp(from, 1, k)})`;
-}
-function slideIn(el, t, a, dy = 24, d = 0.6) {
+function show(el, o) { el.style.opacity = o; }
+function rise(el, t, a, dy = 30, d = 0.6) {
   const k = expoOut(prog(t, a, d));
-  el.style.opacity = prog(t, a, 0.22);
+  el.style.opacity = prog(t, a, 0.2);
   el.style.transform = `translate3d(0, ${(1 - k) * dy}px, 0)`;
 }
-// Deterministic typing with a blinking caret while the text is being edited.
-function typed(el, text, t, a, cps, caretUntil = a + text.length / cps + 0.6) {
-  const n = Math.floor(clamp((t - a) * cps, 0, text.length));
-  el.textContent = text.slice(0, n);
-  el.classList.toggle('caret', t >= a - 0.5 && t < caretUntil && (n < text.length || Math.floor(t * 2.4) % 2 === 0));
+function slide(el, t, a, dx = 60, d = 0.6) {
+  const k = expoOut(prog(t, a, d));
+  el.style.opacity = prog(t, a, 0.2);
+  el.style.transform = `translate3d(${(1 - k) * dx}px, 0, 0)`;
 }
-// Delete back to the shared prefix, then type the new text.
-function retype(el, from, to, t, a, del = 34, cps = 22) {
-  let p = 0;
-  while (p < from.length && p < to.length && from[p] === to[p]) p++;
-  const dDur = (from.length - p) / del;
-  if (t < a + dDur) el.textContent = from.slice(0, from.length - Math.floor(clamp((t - a) * del, 0, from.length - p)));
-  else el.textContent = to.slice(0, p + Math.floor(clamp((t - a - dDur) * cps, 0, to.length - p)));
-  const end = a + dDur + (to.length - p) / cps;
-  el.classList.toggle('caret', t >= a - 0.4 && t < end + 0.5 && (t < end || Math.floor(t * 2.4) % 2 === 0));
-  return end;
+function pop(el, t, a, d = 0.5, from = 0.6, extra = '') {
+  const k = backOut(prog(t, a, d));
+  el.style.opacity = prog(t, a, 0.12);
+  el.style.transform = `${extra} scale(${lerp(from, 1, k)})`;
 }
-// Panels wipe in from one side and leave toward another, with clip-path insets.
-const OPP = { right: 'left', left: 'right', top: 'bottom', bottom: 'top' };
-function wipe(el, t, a, b, from = 'right', to = 'left', d = 0.38) {
-  const ki = expoOut(prog(t, a, d)), ko = easeIn(prog(t, b - d, d));
-  const inset = { top: 0, right: 0, bottom: 0, left: 0 };
-  inset[OPP[from]] = (1 - ki) * 100;
-  inset[OPP[to]] = Math.max(inset[OPP[to]], ko * 100);
-  el.style.clipPath = `inset(${inset.top}% ${inset.right}% ${inset.bottom}% ${inset.left}%)`;
+// Bracket frames close in around their content.
+function frame(el, t, a, spread = 40) {
+  const k = expoOut(prog(t, a, 0.55));
+  el.style.opacity = prog(t, a, 0.15);
+  $('.bl', el).style.transform = `translateX(${-(1 - k) * spread}px)`;
+  $('.br', el).style.transform = `translateX(${(1 - k) * spread}px)`;
+}
+// A cut that punches in: the scene settles from slightly too close and slightly soft.
+function punch(s, t, k0 = 1.07, d = 0.45) {
+  const k = expoOut(prog(t, s.a, d));
+  s.el.style.transform = `scale(${lerp(k0, 1, k)})`;
+  const blur = (1 - k) * 10;
+  s.el.style.filter = blur > 0.3 ? `blur(${blur.toFixed(2)}px)` : 'none';
+}
+function shake(t, a, amount = 8, d = 0.25) {
+  const k = 1 - prog(t, a, d);
+  if (k <= 0 || t < a) return '';
+  return `translate(${((hash(Math.floor(t * 60)) - 0.5) * amount * k).toFixed(1)}px, ${((hash(Math.floor(t * 60) + 7) - 0.5) * amount * k).toFixed(1)}px)`;
+}
+function typedSegments(el, segs, t, a, cps) {
+  let n = Math.floor(Math.max(0, (t - a) * cps)), html = '', total = 0;
+  for (const [text] of segs) total += text.length;
+  for (const [text, cls] of segs) {
+    if (n <= 0) break;
+    const part = text.slice(0, n); n -= part.length;
+    html += cls ? `<span class="${cls}">${part}</span>` : part;
+  }
+  el.innerHTML = html + (t >= a - 0.4 && t < a + total / cps + 0.6 && Math.floor(t * 4) % 2 === 0 ? '<span class="caret"></span>' : '');
+  return a + total / cps;
+}
+const HEX = '0123456789abcdef';
+const hexAt = (i, t) => HEX[Math.floor(hash(i * 13.7 + Math.floor(t * 24)) * 16)];
+
+// ---------- logo SVGs ----------
+function wordmarkSvg(host) {
+  host.innerHTML = `<svg viewBox="54 2 190 36"><defs><clipPath id="wm${++uid}"><rect x="54" y="-10" width="0" height="60"/></clipPath></defs>
+    <g clip-path="url(#wm${uid})"><path fill="currentColor" d="${WORDMARK}"/></g><rect class="scanbar" x="54" y="2" width="1.4" height="36" fill="#00ec97"/></svg>`;
+  return { clip: $('clipPath rect', host), bar: $('.scanbar', host) };
+}
+function lockupSvg(host) {
+  host.innerHTML = `<svg viewBox="0 0 242.6 40"><defs><clipPath id="wm${++uid}"><rect x="48" y="-10" width="0" height="60"/></clipPath></defs>
+    <g transform="scale(1.66667) translate(-4 -4)"><path fill="currentColor" d="${LB}"/><path fill="currentColor" d="${RB}"/><rect x="12" y="12" width="8" height="8" rx="1" fill="#00ec97"/></g>
+    <g clip-path="url(#wm${uid})"><path fill="currentColor" d="${WORDMARK}"/></g><rect class="scanbar" x="48" y="0" width="1.2" height="40" fill="#00ec97"/></svg>`;
+  return { clip: $('clipPath rect', host), bar: $('.scanbar', host) };
+}
+function revealWordmark(L, t, a, x0, width, d = 0.9) {
+  const k = expoOut(prog(t, a, d));
+  L.clip.setAttribute('width', String(width * k));
+  L.bar.setAttribute('x', String(x0 + width * k));
+  L.bar.style.opacity = t < a ? 0 : 1 - prog(t, a + d * 0.7, 0.3);
 }
 
-// ---------- cursor ----------
-let cursorKeys = [];
-let clicks = [];
-function cursor(t) {
-  const c = $('#cursor'), r = $('#ripple');
-  let x = 0, y = 0, o = 0;
-  for (let i = 0; i < cursorKeys.length - 1; i++) {
-    const A = cursorKeys[i], B = cursorKeys[i + 1];
-    if (t >= A.t && t < B.t) {
-      const k = easeInOut((t - A.t) / (B.t - A.t));
-      x = lerp(A.x, B.x, k); y = lerp(A.y, B.y, k); o = lerp(A.o, B.o, (t - A.t) / (B.t - A.t));
-    }
+// ---------- GL ----------
+const gl = createGL($('#gl'));
+const W2S = 117.7; // pixels per world unit at the default camera distance
+
+function glState(t) {
+  if (t < 10.05) {
+    const assemble = easeIn(prog(t, 2.0, 2.0));
+    const move = expoOut(prog(t, 4.5, 1.2));
+    const dive = easeIn(prog(t, 8.8, 1.25));
+    const x = 0, y = lerp(0.3, 1.45, move), scale = lerp(1.1, 0.78, move);
+    return {
+      time: t + 3, assemble, core: t < 3.95 ? 0 : backOut(prog(t, 3.95, 0.55)),
+      x, y, scale, rotY: 0.32 * Math.sin(t * 0.45) - 0.2 + (1 - assemble) * 0.7, rotX: 0.1 * Math.sin(t * 0.33),
+      camX: lerp(0, x, dive), camY: lerp(0, y, dive), camZ: lerp(lerp(24, 16, easeOut(prog(t, 0, 4))), 0.55, dive),
+      lookX: lerp(0, x, dive), lookY: lerp(0, y, dive), streams: Math.max(0.3 * prog(t, 0.3, 1.6), prog(t, 4, 0.8)), rings: prog(t, 4, 1.0),
+      glowScale: 1 + dive * 2, spread: 2.0,
+    };
   }
-  let press = 0, rp = null;
-  for (const k of clicks) {
-    if (t >= k.t - 0.08 && t < k.t + 0.14) press = Math.sin(clamp((t - k.t + 0.08) / 0.22) * Math.PI);
-    if (t >= k.t && t < k.t + 0.5) rp = { k, p: (t - k.t) / 0.5 };
+  if (t >= 56 && t < 62) {
+    const k = expoOut(prog(t, 56.0, 0.7)), ko = easeIn(prog(t, 61.5, 0.5));
+    return {
+      time: t, assemble: 1, bracketGap: (1 - k) * 1.6, core: 1, x: 3.7, y: -0.1, scale: 1.05 * (1 - ko * 0.6),
+      rotY: -0.62 + 0.12 * Math.sin(t * 0.7) + ko * 2.4, rotX: 0.08 * Math.sin(t * 0.5),
+      camZ: 16, streams: prog(t, 56.1, 0.5) * (1 - ko), rings: 1 - ko, left: 1.9, right: 14, spread: 1.6, opacity: 1 - prog(t, 61.8, 0.2),
+    };
   }
-  c.style.opacity = o;
-  c.style.transform = `translate3d(${x - 9}px, ${y - 6}px, 0) scale(${1 - 0.14 * press})`;
-  if (rp) {
-    r.style.opacity = (1 - rp.p) * 0.55;
-    r.style.transform = `translate3d(${rp.k.x}px, ${rp.k.y}px, 0) scale(${0.3 + easeOut(rp.p) * 0.9})`;
-  } else r.style.opacity = 0;
-}
-function pt(el, fx = 0.5, fy = 0.5) {
-  const s = stage.getBoundingClientRect(), r = el.getBoundingClientRect(), k = s.width / 1920;
-  return { x: (r.left - s.left + r.width * fx) / k, y: (r.top - s.top + r.height * fy) / k };
+  if (t >= 72 && t < 78.05) {
+    const k = expoOut(prog(t, 72.0, 0.55));
+    const land = easeInOut(prog(t, 77.2, 0.8));
+    const spin = (t - 72) * 0.55;
+    const target = Math.round(((77.2 - 72) * 0.55) / (Math.PI * 2)) * Math.PI * 2;
+    return {
+      time: t, assemble: k, core: backOut(prog(t, 72.15, 0.55)),
+      x: lerp(0, (584 - 960) / W2S, land), y: lerp(0.6, (540 - 404) / W2S, land), scale: lerp(1.0, 0.314, land),
+      rotY: lerp(spin, target, land), rotX: lerp(0.12 * Math.sin(t * 0.6), 0, land),
+      camZ: 16, streams: 1 - land, rings: 1 - land, glow: 1 - land * 0.6,
+    };
+  }
+  return null;
 }
 
 // ---------- scenes ----------
 const scenes = [];
-const scene = (id, a, b, update, z = 0) => scenes.push({ id, a, b, el: $(`#s-${id}`), update, z });
+const scene = (id, a, b, update, hud = 'dark') => scenes.push({ id, a, b, el: $(`#s-${id}`), update, hud });
+const SECTIONS = [[0, '[00] InferNear'], [10, '[01] NEAR AI Cloud'], [16, '[02] The gap'], [24, '[03] The turn'], [28, '[04] Every chain → NEAR AI Cloud'],
+  [36, '[05] NEAR Intents'], [42, '[06] No NEAR account'], [48, '[07] NEAR AI Cloud → everyone'], [56, '[08] NEAR TEE'], [62, '[09] Models'],
+  [66, '[10] Proof'], [72, '[11] Every chain'], [78, '[12] InferNear']];
 
-scene('exists', 0, 6.4, (t, s) => {
-  const card = $('.cloud', s.el);
-  const k = expoOut(prog(t, 0.15, 0.9));
-  const ko = easeIn(prog(t, s.b - 0.36, 0.36));
-  card.style.opacity = prog(t, 0.15, 0.4) * (1 - prog(t, s.b - 0.12, 0.12));
-  card.style.transform = `translate3d(${-460 * ko}px, ${(1 - k) * 60}px, 0) scale(${lerp(0.94, 1, k)})`;
-  setBlur(card, 30 * ko);
-  $$('.row', card).forEach((row, i) => {
-    slideIn(row, t, 0.75 + i * 0.2, 22);
-    pop($('.tee', row), t, 1.05 + i * 0.2, 0.45, 0.5);
-  });
-  drift(s, t);
-  caption(s, t, 1.2, 3.0);
+let heroWord, lockup;
+scene('hero', 0, 10.05, (t, s) => {
+  const flash = $('#heroflash'), shock = $('#heroshock');
+  flash.style.opacity = t < 4 ? 0 : 0.85 * (1 - prog(t, 4.0, 0.6));
+  const ks = easeOut(prog(t, 4.0, 0.9));
+  shock.style.opacity = t < 4 ? 0 : 0.9 * (1 - ks);
+  shock.style.transform = `scale(${0.4 + ks * 4})`;
+  const fade = 1 - prog(t, 8.7, 0.3);
+  revealWordmark(heroWord, t, 4.55, 54, 190, 0.9);
+  $('#heroword').style.opacity = fade;
+  $('#heroword').style.transform = `translateY(${(1 - expoOut(prog(t, 4.5, 0.8))) * 24}px)`;
+  $$('.hero-tags .fr', s.el).forEach((f, i) => { frame(f, t, 5.6 + i * 0.5, 50); f.style.opacity = Math.min(Number(f.style.opacity), fade); });
+  $$('.hero-stack span', s.el).forEach((sp, i) => { sp.style.color = t >= 7.5 + i * 0.25 ? '#00ec97' : ''; });
+  const stack = $('.hero-stack', s.el);
+  stack.style.opacity = prog(t, 7.3, 0.3) * fade;
+  stack.style.letterSpacing = `${lerp(0.4, 0.05, expoOut(prog(t, 7.3, 0.9)))}em`;
+  $('#dive').style.opacity = prog(t, 9.55, 0.45);
 });
 
-scene('elsewhere', 6.3, 12.8, (t, s) => {
-  whip($('.flow', s.el), t, s.a, s.b);
-  const icons = $$('.stack .ic', s.el);
-  icons.forEach((ic, i) => {
-    const k = backOut(prog(t, 6.75 + (icons.length - 1 - i) * 0.08, 0.5));
-    ic.style.transform = `translate3d(0, ${(1 - k) * 18}px, 0)`;
-    ic.style.opacity = prog(t, 6.75 + (icons.length - 1 - i) * 0.08, 0.15);
+scene('cloud', 10, 16, (t, s) => {
+  const panel = $('#cloudpanel');
+  const up = easeInOut(prog(t, 11.75, 0.5));
+  panel.style.transform = `translate3d(0, ${-up * 100}%, 0)`;
+  const g = $('.giant', panel);
+  mask(g, t, 10.02, 1e9, 0.06, 0.6);
+  g.style.transform = `scale(${1 + 0.03 * prog(t, 10, 2)})`;
+  mask($('.cloud-left .big', s.el), t, 12.05, 1e9, 0.06);
+  rise($('.cloud-left .kicker', s.el), t, 12.0, 14);
+  mask($('.cloud-left .sub', s.el), t, 12.8, 1e9, 0.03);
+  const chip = $('.chip', s.el);
+  const kc = expoOut(prog(t, 12.15, 0.8));
+  chip.style.transform = `scale(${lerp(0.8, 1, kc)}) rotate(${lerp(-8, 0, kc)}deg)`;
+  chip.style.opacity = prog(t, 12.15, 0.25);
+  const scan = $('.scan', s.el);
+  scan.setAttribute('y', String(60 + (((t - 12.3) * 280) % 280 + 280) % 280));
+  scan.style.opacity = t > 12.3 ? 0.75 : 0;
+  $('.die', s.el).style.opacity = 0.75 + 0.25 * Math.sin(t * 6);
+  const stamp = $('.stamp', s.el);
+  const ks = expoOut(prog(t, 13.3, 0.35));
+  stamp.style.opacity = prog(t, 13.3, 0.08);
+  stamp.style.transform = `rotate(-9deg) scale(${lerp(1.8, 1, ks)})`;
+  const models = ['deepseek-ai/DeepSeek-V4.1-Flash-1017', 'Qwen/Qwen3.6-35B-A3B-FP8', 'Qwen/Qwen3.8-27B', 'Qwen/Qwen3-VL-30B-A3B-Instruct', 'z-ai/glm-5.3-flash', 'Qwen/Qwen3.8-27B-abliterated', 'DeepSeek-V4.1-Flash-1017-abliterated'];
+  const slot = $('#modelslot');
+  const i = Math.floor((t - 12.6) / 0.4);
+  slot.innerHTML = t < 12.6 ? '' : i < 7 ? `<span class="dim2">attesting</span>${models[i]}` : '<span class="dim2">attested</span>7 models · all inside NEAR TEEs';
+  slot.style.opacity = t < 12.6 ? 0 : 1;
+}, 'dark');
+
+const BURST_AT = 17.0;
+scene('gap', 16, 20, (t, s) => {
+  punch(s, t);
+  const [l1, l2] = $$('.gap-title .ml', s.el);
+  mask(l1, t, 16.02, 1e9, 0.07);
+  mask(l2, t, 16.3, 1e9);
+  frame($('#nearframe'), t, 16.45, 80);
+  const bs = $$('.b', s.el);
+  bs.forEach((b, i) => {
+    const at = BURST_AT + i * 0.07, k = backOut(prog(t, at, 0.7));
+    const x = Number(b.dataset.x) * k, y = Number(b.dataset.y) * k + Math.sin(t * 1.4 + i) * 6 * k;
+    b.style.transform = `translate(-50%, -50%) translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(${lerp(0.3, 1, Math.min(1, k)).toFixed(3)})`;
+    b.style.opacity = prog(t, at, 0.12);
+    b._x = 960 + x; b._y = 520 + y;
   });
-  pop($('.hub .disc', s.el), t, 6.7, 0.55, 0.5);
-  const [ha, hb] = $$('.broken .half', s.el);
-  const draw = expoOut(prog(t, 7.0, 0.6));
-  const brk = expoOut(prog(t, 9.1, 0.5));
-  ha.style.transform = `scaleX(${draw * lerp(1, 0.7, brk)})`;
-  hb.style.transform = `scaleX(${draw * lerp(1, 0.7, brk)})`;
-  hb.style.opacity = prog(t, 7.25, 0.2);
-  pop($('.broken .x', s.el), t, 9.2, 0.5, 0.2);
-  $$('.link .fill', s.el)[0].style.transform = `scaleX(${expoOut(prog(t, 7.3, 0.6))})`;
-  drift(s, t);
-  caption(s, t, 6.85, 9.25);
+  const lines = $('#gaplines');
+  bs.forEach((b, i) => {
+    const line = lines.children[i * 2], x = lines.children[i * 2 + 1];
+    const k = expoOut(prog(t, 17.7 + i * 0.05, 0.6));
+    const ex = lerp(b._x, 960, 0.42 * k), ey = lerp(b._y, 520, 0.42 * k);
+    line.setAttribute('x1', b._x); line.setAttribute('y1', b._y); line.setAttribute('x2', ex); line.setAttribute('y2', ey);
+    line.style.opacity = t < 17.7 ? 0 : 0.6;
+    const kx = backOut(prog(t, 18.45 + i * 0.05, 0.45));
+    x.setAttribute('transform', `translate(${ex} ${ey}) scale(${Math.max(0, kx)})`);
+  });
+  mask($('.cap', s.el), t, 18.35, 1e9, 0.05);
+}, 'light');
+
+const BILLS = [64.2, 91.1, 57.3, 102.15, 72.85];
+scene('bills', 20, 24, (t, s) => {
+  punch(s, t);
+  rise($('.kicker', s.el), t, 20.02, 12);
+  let spent = 0, changing = 0;
+  $$('.tk', s.el).forEach((tk, i) => {
+    const at = 20.55 + i * 0.6;
+    const kin = expoOut(prog(t, at, 0.32)), kout = easeIn(prog(t, at + 0.45, 0.32));
+    tk.style.opacity = t < at ? 0 : 1 - kout;
+    tk.style.transform = `translate(calc(-50% + ${((1 - kin) * 760 - kout * 760).toFixed(1)}px), ${(-kout * 40).toFixed(1)}px)`;
+    const k = easeOut(prog(t, at + 0.15, 0.4));
+    spent += BILLS[i] * k;
+    if (k > 0 && k < 1) changing = 1;
+  });
+  const c = $('#counter');
+  c.textContent = money(1000 - spent);
+  c.style.color = changing ? '#f2b705' : '';
+  const tense = prog(t, 23.2, 0.8);
+  const lastBill = 20.55 + Math.max(0, Math.min(4, Math.floor((t - 20.55) / 0.6))) * 0.6 + 0.15;
+  c.style.transform = `${shake(t, lastBill, 6, 0.2)} scale(${1 + 0.06 * tense})`;
+  c.style.filter = tense > 0.05 ? `blur(${tense * 3}px)` : 'none';
+  mask($('.cap', s.el), t, 20.8, 1e9, 0.045);
 });
 
-const BILLS = [64.2, 48.75, 91.1, 57.3];
-scene('capital', 12.7, 18.2, (t, s) => {
-  whip($('.balance', s.el), t, s.a, s.b);
-  let spent = 0;
-  $$('.bill', s.el).forEach((bill, i) => {
-    const at = 13.7 + i * 0.6;
-    slideIn(bill, t, at, -18, 0.5);
-    spent += BILLS[i] * easeOut(prog(t, at + 0.1, 0.45));
+let sparks = [];
+scene('turn', 24, 28.02, (t, s) => {
+  const blk = $('#block');
+  const k = backOut(prog(t, 24.0, 0.4));
+  const conv = easeIn(prog(t, 27.2, 0.8));
+  blk.style.transform = `${shake(t, 24.0, 14, 0.3)} translateY(${(1 - k) * -80}px) scale(${lerp(1.18, 1, k) * (1 - conv * 0.5)})`;
+  blk.style.opacity = prog(t, 24.0, 0.06) * (1 - conv);
+  const kb = expoOut(prog(t, 24.1, 0.4));
+  $('#tbl').style.transform = `translateX(${-(1 - kb) * 420}px)`; $('#tbr').style.transform = `translateX(${(1 - kb) * 420}px)`;
+  $('#tbl').style.opacity = $('#tbr').style.opacity = prog(t, 24.1, 0.1) * (1 - conv);
+  $('.lock', blk).style.transform = `scale(${1 + 0.25 * Math.sin(clamp((t - 24.35) / 0.3) * Math.PI)})`;
+  mask($('.turn-a', s.el), t, 24.2, 25.9, 0.06);
+  mask($('.turn-b', s.el), t, 26.05, 27.6, 0.06);
+  // Yield sparks leave the principal block, then gather into one point.
+  sparks.forEach((p, i) => {
+    const born = 26.0 + (i % 40) * 0.035 + Math.floor(i / 40) * 0.55;
+    const life = t - born;
+    if (life < 0) { p.setAttribute('opacity', 0); return; }
+    const a = lerp(-2.7, -0.45, hash(i * 3.1)), v = lerp(260, 620, hash(i * 7.7));
+    const L = Math.min(life, 1.4);
+    let x = 960 + Math.cos(a) * v * L * 0.9, y = 250 + Math.sin(a) * v * L * 0.6 + 120 * L * L;
+    x = lerp(x, 960, conv); y = lerp(y, 540, conv);
+    p.setAttribute('cx', x.toFixed(1)); p.setAttribute('cy', y.toFixed(1));
+    p.setAttribute('opacity', (Math.min(life * 6, 1) * (1 - 0.4 * prog(life, 1.2, 0.6))).toFixed(2));
   });
-  $('#bal').textContent = money(1000 - spent);
-  $('#baldelta').textContent = '−' + money(spent);
-  $('#baldelta').style.opacity = prog(t, 13.8, 0.3);
-  $('#balbar').style.transform = `scaleX(${(1000 - spent) / 1000})`;
-  drift(s, t);
-  caption(s, t, 13.15, 99);
+  $('#turnflash').style.opacity = prog(t, 27.7, 0.3);
 });
 
-scene('slam', 18.1, 21.7, (t, s) => {
-  const p1 = $('#slam1'), p2 = $('#slam2');
-  wipe(p1, t, 18.1, 99, 'right', 'left', 0.42);
-  const k1 = expoOut(prog(t, 18.3, 0.6));
-  $('.slam', p1).style.transform = `scale(${lerp(0.94, 1, k1)})`;
-  words($('.slam', p1), t, 18.28, 99, 0.06);
-  wipe(p2, t, 19.75, 99, 'bottom', 'top', 0.42);
-  const k2 = expoOut(prog(t, 19.95, 0.6));
-  $('.slam', p2).style.transform = `scale(${lerp(0.94, 1, k2)})`;
-  words($('.slam', p2), t, 19.95, 99, 0.07);
-  // Leave upwards, uncovering the logo underneath.
-  const ko = easeIn(prog(t, 21.3, 0.4));
-  s.el.style.transform = `translate3d(0, ${-ko * 1080}px, 0)`;
-}, 10);
-
-let logo1, logo2;
-scene('logo', 21.3, 25.9, (t, s) => {
-  animateLogo(logo1, t, 21.55);
-  const ko = easeIn(prog(t, 25.5, 0.4));
-  const k = expoOut(prog(t, 21.4, 1.4));
-  logo1.host.style.transform = `scale(${lerp(0.96, 1, k) * (1 + ko * 0.3)})`;
-  logo1.host.style.opacity = 1 - ko;
-  logo1.host.style.filter = ko > 0.02 ? `blur(${ko * 14}px)` : 'none';
-  const tag = $('.tagline', s.el);
-  words(tag, t, 22.85, 25.75, 0.06);
-});
-
-function chapter(id, a, b) {
-  scene(id, a, b, (t, s) => {
-    whip($('.ch', s.el), t, a, b, { dist: 300 });
-    pop($('.ch-num', s.el), t, a + 0.15, 0.5, 0.4);
-    words($('h1', s.el), t, a + 0.25, 99, 0.06);
-    words($('p', s.el), t, a + 0.95, 99, 0.03);
-  });
+function chapter(id, a) {
+  scene(id, a, a + 2, (t, s) => {
+    const k = expoOut(prog(t, a, 0.45));
+    $('.cbl', s.el).style.transform = `translateX(${-(1 - k) * 400}px)`;
+    $('.cbr', s.el).style.transform = `translateX(${(1 - k) * 400}px)`;
+    pop($('.ch-num', s.el), t, a + 0.08, 0.45, 0.5);
+    mask($('.chh', s.el), t, a + 0.12, 1e9, 0.07, 0.6);
+    const ks = easeIn(prog(t, a + 1.55, 0.42));
+    $('.shut.l', s.el).style.transform = `scaleX(${ks})`;
+    $('.shut.r', s.el).style.transform = `scaleX(${ks})`;
+    $('.ch-in', s.el).style.transform = `scale(${1 + 0.04 * prog(t, a, 2)})`;
+  }, 'light');
 }
-chapter('ch1', 25.7, 28.4);
+chapter('ch1', 28);
 
-scene('deposit', 28.3, 33.8, (t, s) => {
-  whip($('.deposit', s.el), t, s.a, s.b);
-  typed($('#amt'), '1,000.00', t, 29.1, 10, 30.6);
-  const btn = $('#depbtn');
-  const press = Math.sin(clamp((t - 30.8) / 0.22) * Math.PI);
-  btn.style.transform = `scale(${1 - 0.05 * press})`;
-  $('#deplabel').innerHTML = t < 30.9 ? 'Deposit' : t < 31.5 ? 'Depositing…' : `Deposited <i class="ck" style="width:26px;height:26px;vertical-align:-4px">${CHECK}</i>`;
-  pop($('.kv .lock', s.el), t, 31.55, 0.5, 0.3);
-  drift(s, t);
-  caption(s, t, 28.7, 31.4);
+let yieldDots = [];
+const COIN_FROM = { x: 209, y: 612 };
+scene('yield', 30, 36, (t, s) => {
+  mask($('.top', s.el), t, 30.05, 1e9, 0.05);
+  slide($('.wallet', s.el), t, 30.25, -70);
+  slide($('.credits', s.el), t, 30.45, 70);
+  const kv = expoOut(prog(t, 30.35, 0.6));
+  $$('.vb', s.el).forEach(v => { v.style.transform = `scaleY(${kv})`; v.style.opacity = prog(t, 30.35, 0.1); });
+  const names = ['Aave USDC vault · Base', 'cbETH vault · Base', 'Pendle PT vault · Base', 'Rhea USDC vault · NEAR', '4 vaults live on mainnet'];
+  const ni = t < 34.2 ? 0 : Math.min(4, 1 + Math.floor((t - 34.2) / 0.4));
+  $('#vname').textContent = names[ni];
+  $('#vname').style.opacity = prog(t, 30.55, 0.2);
+  let left = 1000;
+  $$('.coins .ic', s.el).forEach((c, i) => {
+    const at = 30.85 + i * 0.22, k = easeInOut(prog(t, at, 0.55));
+    if (k >= 1) left -= 200;
+    const endX = 970, endY = 678 - i * 40;
+    const x = lerp(COIN_FROM.x, endX, k), y = lerp(COIN_FROM.y, endY, k) - Math.sin(k * Math.PI) * 220;
+    c.style.transform = `translate(${(x - endX).toFixed(1)}px, ${(y - endY - i * 40).toFixed(1)}px) rotate(${((1 - k) * -40).toFixed(1)}deg)`;
+    c.style.opacity = t < at ? 0 : 1;
+  });
+  $('#wbal').textContent = left.toLocaleString('en-US', { minimumFractionDigits: 2 });
+  pop($('.v-principal', s.el), t, 32.1, 0.5, 0.7);
+  const period = yieldDots.length * 0.07;
+  yieldDots.forEach((d, i) => {
+    const born = 32.35 + i * 0.07;
+    if (t < born || t > 35.9) { d.setAttribute('opacity', 0); return; }
+    const p = ((t - born) % period) / 1.05;
+    if (p > 1) { d.setAttribute('opacity', 0); return; }
+    const jx = (hash(i) - 0.5) * 40, e = easeInOut(p);
+    const x0 = 970 + jx, y0 = 380, x2 = 1545, y2 = 560, cx = 1250, cy = 140 + (hash(i * 3) - 0.5) * 80;
+    const x = (1 - e) ** 2 * x0 + 2 * (1 - e) * e * cx + e * e * x2, y = (1 - e) ** 2 * y0 + 2 * (1 - e) * e * cy + e * e * y2;
+    d.setAttribute('cx', x.toFixed(1)); d.setAttribute('cy', y.toFixed(1));
+    d.setAttribute('opacity', Math.min(p * 8, (1 - p) * 8, 1).toFixed(2));
+  });
+  $('#cnum').textContent = money(1.274 * easeOut(prog(t, 32.9, 2.7)), 3);
+  mask($('.cap', s.el), t, 33.3, 1e9, 0.04);
 });
 
-scene('yield', 33.7, 40.2, (t, s) => {
-  whip($('.flowcol', s.el), t, s.a, s.b);
-  const [l1, l2] = [$('#yl1'), $('#yl2')];
-  $('.fill', l1).style.transform = `scaleX(${expoOut(prog(t, 34.2, 0.6))})`;
-  $('.fill', l2).style.transform = `scaleX(${expoOut(prog(t, 35.6, 0.6))})`;
-  dots(l1, t, 34.4, 39.8, 0.55, 0.85);
-  dots(l2, t, 35.8, 39.8, 0.55, 0.85);
-  pop($('.hub .disc', s.el), t, 34.0, 0.55, 0.6);
-  const steps = $$('.step i', s.el);
-  const marks = [[34.4, 35.5], [35.9, 37.1], [37.5, 37.9]];
-  steps.forEach((dot, i) => {
-    const [now, done] = marks[i];
-    dot.classList.toggle('now', t >= now && t < done);
-    dot.classList.toggle('on', t >= done);
+let routes = [];
+scene('intents', 36, 42, (t, s) => {
+  const zoom = easeIn(prog(t, 41.55, 0.45));
+  s.el.style.transformOrigin = '1560px 600px';
+  s.el.style.transform = `scale(${1 + zoom * 0.6})`;
+  s.el.style.filter = zoom > 0.05 ? `blur(${zoom * 8}px)` : 'none';
+  const title = $('#intitle');
+  const kin = expoOut(prog(t, 36.0, 0.5));
+  const up = expoInOut(prog(t, 37.7, 0.65));
+  title.style.transform = `translateY(${-up * 238}px) scale(${lerp(1.08, 1, kin) * lerp(1, 0.42, up)})`;
+  title.style.filter = kin < 0.95 ? `blur(${(1 - kin) * 10}px)` : 'none';
+  $('#infill').style.clipPath = `inset(0 ${(1 - easeInOut(prog(t, 36.2, 0.85))) * 100}% 0 0)`;
+  mask($('.intents-sub', s.el), t, 36.6, 37.75, 0.05);
+  $$('.nd', s.el).forEach((n, i) => { const k = expoOut(prog(t, 37.95 + i * 0.07, 0.6)); n.style.opacity = prog(t, 37.95 + i * 0.07, 0.2); n.style.transform = `translate(${(1 - k) * -80}px, -50%)`; });
+  pop($('#nearnode'), t, 38.05, 0.6, 0.5);
+  routes.forEach((r, i) => {
+    const k = easeInOut(prog(t, 38.2 + i * 0.07, 0.7));
+    r.path.style.strokeDashoffset = String(r.len * (1 - k));
+    r.path.style.opacity = t < 38.2 ? 0 : 1;
+    r.dots.forEach((d, j) => {
+      const start = 38.85 + i * 0.13 + j * 0.42;
+      const p = ((t - start) % 1.26) / 1.1;
+      if (t < start || p > 1) { d.setAttribute('opacity', 0); return; }
+      const pt = r.path.getPointAtLength(easeInOut(p) * r.len);
+      d.setAttribute('cx', pt.x.toFixed(1)); d.setAttribute('cy', pt.y.toFixed(1));
+      d.setAttribute('opacity', Math.min(p * 8, (1 - p) * 8, 1).toFixed(2));
+    });
   });
-  $$('.step .bar2', s.el).forEach((bar, i) => { bar.style.transform = `scaleX(${expoOut(prog(t, marks[i][1], 0.45))})`; });
-  const c = easeOut(prog(t, 36.6, 2.4));
-  $('#credits').textContent = money(1.274 * c, 3);
-  drift(s, t);
-  caption(s, t, 34.1, 36.5);
-}, 0);
-// Mint dots travel along a link: a new one every `every` seconds, each taking `dur`.
-function dots(link, t, a, b, every, dur) {
-  if (!link._dots) {
-    link._dots = Array.from({ length: 4 }, () => { const d = document.createElement('i'); d.className = 'dot'; link.append(d); return d; });
-  }
-  link._dots.forEach((d, i) => {
-    let shown = false;
-    for (let n = i; ; n += 4) {
-      const start = a + n * every;
-      if (start > t || start > b) break;
-      const p = (t - start) / dur;
-      if (p >= 0 && p <= 1) {
-        d.style.left = `${easeInOut(p) * 100}%`;
-        d.style.opacity = Math.min(p * 6, (1 - p) * 6, 1);
-        shown = true;
-      }
-    }
-    if (!shown) d.style.opacity = 0;
+  rise($('#quote'), t, 39.2, 40);
+  const qi = prog(t, 39.35, 0.5), qo = prog(t, 39.6, 0.8);
+  $('#qin').textContent = qi >= 1 ? '2.000000' : (2 * qi).toFixed(6);
+  $('#qout').textContent = qo >= 1 ? '1.999763' : (1.999763 * easeOut(qo)).toFixed(6);
+});
+
+scene('nonear', 42, 48, (t, s) => {
+  punch(s, t, 1.05);
+  rise($('.kicker', s.el), t, 42.02, 12);
+  $$('.no', s.el).forEach((n, i) => mask(n, t, 42.25 + i * 0.5, 1e9, 0.06));
+  slide($('.sig', s.el), t, 42.6, 70);
+  pop($('.sig-ok', s.el), t, 43.6, 0.45, 0.7);
+  mask($('.cap', s.el), t, 44.15, 1e9, 0.05);
+  const ov = $('#turnaround');
+  ov.style.opacity = prog(t, 45.85, 0.25);
+  const txt = $('.giant3', ov);
+  mask(txt, t, 46.1, 47.95, 0.07);
+  txt.style.transform = `scale(${1 + 0.05 * prog(t, 46.1, 1.9)})`;
+});
+
+chapter('ch2', 48);
+
+const TERM = [
+  ['$ ', 'p'], ['curl ', ''], ['https://api.infernear.dev/v1/chat/completions', 's'], [' \\\n', ''],
+  ['    -H ', 'd'], ['"Authorization: Bearer $INFERNEAR_API_KEY"', 's'], [' \\\n', ''],
+  ['    -d ', 'd'], [`'{"model": "Qwen/Qwen3.8-27B",`, 's'], ['\n', ''],
+  [`        "messages": [{"role": "user", "content": "Hello"}]}'`, 's'], ['\n', ''],
+];
+const RESP = ['', '<span class="ok">HTTP/2 200</span>  <span class="d">x-infernear-billing: free</span>',
+  '<span class="d">"content":</span> <span class="p">"Hello! How can I help?"</span>'];
+let epW = 0;
+scene('endpoint', 50, 56, (t, s) => {
+  const ti = $('#eptitle');
+  const kin = expoOut(prog(t, 50.0, 0.5)), mv = expoInOut(prog(t, 50.85, 0.6));
+  const dx0 = (1920 - epW) / 2 - 140;
+  ti.style.transform = `translate(${lerp(dx0, 0, mv).toFixed(1)}px, ${lerp(300, 0, mv).toFixed(1)}px) scale(${(lerp(1.12, 1, kin) * lerp(1, 0.42, mv)).toFixed(4)})`;
+  ti.style.filter = kin < 0.95 ? `blur(${(1 - kin) * 10}px)` : 'none';
+  ti.style.opacity = prog(t, 50.0, 0.12);
+  const term = $('#term');
+  const kt = expoOut(prog(t, 51.05, 0.55));
+  term.style.opacity = prog(t, 51.05, 0.2);
+  term.style.transform = `translateY(${(1 - kt) * 40}px) scale(${lerp(0.97, 1, kt)})`;
+  const end = typedSegments($('#termtext'), TERM, t, 51.35, 92);
+  if (t >= end + 0.2) $('#termtext').innerHTML += RESP.slice(0, 1 + Math.min(2, Math.floor((t - end - 0.2) / 0.18) + 1)).join('\n');
+  $$('.tags .fr', s.el).forEach((f, i) => frame(f, t, 54.0 + i * 0.25, 40));
+  mask($('.cap', s.el), t, 54.55, 1e9, 0.04);
+});
+
+scene('tee', 56, 62, (t, s) => {
+  const ghost = $('#teeghost');
+  ghost.style.opacity = prog(t, 56.1, 0.5) * (1 - prog(t, 61.6, 0.4));
+  ghost.style.transform = `translateX(${-(t - 56) * 30}px)`;
+  const left = $('.tee-left', s.el);
+  left.style.opacity = 1 - prog(t, 61.6, 0.4);
+  rise($('.kicker', left), t, 56.1, 12);
+  const lines = $$('.tl', left);
+  lines.forEach((l, i) => {
+    const at = 56.35 + i * 1.0;
+    mask(l, t, at, 1e9, 0.05);
+    l.style.opacity = t < at + 1.0 || i === lines.length - 1 ? 1 : lerp(1, 0.32, prog(t, at + 1.0, 0.3));
   });
+  const hb = $('#hexband');
+  const n = 64, on = prog(t, 57.55, 0.4);
+  let txt = '';
+  for (let i = 0; i < n; i++) txt += (i % 5 === 4 ? ' ' : hexAt(i + Math.floor(t * 18), t));
+  hb.textContent = txt.slice(0, Math.floor(n * on));
+  hb.style.opacity = t < 57.55 ? 0 : 1 - 0.65 * prog(t, 58.4, 0.3);
+}, 'dark');
+
+scene('models', 62, 66, (t, s) => {
+  punch(s, t, 1.05);
+  const rows = $$('.mi', s.el);
+  let shown = 0;
+  rows.forEach((r, i) => { const at = 62.3 + i * 0.3; slide(r, t, at, 90, 0.5); if (t >= at) shown++; });
+  const seven = $('#seven');
+  seven.textContent = String(Math.max(1, shown));
+  const last = 62.3 + (Math.max(1, shown) - 1) * 0.3;
+  seven.style.transform = `scale(${1 + 0.06 * (1 - prog(t, last, 0.25))})`;
+  seven.style.opacity = prog(t, 62.05, 0.15);
+  rise($('.seven-l', s.el), t, 62.4, 16);
+  show($('.mprice', s.el), prog(t, 64.5, 0.3));
+}, 'light');
+
+function proof(id, a, hud) {
+  scene(id, a, a + 2, (t, s) => {
+    const k = expoOut(prog(t, a, 0.45));
+    s.el.style.transform = `${shake(t, a, 12, 0.25)} scale(${lerp(1.12, 1, k)})`;
+    mask($('.pw', s.el), t, a + 0.02, 1e9, 0.06, 0.5);
+    const ps = $('.ps', s.el);
+    if (!ps._full) ps._full = ps.textContent;
+    ps.textContent = ps._full.slice(0, Math.floor(clamp((t - a - 0.45) * 70, 0, ps._full.length)));
+  }, hud);
 }
+proof('p1', 66, 'light');
+proof('p2', 68, 'light');
+proof('p3', 70, 'dark');
 
-scene('signin', 40.1, 45.0, (t, s) => {
-  whip($('.signin', s.el), t, s.a, s.b);
-  const btn = $('#connect');
-  const press = Math.sin(clamp((t - 41.25) / 0.22) * Math.PI);
-  btn.style.transform = `scale(${1 - 0.04 * press})`;
-  const ko = expoOut(prog(t, 41.4, 0.45)), ki = expoOut(prog(t, 41.55, 0.6));
-  const idle = $('.c-idle', btn), done = $('.c-done', btn);
-  idle.style.opacity = 1 - ko; idle.style.transform = `translate3d(0, ${-ko * 30}px, 0)`;
-  done.style.opacity = ki; done.style.transform = `translate3d(0, ${(1 - ki) * 30}px, 0)`;
-  $$('.no', s.el).forEach((no, i) => {
-    const at = 42.15 + i * 0.22;
-    const k = backOut(prog(t, at, 0.55));
-    no.style.opacity = prog(t, at, 0.15);
-    no.style.transform = `translate3d(0, ${(1 - k) * 26}px, 0) scale(${lerp(0.85, 1, k)})`;
+scene('finale', 72, 78.05, (t, s) => {
+  const land = easeInOut(prog(t, 77.2, 0.8));
+  const r = expoOut(prog(t, 72.3, 0.8)) * (1 - land);
+  $$('.ob', s.el).forEach((ob, i) => {
+    const a = (i / 8) * Math.PI * 2 + (t - 72) * 0.5;
+    const depth = (Math.sin(a) + 1) / 2;
+    const x = Math.cos(a) * 640 * r, y = Math.sin(a) * 170 * r;
+    ob.style.transform = `translate(-50%, -50%) translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) scale(${lerp(0.62, 1.05, depth).toFixed(3)})`;
+    ob.style.opacity = (prog(t, 72.3 + i * 0.05, 0.2) * lerp(0.35, 1, depth) * (1 - land)).toFixed(3);
+    ob.style.zIndex = String(Math.round(depth * 10));
   });
-  drift(s, t);
-  caption(s, t, 40.5, 42.8);
+  $$('.fw', s.el).forEach((w, i) => mask(w, t, 73.0 + i * 0.5, 77.3, 0.05));
+  show($('.fin-sub', s.el), prog(t, 74.8, 0.4) * (1 - prog(t, 77.1, 0.3)));
+}, 'dark');
+
+scene('end', 78, DURATION + 1, (t, s) => {
+  revealWordmark(lockup, t, 78.15, 48, 196, 0.95);
+  mask($('.end-tag', s.el), t, 79.0, 1e9, 0.045);
+  rise($('#endurl'), t, 79.6, 16);
+  rise($('#endlinks'), t, 79.9, 12);
+  rise($('#endfoot'), t, 80.4, 12);
+  show($('#blackout'), prog(t, 82.6, 1.4));
 });
 
-chapter('ch2', 44.9, 47.6);
-
-scene('code', 47.5, 53.0, (t, s) => {
-  whip($('.code', s.el), t, s.a, s.b);
-  const e1 = retype($('#url'), 'https://api.openai.com/v1', 'https://api.infernear.dev/v1', t, 48.3);
-  const e2 = retype($('#key'), 'OPENAI_API_KEY', 'INFERNEAR_API_KEY', t, e1 + 0.45);
-  $('#hl1').classList.toggle('on', t >= e1);
-  $('#hl2').classList.toggle('on', t >= e2);
-  pop($('#tag1'), t, e1, 0.45, 0.5);
-  pop($('#tag2'), t, e2, 0.45, 0.5);
-  drift(s, t, 0.012);
-  caption(s, t, 47.9, 49.7);
-});
-
-scene('models', 52.9, 58.4, (t, s) => {
-  whip($('.pair', s.el), t, s.a, s.b);
-  $$('.mrow', s.el).forEach((row, i) => slideIn(row, t, 53.2 + i * 0.07, 16, 0.5));
-  $('#pick').classList.toggle('sel', t >= 54.55);
-  const reply = $('.reply', s.el);
-  for (const el of [$('.r-head', reply), $('.r-model', reply)]) el.style.opacity = prog(t, 54.7, 0.25);
-  typed($('#rtext'), 'Hello! How can I help you today?', t, 54.9, 30, 56.6);
-  pop($('#sig'), t, 56.1, 0.5, 0.7);
-  $('#iid').style.opacity = prog(t, 56.35, 0.3);
-  drift(s, t, 0.012);
-  caption(s, t, 53.3, 56.2);
-});
-
-const CIPHER = '9f2c e81a 04d7 b3c6 51ae 7d90 c2f4 0be8 a613';
-scene('private', 58.3, 63.8, (t, s) => {
-  whip($('.priv', s.el), t, s.a, s.b);
-  $('.fill', $('#pl1')).style.transform = `scaleX(${expoOut(prog(t, 58.7, 0.5))})`;
-  $('.fill', $('#pl2')).style.transform = `scaleX(${expoOut(prog(t, 58.85, 0.5))})`;
-  packet($('#pk1'), t, [{ a: 59.4, d: 0.7, label: 'encrypted' }, { a: 62.35, d: 0.6, back: true, label: 'signed' }]);
-  typed($('#cipher'), CIPHER, t, 60.05, 60, 60.0);
-  packet($('#pk2'), t, [{ a: 60.55, d: 0.7, label: 'encrypted' }, { a: 61.75, d: 0.6, back: true, label: 'signed' }]);
-  const glow = Math.sin(clamp((t - 61.25) / 0.6) * Math.PI);
-  const core = $('#core');
-  core.style.transform = `scale(${1 + 0.12 * glow})`;
-  core.style.boxShadow = `0 0 0 ${glow * 18}px rgba(0, 236, 151, ${0.28 * glow})`;
-  drift(s, t, 0.012);
-  caption(s, t, 58.7, 60.6);
-});
-// A labelled pill crossing a link, once per trip.
-function packet(el, t, trips) {
-  for (const trip of trips) {
-    const p = (t - trip.a) / trip.d;
-    if (p < 0 || p > 1) continue;
-    el.textContent = trip.label;
-    const k = easeInOut(p);
-    el.style.left = `${lerp(18, 82, trip.back ? 1 - k : k)}%`;
-    el.style.opacity = Math.min(p * 8, (1 - p) * 8, 1);
-    return;
-  }
-  el.style.opacity = 0;
-}
-
-scene('proof', 63.6, 68.0, (t, s) => {
-  const panel = $('#proofpanel');
-  wipe(panel, t, 63.6, 68.0, 'right', 'left', 0.42);
-  words($('.ph', s.el), t, 63.85, 99, 0.07);
-  $$('.pl', s.el).forEach((line, i) => words(line, t, 64.6 + i * 0.5, 99, 0.04));
-}, 10);
-
-scene('vision', 67.7, 73.5, (t, s) => {
-  const center = $('.center', s.el);
-  pop(center, t, 67.8, 0.6, 0.5);
-  const sats = $$('.sat', s.el);
-  sats.forEach((sat, i) => {
-    const k = backOut(prog(t, 68.0 + i * 0.09, 0.55));
-    sat.style.opacity = prog(t, 68.0 + i * 0.09, 0.2);
-    sat.style.transform = `translate(-50%, -50%) scale(${lerp(0.5, 1, k)})`;
-    const ray = sat._ray;
-    const kr = expoOut(prog(t, 68.25 + i * 0.09, 0.7));
-    ray.setAttribute('x2', lerp(ray._x1, ray._x2, kr));
-    ray.setAttribute('y2', lerp(ray._y1, ray._y2, kr));
-    ray.style.opacity = prog(t, 68.25 + i * 0.09, 0.2);
-  });
-  // Value flows only on the live route.
-  const live = sats[0]._ray;
-  $$('.vdot', s.el).forEach((d, i) => {
-    let o = 0;
-    for (let n = i; n < 40; n += 3) {
-      const p = (t - (68.9 + n * 0.5)) / 1.1;
-      if (p >= 0 && p <= 1) {
-        const k = easeInOut(p);
-        d.setAttribute('cx', lerp(live._x1, live._x2, k));
-        d.setAttribute('cy', lerp(live._y1, live._y2, k));
-        o = Math.min(p * 6, (1 - p) * 6, 1);
-      }
-    }
-    d.style.opacity = o;
-  });
-  caption(s, t, 68.4, 70.3);
-}, 0);
-
-scene('end', 73.2, DURATION + 1, (t, s) => {
-  wipe(s.el, t, 73.2, 999, 'bottom', 'top', 0.45);
-  animateLogo(logo2, t, 73.55);
-  words($('.end-tag', s.el), t, 74.6, 999, 0.05);
-  slideIn($('#endurl'), t, 75.3, 16);
-  slideIn($('#endfoot'), t, 75.7, 12);
-}, 20);
-
-// ---------- vision layout ----------
-function layoutOrbit() {
-  const cx = 960, cy = 405, rx = 640, ry = 250;
-  const rays = $('#rays');
-  for (const sat of $$('.sat')) {
-    const a = (Number(sat.dataset.a) * Math.PI) / 180;
-    const x = Math.cos(a) * rx, y = Math.sin(a) * ry;
-    sat.style.left = `${x}px`; sat.style.top = `${y}px`;
-    sat.classList.toggle('up', y < -40);
-    // From the icon's edge to the centre disc's edge.
-    const len = Math.hypot(x, y), ux = x / len, uy = y / len;
-    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    line._x1 = cx + x - ux * 70; line._y1 = cy + y - uy * 70;
-    line._x2 = cx + ux * 140; line._y2 = cy + uy * 140;
-    line.setAttribute('x1', line._x1); line.setAttribute('y1', line._y1);
-    const live = sat.classList.contains('live');
-    line.setAttribute('stroke', live ? '#141519' : '#b9b09d');
-    line.setAttribute('stroke-width', live ? '3' : '2.5');
-    if (!live) line.setAttribute('stroke-dasharray', '4 10');
-    line.setAttribute('stroke-linecap', 'round');
-    rays.append(line);
-    sat._ray = line;
-  }
-  for (let i = 0; i < 3; i++) rays.insertAdjacentHTML('beforeend', '<circle class="vdot" r="8" fill="#00ec97" stroke="rgba(0,236,151,0.3)" stroke-width="8" opacity="0"/>');
-}
-
-// ---------- setup ----------
-function setup() {
-  placeIcons();
-  splitWords();
-  logo1 = buildLogo($('#logo1'));
-  logo2 = buildLogo($('#logo2'));
-  $('#markc').innerHTML = `<svg viewBox="4 4 24 24"><path fill="currentColor" d="${LB}"/><path fill="currentColor" d="${RB}"/><rect x="12" y="12" width="8" height="8" rx="1" fill="#00ec97"/></svg>`;
-  for (const step of $$('.step + .step')) step.insertAdjacentHTML('afterbegin', '<b class="bar2"></b>');
-  for (const el of $$('[data-whip]')) blurFilter(el);
-  for (const m of $$('.main[data-scale]')) m.style.transform = `scale(${m.dataset.scale})`;
-  for (const el of $$('.chip-ic')) el.innerHTML = CHIP;
-  layoutOrbit();
-}
-function measure() {
-  // Code tags sit on their highlighted lines.
-  for (const [tag, hl] of [['#tag1', '#hl1'], ['#tag2', '#hl2']]) {
-    const h = $(hl), code = $('.code');
-    $(tag).style.top = `${h.offsetTop + (h.offsetHeight - 30) / 2}px`;
-    void code;
-  }
-  const dep = pt($('#depbtn')), con = pt($('#connect')), pick = pt($('#pick'), 0.35, 0.5);
-  cursorKeys = [
-    { t: 29.9, x: dep.x + 260, y: dep.y + 200, o: 0 },
-    { t: 30.15, x: dep.x + 210, y: dep.y + 160, o: 1 },
-    { t: 30.75, x: dep.x + 12, y: dep.y + 10, o: 1 },
-    { t: 31.9, x: dep.x + 12, y: dep.y + 10, o: 1 },
-    { t: 32.25, x: dep.x + 80, y: dep.y + 90, o: 0 },
-    { t: 40.55, x: con.x + 300, y: con.y + 230, o: 0 },
-    { t: 40.8, x: con.x + 250, y: con.y + 190, o: 1 },
-    { t: 41.2, x: con.x + 40, y: con.y + 16, o: 1 },
-    { t: 42.0, x: con.x + 40, y: con.y + 16, o: 1 },
-    { t: 42.3, x: con.x + 120, y: con.y + 80, o: 0 },
-    { t: 53.75, x: pick.x + 380, y: pick.y + 240, o: 0 },
-    { t: 54.0, x: pick.x + 320, y: pick.y + 190, o: 1 },
-    { t: 54.45, x: pick.x, y: pick.y + 4, o: 1 },
-    { t: 55.3, x: pick.x, y: pick.y + 4, o: 1 },
-    { t: 55.6, x: pick.x + 70, y: pick.y + 80, o: 0 },
-  ];
-  clicks = [
-    { t: 30.85, x: dep.x + 12, y: dep.y + 10 },
-    { t: 41.3, x: con.x + 40, y: con.y + 16 },
-    { t: 54.55, x: pick.x, y: pick.y + 4 },
-  ];
+// ---------- HUD ----------
+function hud(t) {
+  const sec = [...SECTIONS].reverse().find(([at]) => t >= at);
+  const label = sec ? sec[1] : '';
+  const since = t - (sec ? sec[0] : 0);
+  let shown = '';
+  for (let i = 0; i < label.length; i++) shown += i < since * 40 ? label[i] : (label[i] === ' ' ? ' ' : hexAt(i, t));
+  $('#hsec').textContent = shown;
+  const frames = Math.floor(t * 60);
+  const ss = Math.floor(t) % 60, mm = Math.floor(t / 60), ff = frames % 60;
+  $('#htc').textContent = `00:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}:${String(ff).padStart(2, '0')}`;
+  const beat = Math.floor(t / 0.5) % 4;
+  $$('#hbeats i').forEach((b, i) => b.classList.toggle('on', i === beat));
+  $$('#hbars i').forEach((b, i) => b.classList.toggle('on', i <= Math.floor(t / 2)));
+  const top = [...scenes].reverse().find(s => t >= s.a && t < s.b);
+  $('#hud').style.setProperty('--hud', top && top.hud === 'light' ? '#141519' : '#f4f4f0');
+  $('#hud').style.opacity = prog(t, 0.2, 1.2) * (1 - prog(t, 82.6, 1.0));
 }
 
 export function render(t) {
   for (const s of scenes) {
     const on = t >= s.a && t < s.b;
     s.el.classList.toggle('on', on);
-    s.el.style.zIndex = s.z;
     if (on) s.update(t, s);
   }
-  cursor(t);
+  const g = glState(t);
+  if (g) gl.render(g); else gl.clear();
+  hud(t);
+}
+
+// ---------- sound effects, from the picture ----------
+export function soundEffects() {
+  const fx = [];
+  const add = (t, type, v) => fx.push({ t, type, v });
+  for (const t of [12.0, 16.0, 20.0, 30.0, 36.0, 37.7, 41.7, 50.0, 50.85, 56.0, 62.0, 72.0, 77.3]) add(t, 'whoosh');
+  for (let i = 0; i < 3; i++) add(5.6 + i * 0.5, 'pop', 0.8);
+  for (let i = 0; i < 3; i++) add(7.5 + i * 0.25, 'tick');
+  for (let i = 0; i < 8; i++) add(12.6 + i * 0.4, 'tick');
+  add(13.3, 'stamp');
+  for (let i = 0; i < 7; i++) add(BURST_AT + i * 0.07, 'pop', 0.6);
+  for (let i = 0; i < 7; i++) add(18.45 + i * 0.05, 'tick');
+  for (let i = 0; i < 5; i++) add(20.7 + i * 0.6, 'stamp', 0.6);
+  for (let i = 0; i < 5; i++) add(30.85 + i * 0.22 + 0.55, 'pop', 0.7);
+  add(32.1, 'chime');
+  for (let i = 0; i < 4; i++) add(34.2 + i * 0.4, 'tick');
+  for (let i = 0; i < 6; i++) add(38.2 + i * 0.07, 'tick');
+  add(40.4, 'chime');
+  add(43.6, 'chime');
+  for (let k = 0; k < 2.0 * 92; k += 3) add(51.35 + k / 92, 'tick');
+  add(53.6, 'chime');
+  for (let i = 0; i < 3; i++) add(54.0 + i * 0.25, 'pop', 0.7);
+  add(59.35, 'chime');
+  for (let i = 0; i < 7; i++) add(62.3 + i * 0.3, 'tick');
+  add(4.15, 'shimmer'); add(78.2, 'shimmer');
+  return fx;
+}
+
+// ---------- setup ----------
+function setup() {
+  placeIcons();
+  splitWords();
+  heroWord = wordmarkSvg($('#heroword'));
+  lockup = lockupSvg($('#lockup'));
+  const pins = $('.chip .pins');
+  for (let i = 0; i < 6; i++) {
+    const p = 95 + i * 42;
+    pins.insertAdjacentHTML('beforeend', `<line x1="${p}" y1="22" x2="${p}" y2="60"/><line x1="${p}" y1="340" x2="${p}" y2="378"/><line x1="22" y1="${p}" x2="60" y2="${p}"/><line x1="340" y1="${p}" x2="378" y2="${p}"/>`);
+  }
+  const gapLines = $('#gaplines');
+  for (let i = 0; i < 7; i++) gapLines.insertAdjacentHTML('beforeend', '<line stroke="#686b73" stroke-width="3" stroke-dasharray="2 12" stroke-linecap="round"/><g><circle r="17" fill="#f2b705"/><path d="M-6 -6L6 6M6 -6L-6 6" stroke="#141519" stroke-width="3.2" stroke-linecap="round"/></g>');
+  const sp = $('#sparks');
+  for (let i = 0; i < 120; i++) sp.insertAdjacentHTML('beforeend', `<circle r="${(3 + hash(i * 9.1) * 5).toFixed(1)}" fill="#00ec97" opacity="0"/>`);
+  sparks = $$('circle', sp);
+  const yf = $('#yieldflow');
+  for (let i = 0; i < 16; i++) yf.insertAdjacentHTML('beforeend', `<circle r="${(5 + hash(i * 2.3) * 4).toFixed(1)}" fill="#00ec97" opacity="0" style="filter: drop-shadow(0 0 8px rgba(0,236,151,0.8))"/>`);
+  yieldDots = $$('circle', yf);
+  const rs = $('#routes');
+  for (const nd of $$('.nd')) {
+    const y = Number(nd.dataset.y);
+    nd.style.top = `${y}px`;
+    const x0 = 480, x1 = 1462, y1 = 600;
+    rs.insertAdjacentHTML('beforeend', `<path d="M${x0} ${y} C ${x0 + 430} ${y}, ${x1 - 430} ${y1}, ${x1} ${y1}" fill="none" stroke="rgba(244,244,240,0.28)" stroke-width="2.5"/>`);
+  }
+  routes = $$('path', rs).map(path => {
+    const len = path.getTotalLength();
+    path.style.strokeDasharray = `${len}`;
+    const dots = [0, 1, 2].map(() => { rs.insertAdjacentHTML('beforeend', '<circle r="7" fill="#00ec97" opacity="0" style="filter: drop-shadow(0 0 6px rgba(0,236,151,0.9))"/>'); return rs.lastElementChild; });
+    return { path, len, dots };
+  });
+  $('#hbars').innerHTML = '<i></i>'.repeat(42);
 }
 
 // ---------- player ----------
@@ -563,35 +627,67 @@ function fit() {
 setup();
 fit();
 await document.fonts.ready;
-await Promise.all(['600 56px "Hanken Grotesk Variable"', '400 20px "Martian Mono Variable"'].map(f => document.fonts.load(f)));
-measure();
+await Promise.all(['800 120px "Hanken Grotesk Variable"', '400 20px "Martian Mono Variable"'].map(f => document.fonts.load(f)));
+epW = $('#eptitle').offsetWidth;
 
 let t = Number(params.get('t') ?? 0);
 render(t);
 window.__duration = DURATION;
 window.__seek = time => { t = time; render(time); };
+// The soundtrack as WAV bytes, base64 in chunks (render.mjs muxes it with the frames).
+let wav = null;
+window.__soundtrack = async () => { wav = wavBytes(await renderSoundtrack(DURATION, soundEffects())); return Math.ceil(wav.length / 2_000_000); };
+window.__soundtrackChunk = i => {
+  const part = wav.subarray(i * 2_000_000, (i + 1) * 2_000_000);
+  let s = '';
+  for (let k = 0; k < part.length; k += 0x8000) s += String.fromCharCode.apply(null, part.subarray(k, k + 0x8000));
+  return btoa(s);
+};
 window.__ready = true;
 
 if (!capture) {
-  let playing = true, last = performance.now(), idle = 0;
-  const hud = $('#hud');
+  let playing = false, idle = 0, last = performance.now();
+  let ctx = null, buffer = null, source = null, startedAt = 0, offset = t;
+  const player = $('#player'), btn = $('#playbtn');
+  const stopAudio = () => { if (source) { source.stop(); source = null; } };
+  const startAudio = () => {
+    stopAudio();
+    if (!ctx || !buffer) return;
+    source = ctx.createBufferSource(); source.buffer = buffer; source.connect(ctx.destination);
+    source.start(0, t); startedAt = ctx.currentTime; offset = t;
+  };
+  const play = async () => {
+    if (!ctx) {
+      btn.textContent = 'Rendering sound…';
+      ctx = new AudioContext();
+      buffer = await renderSoundtrack(DURATION, soundEffects(), ctx.sampleRate);
+    }
+    if (t >= DURATION) t = 0;
+    playing = true; btn.textContent = '❚❚ Pause'; startAudio();
+  };
+  const pause = () => { playing = false; btn.textContent = '▶ Play with sound'; stopAudio(); };
+  btn.addEventListener('click', () => (playing ? pause() : play()));
   const loop = now => {
     const dt = (now - last) / 1000; last = now;
-    if (playing) { t = Math.min(t + dt, DURATION); if (t >= DURATION) playing = false; render(t); }
-    $('#hudbar i').style.width = `${(t / DURATION) * 100}%`;
-    $('#hudtime').textContent = `${t.toFixed(1)}s / ${DURATION}s`;
-    idle += dt; hud.classList.toggle('show', !playing || idle < 1.5);
+    if (playing) {
+      t = source ? offset + (ctx.currentTime - startedAt) : t + dt;
+      if (t >= DURATION) { t = DURATION; pause(); }
+    }
+    render(t);
+    $('#pbar i').style.width = `${(t / DURATION) * 100}%`;
+    $('#ptime').textContent = `${t.toFixed(1)}s / ${DURATION}s`;
+    idle += dt; player.classList.toggle('show', !playing || idle < 1.5);
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
-  addEventListener('resize', () => { fit(); });
+  addEventListener('resize', fit);
   addEventListener('mousemove', () => { idle = 0; });
+  const seek = to => { t = clamp(to, 0, DURATION); if (playing) startAudio(); render(t); };
   addEventListener('keydown', e => {
-    if (e.code === 'Space') { e.preventDefault(); if (t >= DURATION) t = 0; playing = !playing; }
-    if (e.code === 'ArrowRight') t = Math.min(t + 3, DURATION);
-    if (e.code === 'ArrowLeft') t = Math.max(t - 3, 0);
-    if (e.code === 'Home') t = 0;
-    render(t); idle = 0;
+    if (e.code === 'Space') { e.preventDefault(); playing ? pause() : play(); }
+    if (e.code === 'ArrowRight') seek(t + 2);
+    if (e.code === 'ArrowLeft') seek(t - 2);
+    if (e.code === 'Home') seek(0);
   });
-  $('#hudbar').addEventListener('click', e => { const r = e.currentTarget.getBoundingClientRect(); t = ((e.clientX - r.left) / r.width) * DURATION; render(t); });
+  $('#pbar').addEventListener('click', e => { const r = e.currentTarget.getBoundingClientRect(); seek(((e.clientX - r.left) / r.width) * DURATION); });
 }
