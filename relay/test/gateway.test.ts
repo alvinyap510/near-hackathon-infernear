@@ -51,6 +51,11 @@ test('JSON forwarding preserves hashes and headers, snapshots prices and caps me
   for (const [name, value] of Object.entries(e2ee)) assert.equal(upstream.headers[name], value);
   assert.equal(response.headers.get('inference-id'), 'fixture-inference');
   assert.equal(response.headers.get('access-control-expose-headers'), 'Inference-Id, X-InferNear-Billing, X-InferNear-Free-Remaining');
+  // A browser's preflight is answered with the headers it asks for (the SDK adds x-stainless-*); the origin stays pinned.
+  const preflight = await fetch(h.base + '/v1/chat/completions', { method: 'OPTIONS', headers: { origin: 'https://elsewhere.invalid', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization,x-stainless-os,x-encryption-version' } });
+  assert.equal(preflight.status, 204); assert.equal(preflight.headers.get('access-control-allow-headers'), 'authorization,x-stainless-os,x-encryption-version');
+  assert.equal(preflight.headers.get('access-control-allow-origin'), response.headers.get('access-control-allow-origin'));
+  assert.notEqual(preflight.headers.get('access-control-allow-origin'), 'https://elsewhere.invalid');
   await settle(h.gateway);
   assert.equal(h.connector.amounts.get('fixture-inference'), 13n);
   assert.equal(h.connector.receipts.get('fixture-inference')!.source, 'signed_usage');

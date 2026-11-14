@@ -69,7 +69,9 @@ export function createRelayServer(gateway: Gateway, options: { publicUrl: string
   return createServer(async (req, res) => {
     res.setHeader('access-control-allow-origin', options.allowedOrigin ?? origin);
     res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
-    res.setHeader('access-control-allow-headers', 'Authorization, Content-Type, X-Signing-Algo, X-Client-Pub-Key, X-Model-Pub-Key, X-Encryption-Version, X-Encrypt-All-Fields, x-no-aliasing');
+    // The origin is pinned above. A preflight is answered with the headers it asks for: NEAR AI's SDK, and the
+    // OpenAI client inside it, add their own (x-stainless-*), and a fixed list blocks private mode in a browser.
+    res.setHeader('access-control-allow-headers', String(req.headers['access-control-request-headers'] || 'Authorization, Content-Type, X-Signing-Algo, X-Client-Pub-Key, X-Model-Pub-Key, X-Encryption-Version, X-Encrypt-All-Fields, x-no-aliasing'));
     res.setHeader('access-control-expose-headers', 'Inference-Id, X-InferNear-Billing, X-InferNear-Free-Remaining');
     try {
       const url = new URL(req.url ?? '/', origin);
