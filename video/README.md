@@ -1,6 +1,6 @@
 # InferNear film
 
-An 84-second motion piece about InferNear, made entirely in code: HTML, CSS, SVG and a three.js layer for the 3D mark, with an original score synthesised by the Web Audio API: a modelled piano, Karplus–Strong plucked strings, a string ensemble and a synthesised drum kit, humanised in timing and velocity. There is no video editor, no recorded footage and no sample library. It covers the vision, the value proposition, how InferNear brings people on other chains to NEAR AI Cloud (through NEAR Intents, with no NEAR account), and how it brings NEAR AI Cloud and its NEAR TEEs to them.
+An 84-second motion piece about InferNear, made entirely in code: HTML, CSS, SVG and a three.js layer for the 3D mark, with an original score synthesised by the Web Audio API. There is no video editor, no recorded footage and no sample library. It covers the vision, the value proposition, how InferNear brings people on other chains to NEAR AI Cloud (through NEAR Intents, with no NEAR account), and how it brings NEAR AI Cloud and its NEAR TEEs to them.
 
 Every frame and every sample is a pure function of time. The picture runs on the music's clock (120 BPM), so cuts land on the beat, and `render.mjs` steps the page frame by frame into an exact MP4.
 
@@ -23,7 +23,7 @@ Needs Google Chrome and `ffmpeg` installed. Playwright drives the installed Chro
 npm run render
 ```
 
-It writes `out/infernear-film.mp4`: 1920×1080, 60 fps, H.264, with AAC sound mixed to about -14 LUFS. `FPS=30 npm run render` halves the render time, `STILLS=12,40 npm run render` saves those two moments as PNGs in `out/stills/`, and `AUDIO_ONLY=1 npm run render` writes only `out/soundtrack.wav`.
+It writes `out/infernear-film.mp4`: 1920×1080, 60 fps, H.264, with AAC sound normalised to -14 LUFS. `FPS=30 npm run render` halves the render time, `STILLS=12,40 npm run render` saves those two moments as PNGs in `out/stills/`, and `AUDIO_ONLY=1 npm run render` writes only `out/soundtrack.wav`.
 
 ## Layout
 

@@ -60,9 +60,9 @@ if (stills) {
   }
   ffmpeg.stdin.end();
   await done;
-  // Mux. The score is mixed to about -14 LUFS with headroom, so it is encoded as it is.
+  // Mux, with the soundtrack normalised to -14 LUFS for social video.
   await run(['-y', '-v', 'error', '-i', frames, '-i', 'out/soundtrack.wav', '-map', '0:v', '-map', '1:a', '-c:v', 'copy',
-    '-ar', '48000', '-c:a', 'aac', '-b:a', '256k', '-shortest', '-movflags', '+faststart', 'out/infernear-film.mp4']);
+    '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11', '-ar', '48000', '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', 'out/infernear-film.mp4']);
   console.log(`\nwrote out/infernear-film.mp4 (${count} frames at ${fps} fps, with sound)`);
 }
 
