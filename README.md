@@ -43,7 +43,7 @@ Settlement is on NEAR throughout: credits are posted to the ledger by a keeper, 
 
 5. In the console, connect an EVM wallet (on Base) or Meteor Wallet (NEAR). Optionally open the account button and pick a handle.
 6. **API keys** → create a key (your wallet signs one message; no transaction is sent) → the key is shown once.
-7. **Try the API** → choose a model → Run → the model's reply appears with a "Free trial" result, and the count goes from 5 to 4.
+7. **Try the API** → choose a model → Run → the model's reply appears with a "Free trial" result, and the count goes from 5 to 4. Switch to **Private** and run again: after 20 to 30 seconds the reply appears with a **Verified** panel (TEE hardware, fresh nonce, the model key your prompt was encrypted to, the reply's signature).
 8. Or use the key from a terminal:
 
    ```sh
@@ -285,8 +285,8 @@ The three Base vaults and the credit ledger have no owner, admin, pause or upgra
 - **No deposit, credit or paid API call has happened on mainnet yet.** The contracts, relay and console are live, and wallet sign-in and API-key issue were checked against the live relay; the first funded round trip is still to come. The console's deposit, withdrawal and Meteor sign-in flows have so far run only in automated tests, not with a real wallet.
 - **Standard mode and NEAR-wallet sign-in went live on 13 Nov 2026 and are only partly exercised.** Against the live relay, a throwaway EVM wallet signed in, received a key, and its plain OpenAI-format call was accepted up to the credit check (`402 insufficient_credit`, as expected with no credits). A paid standard call and a sign-in with a real NEAR wallet have not been done yet.
 - **Standard mode is not private from the relay.** The relay can read the prompt and reply in transit; it stores neither. Use private mode when that matters.
-- **In the console, "Try the API" sends a real standard-mode call; private mode there is code samples only.** A private call is made with NEAR AI's SDK from your own code, as in the probe above.
-- **No credit purchase has been made yet.** The top-up contract is live and the console shows its box to EVM wallets, but the first real purchase, and the keeper crediting it, are still to come.
+- **In the console, "Try the API" runs both modes for real.** A standard call goes through the relay in the clear. A private call runs NEAR AI's SDK in the browser tab: it verifies the model's TEE, encrypts the prompt to the model's key before it leaves, and shows the reply only after the model's signature on it verifies. Checked in Chrome on the live site on 15 Nov 2026 with free trial calls; no paid private call has been made from the browser.
+- **One credit purchase has been made, and no paid call yet.** The first purchase (2 USDC, 15 Nov 2026) is credited on the NEAR connector. That post was sent once by hand with the keeper's key, after the gas fix described in `relay/README.md`; the keeper has not yet posted a purchase by itself, and no call has been debited from credits.
 - **"From another chain" shows quotes only.** The console fetches real dry-run quotes from NEAR Intents; sending funds from that screen is switched off in this release.
 - **Every API call is settled by its own NEAR transaction.** That costs the operator roughly 0.0015 NEAR per call in gas and permanent ledger storage, far more than the inference itself; the ledger as funded covers about 590 calls. A production version would batch debits.
 - **PT-deJAAA expires on 26 Nov 2026.** After that the Pendle vault's PT stops appreciating.

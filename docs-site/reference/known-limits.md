@@ -15,7 +15,7 @@ InferNear was built in two weeks at the NEAR HACKATHON. This page lists what is 
 * **Encryption hides content, not metadata.** In private mode a relay can still observe request size, timing and token counts.
 * **The model build check is off.** The SDK verifies the model's TEE hardware attestation and signatures. NEAR's check that the model runs NEAR's published build currently rejects NEAR's own deployments, so it is left out until that is fixed. The gateway build check stays on.
 * **Private inference was verified live once, by a probe**, on 12 Nov 2026, from JavaScript and Python. Reproducing it needs your own NEAR AI key.
-* **In the console, private mode is code samples only.** "Try the API" sends standard-mode calls.
+* **Private mode in the console was checked with free trial calls only.** "Try the API" runs it in your browser; no paid private call has been made from there.
 
 ## Trust
 
