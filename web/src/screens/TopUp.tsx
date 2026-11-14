@@ -7,10 +7,10 @@ export function TopUp({session,credited,onChanged}:{session:Session;credited:big
   const [account,setAccount]=useState<TopUpAccount|null>(null),[input,setInput]=useState('');
   const [confirm,setConfirm]=useState<{session:Session;amount:bigint}|null>(null),[busy,setBusy]=useState(false);
   const [error,setError]=useState<string|null>(null),[purchase,setPurchase]=useState<PurchaseState|null>(null);
-  // `bought` is the credited total when the last purchase here confirmed; the page watches for its credits until `until`.
+  // `bought` is the credited total the last purchase here should reach; the page watches for its credits until `until`.
   const [bought,setBought]=useState<bigint|null>(null),[until,setUntil]=useState(()=>Date.now()+120_000),[poll,setPoll]=useState(0);
-  // Credits are behind when less is credited than was bought, or when nothing has arrived since a purchase made here.
-  const behind=account!==null&&(credited<account.paid||(bought!==null&&credited<=bought));
+  // Credits are behind when less is credited than was bought, or when a purchase made here has not arrived in full.
+  const behind=account!==null&&(credited<account.paid||(bought!==null&&credited<bought));
   // While they are behind, re-read the balances every 5 seconds (for at most 2 minutes), so the credits show up on their own.
   useEffect(()=>{
     if(!behind||Date.now()>until)return;
@@ -45,7 +45,7 @@ export function TopUp({session,credited,onChanged}:{session:Session;credited:big
   const buy=async()=>{
     if(reviewed===null)return;const amount=reviewed;
     setConfirm(null);setInput('');setBusy(true);setError(null);
-    try{await data.topUp(session,amount);setBought(credited);setUntil(Date.now()+120_000);setPurchase(await data.topUpPurchase(session));setAccount(await data.topUpAccount(session));
+    try{await data.topUp(session,amount);setBought(credited+amount);setUntil(Date.now()+120_000);setPurchase(await data.topUpPurchase(session));setAccount(await data.topUpAccount(session));
       try{await onChanged();}catch{setError('Purchase confirmed; balance refresh failed. Do not repeat the purchase.');}
     }catch(e){setError(errorText(e));try{setPurchase(await data.topUpPurchase(session));}catch{/* Keep the original failure visible; another submission stays blocked in the data layer. */}}
     finally{setBusy(false);}
